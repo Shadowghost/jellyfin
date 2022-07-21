@@ -15,10 +15,12 @@ namespace MediaBrowser.Model.Net
         /// <summary>
         /// Creates a new unicast socket using the specified local port number.
         /// </summary>
+        /// <param name="ipAddress">The multicast IP address to bind to.</param>
         /// <param name="localIp">The local IP address to bind to.</param>
         /// <param name="localPort">The local port to bind to.</param>
+        /// <param name="interfaceId">The id of the interface providing bindIpAddress.</param>
         /// <returns>A new unicast socket using the specified local port number.</returns>
-        ISocket CreateSsdpUdpSocket(IPAddress localIp, int localPort);
+        ISocket CreateSsdpUdpSocket(IPAddress ipAddress, IPAddress localIp, int localPort, int? interfaceId);
 
         /// <summary>
         /// Creates a new multicast socket using the specified multicast IP address, multicast time to live and local port.
@@ -27,7 +29,8 @@ namespace MediaBrowser.Model.Net
         /// <param name="bindIpAddress">The bind IP address.</param>
         /// <param name="multicastTimeToLive">The multicast time to live value. Actually a maximum number of network hops for UDP packets.</param>
         /// <param name="localPort">The local port to bind to.</param>
+        /// <param name="interfaceId">The id of the interface providing bindIpAddress.</param>
         /// <returns>A <see cref="ISocket"/> implementation.</returns>
-        ISocket CreateUdpMulticastSocket(IPAddress ipAddress, IPAddress bindIpAddress, int multicastTimeToLive, int localPort);
+        ISocket CreateUdpMulticastSocket(IPAddress ipAddress, IPAddress bindIpAddress, int multicastTimeToLive, int localPort, int? interfaceId);
     }
 }

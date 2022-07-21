@@ -35,21 +35,33 @@ namespace Emby.Server.Implementations.Net
         }
 
         /// <inheritdoc />
-        public ISocket CreateSsdpUdpSocket(IPAddress localIp, int localPort)
+        public ISocket CreateSsdpUdpSocket(IPAddress ipAddress, IPAddress localIp, int localPort, int? interfaceId)
         {
             if (localPort < 0)
             {
                 throw new ArgumentException("localPort cannot be less than zero.", nameof(localPort));
             }
 
-            var retVal = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            var retVal = localIp.AddressFamily == AddressFamily.InterNetwork
+                ? new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
+                : new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
             try
             {
                 retVal.EnableBroadcast = true;
                 retVal.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-                retVal.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 4);
 
-                retVal.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(IPAddress.Parse("239.255.255.250"), localIp));
+                if (localIp.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    retVal.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 4);
+                    retVal.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ipAddress, localIp));
+                }
+
+                if (localIp.AddressFamily == AddressFamily.InterNetworkV6 && interfaceId.HasValue)
+                {
+                    retVal.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.MulticastTimeToLive, 4);
+                    retVal.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.AddMembership, new IPv6MulticastOption(ipAddress, Convert.ToInt64(interfaceId.Value)));
+                }
+
                 return new UdpSocket(retVal, localPort, localIp);
             }
             catch
@@ -61,7 +73,7 @@ namespace Emby.Server.Implementations.Net
         }
 
         /// <inheritdoc />
-        public ISocket CreateUdpMulticastSocket(IPAddress ipAddress, IPAddress bindIpAddress, int multicastTimeToLive, int localPort)
+        public ISocket CreateUdpMulticastSocket(IPAddress ipAddress, IPAddress bindIpAddress, int multicastTimeToLive, int localPort, int? interfaceId)
         {
             if (ipAddress == null)
             {
@@ -70,7 +82,9 @@ namespace Emby.Server.Implementations.Net
 
             if (bindIpAddress == null)
             {
-                bindIpAddress = IPAddress.Any;
+                bindIpAddress = ipAddress.AddressFamily == AddressFamily.InterNetwork
+                ? IPAddress.Any
+                : IPAddress.IPv6Any;
             }
 
             if (multicastTimeToLive <= 0)
@@ -83,7 +97,9 @@ namespace Emby.Server.Implementations.Net
                 throw new ArgumentException("localPort cannot be less than zero.", nameof(localPort));
             }
 
-            var retVal = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            var retVal = bindIpAddress.AddressFamily == AddressFamily.InterNetwork
+                ? new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
+                : new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
 
             retVal.ExclusiveAddressUse = false;
 
@@ -100,10 +116,33 @@ namespace Emby.Server.Implementations.Net
             try
             {
                 retVal.EnableBroadcast = true;
-                // retVal.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true);
-                retVal.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, multicastTimeToLive);
 
-                retVal.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ipAddress, bindIpAddress));
+                if (bindIpAddress.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    retVal.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, multicastTimeToLive);
+                    if (interfaceId.HasValue)
+                    {
+                        retVal.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ipAddress, bindIpAddress));
+                    }
+                    else
+                    {
+                        retVal.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ipAddress));
+                    }
+                }
+
+                if (bindIpAddress.AddressFamily == AddressFamily.InterNetworkV6)
+                {
+                    retVal.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.MulticastTimeToLive, 4);
+                    if (interfaceId.HasValue)
+                    {
+                        retVal.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.AddMembership, new IPv6MulticastOption(ipAddress, Convert.ToInt64(interfaceId.Value)));
+                    }
+                    else
+                    {
+                        retVal.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.AddMembership, new IPv6MulticastOption(ipAddress));
+                    }
+                }
+
                 retVal.MulticastLoopback = true;
 
                 return new UdpSocket(retVal, localPort, bindIpAddress);

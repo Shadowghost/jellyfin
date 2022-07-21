@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -107,7 +108,8 @@ namespace Rssdp.Infrastructure
 
             try
             {
-                await SearchAsync(CancellationToken.None).ConfigureAwait(false);
+                await SearchAsync(AddressFamily.InterNetwork, CancellationToken.None).ConfigureAwait(false);
+                await SearchAsync(AddressFamily.InterNetworkV6, CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception)
             {
@@ -117,9 +119,9 @@ namespace Rssdp.Infrastructure
         /// <summary>
         /// Performs a search for all devices using the default search timeout.
         /// </summary>
-        private Task SearchAsync(CancellationToken cancellationToken)
+        private Task SearchAsync(AddressFamily addressFamily, CancellationToken cancellationToken)
         {
-            return SearchAsync(SsdpConstants.SsdpDiscoverAllSTHeader, DefaultSearchWaitTime, cancellationToken);
+            return SearchAsync(SsdpConstants.SsdpDiscoverAllSTHeader, DefaultSearchWaitTime, addressFamily, cancellationToken);
         }
 
         /// <summary>
@@ -132,21 +134,21 @@ namespace Rssdp.Infrastructure
         /// <item><term>Device type</term><description>Fully qualified device type starting with urn: i.e urn:schemas-upnp-org:Basic:1</description></item>
         /// </list>
         /// </param>
-        private Task SearchAsync(string searchTarget)
+        private Task SearchAsync(string searchTarget, AddressFamily addressFamily)
         {
-            return SearchAsync(searchTarget, DefaultSearchWaitTime, CancellationToken.None);
+            return SearchAsync(searchTarget, DefaultSearchWaitTime, addressFamily, CancellationToken.None);
         }
 
         /// <summary>
         /// Performs a search for all devices using the specified search timeout.
         /// </summary>
         /// <param name="searchWaitTime">The amount of time to wait for network responses to the search request. Longer values will likely return more devices, but increase search time. A value between 1 and 5 seconds is recommended by the UPnP 1.1 specification, this method requires the value be greater 1 second if it is not zero. Specify TimeSpan.Zero to return only devices already in the cache.</param>
-        private Task SearchAsync(TimeSpan searchWaitTime)
+        private Task SearchAsync(TimeSpan searchWaitTime, AddressFamily addressFamily)
         {
-            return SearchAsync(SsdpConstants.SsdpDiscoverAllSTHeader, searchWaitTime, CancellationToken.None);
+            return SearchAsync(SsdpConstants.SsdpDiscoverAllSTHeader, searchWaitTime, addressFamily, CancellationToken.None);
         }
 
-        private Task SearchAsync(string searchTarget, TimeSpan searchWaitTime, CancellationToken cancellationToken)
+        private Task SearchAsync(string searchTarget, TimeSpan searchWaitTime, AddressFamily addressFamily, CancellationToken cancellationToken)
         {
             if (searchTarget == null)
             {
@@ -170,7 +172,7 @@ namespace Rssdp.Infrastructure
 
             ThrowIfDisposed();
 
-            return BroadcastDiscoverMessage(searchTarget, SearchTimeToMXValue(searchWaitTime), cancellationToken);
+            return BroadcastDiscoverMessage(searchTarget, SearchTimeToMXValue(searchWaitTime), addressFamily, cancellationToken);
         }
 
         /// <summary>
@@ -327,11 +329,12 @@ namespace Rssdp.Infrastructure
                 || device.NotificationType == this.NotificationFilter;
         }
 
-        private Task BroadcastDiscoverMessage(string serviceType, TimeSpan mxValue, CancellationToken cancellationToken)
+        private Task BroadcastDiscoverMessage(string serviceType, TimeSpan mxValue, AddressFamily addressFamily, CancellationToken cancellationToken)
         {
             var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-            values["HOST"] = "239.255.255.250:1900";
+            values["HOST"] = addressFamily == AddressFamily.InterNetwork ? "239.255.255.250:1900" : "[FF05::C]:1900";
+
             values["USER-AGENT"] = "UPnP/1.0 DLNADOC/1.50 Platinum/1.0.4.2";
             // values["X-EMBY-SERVERID"] = _appHost.SystemId;
 
@@ -347,7 +350,7 @@ namespace Rssdp.Infrastructure
 
             var message = BuildMessage(header, values);
 
-            return _CommunicationsServer.SendMulticastMessage(message, null, cancellationToken);
+            return _CommunicationsServer.SendMulticastMessage(message, null, addressFamily, cancellationToken);
         }
 
         private void ProcessSearchResponseMessage(HttpResponseMessage message, IPAddress IpAddress)

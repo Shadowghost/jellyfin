@@ -174,7 +174,9 @@ namespace Rssdp.Infrastructure
             // SSDP spec recommends sending messages multiple times (not more than 3) to account for possible packet loss over UDP.
             for (var i = 0; i < SsdpConstants.UdpResendCount; i++)
             {
-                var tasks = sockets.Select(s => SendFromSocket(s, messageData, destination, cancellationToken)).ToArray();
+                var tasks = sockets.Where(s => s.LocalIPAddress.AddressFamily.Equals(destination.AddressFamily))
+                    .Select(s => SendFromSocket(s, messageData, destination, cancellationToken))
+                    .ToArray();
                 await Task.WhenAll(tasks).ConfigureAwait(false);
 
                 await Task.Delay(100, cancellationToken).ConfigureAwait(false);
@@ -205,7 +207,7 @@ namespace Rssdp.Infrastructure
 
             lock (_SendSocketSynchroniser)
             {
-                var sockets = _sendSockets.Where(i => i.LocalIPAddress.AddressFamily == fromLocalIpAddress.AddressFamily);
+                var sockets = _sendSockets.Where(i => i.LocalIPAddress.AddressFamily.Equals(fromLocalIpAddress.AddressFamily));
 
                 // Send from the Any socket and the socket with the matching address
                 if (fromLocalIpAddress.AddressFamily == AddressFamily.InterNetwork)
@@ -233,15 +235,15 @@ namespace Rssdp.Infrastructure
             }
         }
 
-        public Task SendMulticastMessage(string message, IPAddress fromLocalIpAddress, CancellationToken cancellationToken)
+        public Task SendMulticastMessage(string message, IPAddress fromLocalIpAddress, AddressFamily addressFamily, CancellationToken cancellationToken)
         {
-            return SendMulticastMessage(message, SsdpConstants.UdpResendCount, fromLocalIpAddress, cancellationToken);
+            return SendMulticastMessage(message, SsdpConstants.UdpResendCount, fromLocalIpAddress, addressFamily, cancellationToken);
         }
 
         /// <summary>
         /// Sends a message to the SSDP multicast address and port.
         /// </summary>
-        public async Task SendMulticastMessage(string message, int sendCount, IPAddress fromLocalIpAddress, CancellationToken cancellationToken)
+        public async Task SendMulticastMessage(string message, int sendCount, IPAddress fromLocalIpAddress, AddressFamily addressFamily, CancellationToken cancellationToken)
         {
             if (message == null)
             {
@@ -262,9 +264,12 @@ namespace Rssdp.Infrastructure
                 await SendMessageIfSocketNotDisposed(
                     messageData,
                     new IPEndPoint(
-                        IPAddress.Parse(SsdpConstants.MulticastLocalAdminAddress),
+                        addressFamily == AddressFamily.InterNetwork
+                            ? IPAddress.Parse(SsdpConstants.MulticastLocalAdminAddress)
+                            : IPAddress.Parse(SsdpConstants.MulticastLocalAdminAddressV6),
                         SsdpConstants.MulticastPort),
                     fromLocalIpAddress,
+                    addressFamily,
                     cancellationToken).ConfigureAwait(false);
 
                 await Task.Delay(100, cancellationToken).ConfigureAwait(false);
@@ -322,14 +327,15 @@ namespace Rssdp.Infrastructure
             }
         }
 
-        private Task SendMessageIfSocketNotDisposed(byte[] messageData, IPEndPoint destination, IPAddress fromLocalIpAddress, CancellationToken cancellationToken)
+        private Task SendMessageIfSocketNotDisposed(byte[] messageData, IPEndPoint destination, IPAddress fromLocalIpAddress, AddressFamily addressFamily, CancellationToken cancellationToken)
         {
             var sockets = _sendSockets;
             if (sockets != null)
             {
                 sockets = sockets.ToList();
 
-                var tasks = sockets.Where(s => (fromLocalIpAddress == null || fromLocalIpAddress.Equals(s.LocalIPAddress)))
+                var tasks = sockets.Where(s => addressFamily == destination.AddressFamily)
+                    .Where(s => (fromLocalIpAddress == null || fromLocalIpAddress.Equals(s.LocalIPAddress)))
                     .Select(s => SendFromSocket(s, messageData, destination, cancellationToken));
                 return Task.WhenAll(tasks);
             }
@@ -344,25 +350,50 @@ namespace Rssdp.Infrastructure
             {
                 foreach (var address in _networkManager.GetInternalBindAddresses())
                 {
-                    if (address.AddressFamily == AddressFamily.InterNetworkV6)
-                    {
-                        // Not support IPv6 right now
-                        continue;
-                    }
-
                     try
                     {
-                        sockets.Add(_SocketFactory.CreateUdpMulticastSocket(IPAddress.Parse(SsdpConstants.MulticastLocalAdminAddress), address.Address, _MulticastTtl, SsdpConstants.MulticastPort));
+                        if (address.AddressFamily == AddressFamily.InterNetwork)
+                        {
+                            sockets.Add(_SocketFactory.CreateUdpMulticastSocket(IPAddress.Parse(SsdpConstants.MulticastLocalAdminAddress),
+                                address.Address,
+                                _MulticastTtl, SsdpConstants.MulticastPort,
+                                address.Index));
+                        }
+
+                        if (address.AddressFamily == AddressFamily.InterNetworkV6)
+                        {
+                            sockets.Add(_SocketFactory.CreateUdpMulticastSocket(IPAddress.Parse(SsdpConstants.MulticastLocalAdminAddressV6),
+                                address.Address,
+                                _MulticastTtl, SsdpConstants.MulticastPort,
+                                address.Index));
+                        }
+
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Error in ListenForBroadcastsAsync. IPAddress: {0}", address);
+                        _logger.LogError(ex, "Error in ListenForBroadcastsAsync. IPAddress: {0}", address.Address);
                     }
                 }
             }
             else
             {
-                sockets.Add(_SocketFactory.CreateUdpMulticastSocket(IPAddress.Parse(SsdpConstants.MulticastLocalAdminAddress), IPAddress.Any, _MulticastTtl, SsdpConstants.MulticastPort));
+                if (_networkManager.IsIpv4Enabled)
+                {
+                    sockets.Add(_SocketFactory.CreateUdpMulticastSocket(IPAddress.Parse(SsdpConstants.MulticastLocalAdminAddress),
+                        IPAddress.Any,
+                        _MulticastTtl,
+                        SsdpConstants.MulticastPort,
+                        null));
+                }
+
+                if (_networkManager.IsIpv6Enabled)
+                {
+                    sockets.Add(_SocketFactory.CreateUdpMulticastSocket(IPAddress.Parse(SsdpConstants.MulticastLocalAdminAddressV6),
+                        IPAddress.IPv6Any,
+                        _MulticastTtl,
+                        SsdpConstants.MulticastPort,
+                        null));
+                }
             }
 
             foreach (var socket in sockets)
@@ -381,25 +412,35 @@ namespace Rssdp.Infrastructure
             {
                 foreach (var address in _networkManager.GetInternalBindAddresses())
                 {
-                    if (address.AddressFamily == AddressFamily.InterNetworkV6)
-                    {
-                        // Not support IPv6 right now
-                        continue;
-                    }
-
                     try
                     {
-                        sockets.Add(_SocketFactory.CreateSsdpUdpSocket(address.Address, _LocalPort));
+                        if (address.AddressFamily == AddressFamily.InterNetwork)
+                        {
+                            sockets.Add(_SocketFactory.CreateSsdpUdpSocket(IPAddress.Parse(SsdpConstants.MulticastLocalAdminAddress), address.Address, _LocalPort, address.Index));
+                        }
+
+                        if (address.AddressFamily == AddressFamily.InterNetworkV6)
+                        {
+                            sockets.Add(_SocketFactory.CreateSsdpUdpSocket(IPAddress.Parse(SsdpConstants.MulticastLocalAdminAddressV6), address.Address, _LocalPort, address.Index));
+                        }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Error in CreateSsdpUdpSocket. IPAddress: {0}", address);
+                        _logger.LogError(ex, "Error in CreateSsdpUdpSocket. IPAddress: {0}", address.Address);
                     }
                 }
             }
             else
             {
-                sockets.Add(_SocketFactory.CreateSsdpUdpSocket(IPAddress.Any, _LocalPort));
+                if (_networkManager.IsIpv4Enabled)
+                {
+                    sockets.Add(_SocketFactory.CreateSsdpUdpSocket(IPAddress.Parse(SsdpConstants.MulticastLocalAdminAddress), IPAddress.Any, _LocalPort, null));
+                }
+
+                if (_networkManager.IsIpv6Enabled)
+                {
+                    sockets.Add(_SocketFactory.CreateSsdpUdpSocket(IPAddress.Parse(SsdpConstants.MulticastLocalAdminAddressV6), IPAddress.IPv6Any, _LocalPort, null));
+                }
             }
 
             foreach (var socket in sockets)

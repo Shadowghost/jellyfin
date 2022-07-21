@@ -6,8 +6,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using MediaBrowser.Common.Net;
-using Microsoft.AspNetCore.HttpOverrides;
 
 namespace Rssdp.Infrastructure
 {
@@ -243,7 +241,7 @@ namespace Rssdp.Infrastructure
             }
 
             // Wait on random interval up to MX, as per SSDP spec.
-            // Also, as per UPnP 1.1/SSDP spec ignore missing/bank MX header. If over 120, assume random value between 0 and 120.
+            // Also, as per UPnP 1.1/SSDP spec ignore missing/blank MX header. If over 120, assume random value between 0 and 120.
             // Using 16 as minimum as that's often the minimum system clock frequency anyway.
             int maxWaitInterval = 0;
             if (String.IsNullOrEmpty(mx))
@@ -486,9 +484,13 @@ namespace Rssdp.Infrastructure
             const string header = "NOTIFY * HTTP/1.1";
 
             var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var rootAddress = rootDevice.Address;
+            var rootAddressFamily = rootAddress.AddressFamily;
 
             // If needed later for non-server devices, these headers will need to be dynamic
-            values["HOST"] = "239.255.255.250:1900";
+            values["HOST"] = rootAddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+                ? "239.255.255.250:1900"
+                : "[FF05::C]:1900";
             values["DATE"] = DateTime.UtcNow.ToString("r");
             values["CACHE-CONTROL"] = "max-age = " + rootDevice.CacheLifetime.TotalSeconds;
             values["LOCATION"] = rootDevice.Location.ToString();
@@ -499,7 +501,7 @@ namespace Rssdp.Infrastructure
 
             var message = BuildMessage(header, values);
 
-            _CommsServer.SendMulticastMessage(message, _sendOnlyMatchedHost ? rootDevice.Address : null, cancellationToken);
+            _CommsServer.SendMulticastMessage(message, _sendOnlyMatchedHost ? rootAddress : null, rootAddressFamily, cancellationToken);
 
             // WriteTrace(String.Format("Sent alive notification"), device);
         }
@@ -533,9 +535,13 @@ namespace Rssdp.Infrastructure
             const string header = "NOTIFY * HTTP/1.1";
 
             var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var rootAddress = device.ToRootDevice().Address;
+            var rootAddressFamily = rootAddress.AddressFamily;
 
             // If needed later for non-server devices, these headers will need to be dynamic
-            values["HOST"] = "239.255.255.250:1900";
+            values["HOST"] = rootAddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+                ? "239.255.255.250:1900"
+                : "[FF05::C]:1900";
             values["DATE"] = DateTime.UtcNow.ToString("r");
             values["SERVER"] = string.Format(CultureInfo.InvariantCulture, "{0}/{1} UPnP/1.0 RSSDP/{2}", _OSName, _OSVersion, ServerVersion);
             values["NTS"] = "ssdp:byebye";
@@ -546,7 +552,7 @@ namespace Rssdp.Infrastructure
 
             var sendCount = IsDisposed ? 1 : 3;
             WriteTrace(String.Format(CultureInfo.InvariantCulture, "Sent byebye notification"), device);
-            return _CommsServer.SendMulticastMessage(message, sendCount, _sendOnlyMatchedHost ? device.ToRootDevice().Address : null, cancellationToken);
+            return _CommsServer.SendMulticastMessage(message, sendCount, _sendOnlyMatchedHost ? rootAddress : null, rootAddressFamily, cancellationToken);
         }
 
         private void DisposeRebroadcastTimer()

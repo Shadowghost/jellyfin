@@ -298,19 +298,17 @@ namespace Jellyfin.Networking.Manager
 
                 if (_lanSubnets.Count == 0)
                 {
-                    // If no LAN addresses are specified, all private subnets and Loopback are deemed to be the LAN
+                    // If no LAN addresses are specified, all private subnets are deemed to be the LAN
                     _logger.LogDebug("Using LAN interface addresses as user provided no LAN details.");
 
                     if (IsIpv6Enabled)
                     {
-                        _lanSubnets.Add(new IPNetwork(IPAddress.IPv6Loopback, 128)); // RFC 4291 (Loopback)
                         _lanSubnets.Add(new IPNetwork(IPAddress.Parse("fe80::"), 10)); // RFC 4291 (Site local)
                         _lanSubnets.Add(new IPNetwork(IPAddress.Parse("fc00::"), 7)); // RFC 4193 (Unique local)
                     }
 
                     if (IsIpv4Enabled)
                     {
-                        _lanSubnets.Add(new IPNetwork(IPAddress.Loopback, 8)); // RFC 5735 (Loopback)
                         _lanSubnets.Add(new IPNetwork(IPAddress.Parse("10.0.0.0"), 8)); // RFC 1918 (private)
                         _lanSubnets.Add(new IPNetwork(IPAddress.Parse("172.16.0.0"), 12)); // RFC 1918 (private)
                         _lanSubnets.Add(new IPNetwork(IPAddress.Parse("192.168.0.0"), 16)); // RFC 1918 (private)
@@ -933,22 +931,27 @@ namespace Jellyfin.Networking.Manager
                     .OrderBy(x => x.Index)
                     .ToList();
 
-                if (isInExternalSubnet && externalInterfaces.Any())
+                if (isInExternalSubnet)
                 {
-                    // Check to see if any of the external bind interfaces are in the same subnet as the source.
-                    // If none exists, this will select the first external interface if there is one.
-                    bindAddress = externalInterfaces
-                        .OrderByDescending(x => x.Subnet.Contains(source))
-                        .ThenBy(x => x.Index)
-                        .Select(x => x.Address)
-                        .FirstOrDefault();
-
-                    if (bindAddress != null)
+                    if (externalInterfaces.Any())
                     {
-                        result = NetworkExtensions.FormatIpString(bindAddress);
-                        _logger.LogDebug("{Source}: GetBindInterface: Has source, found a matching external bind interface. {Result}", source, result);
-                        return true;
+                        // Check to see if any of the external bind interfaces are in the same subnet as the source.
+                        // If none exists, this will select the first external interface if there is one.
+                        bindAddress = externalInterfaces
+                            .OrderByDescending(x => x.Subnet.Contains(source))
+                            .ThenBy(x => x.Index)
+                            .Select(x => x.Address)
+                            .FirstOrDefault();
+
+                        if (bindAddress != null)
+                        {
+                            result = NetworkExtensions.FormatIpString(bindAddress);
+                            _logger.LogDebug("{Source}: GetBindInterface: Has source, found a matching external bind interface. {Result}", source, result);
+                            return true;
+                        }
                     }
+
+                    _logger.LogWarning("{Source}: External request received, no external interface bind found, trying internal interfaces.", source);
                 }
                 else
                 {
@@ -963,7 +966,7 @@ namespace Jellyfin.Networking.Manager
                     if (bindAddress != null)
                     {
                         result = NetworkExtensions.FormatIpString(bindAddress);
-                        _logger.LogWarning("{Source}: External request received, only an internal interface bind found. {Result}", source, result);
+                        _logger.LogWarning("{Source}: Request received, matching internal interface bind found. {Result}", source, result);
                         return true;
                     }
                 }
