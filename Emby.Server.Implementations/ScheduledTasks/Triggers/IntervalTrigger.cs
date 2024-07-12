@@ -27,27 +27,18 @@ namespace Emby.Server.Implementations.ScheduledTasks.Triggers
             TaskOptions = taskOptions;
         }
 
-        /// <summary>
-        /// Occurs when [triggered].
-        /// </summary>
+        /// <inheritdoc />
         public event EventHandler<EventArgs>? Triggered;
 
-        /// <summary>
-        /// Gets the options of this task.
-        /// </summary>
+        /// <inheritdoc />
         public TaskOptions TaskOptions { get; }
 
-        /// <summary>
-        /// Stars waiting for the trigger action.
-        /// </summary>
-        /// <param name="lastResult">The last result.</param>
-        /// <param name="logger">The logger.</param>
-        /// <param name="taskName">The name of the task.</param>
-        /// <param name="isApplicationStartup">if set to <c>true</c> [is application startup].</param>
+        /// <inheritdoc />
         public void Start(TaskResult? lastResult, ILogger logger, string taskName, bool isApplicationStartup)
         {
             DisposeTimer();
 
+            DateTime now = DateTime.UtcNow;
             DateTime triggerDate;
 
             if (lastResult is null)
@@ -57,15 +48,10 @@ namespace Emby.Server.Implementations.ScheduledTasks.Triggers
             }
             else
             {
-                triggerDate = new[] { lastResult.EndTimeUtc, _lastStartDate }.Max().Add(_interval);
+                triggerDate = new[] { lastResult.EndTimeUtc, _lastStartDate, now.AddMinutes(1) }.Max().Add(_interval);
             }
 
-            if (DateTime.UtcNow > triggerDate)
-            {
-                triggerDate = DateTime.UtcNow.AddMinutes(1);
-            }
-
-            var dueTime = triggerDate - DateTime.UtcNow;
+            var dueTime = triggerDate - now;
             var maxDueTime = TimeSpan.FromDays(7);
 
             if (dueTime > maxDueTime)
@@ -76,9 +62,7 @@ namespace Emby.Server.Implementations.ScheduledTasks.Triggers
             _timer = new Timer(_ => OnTriggered(), null, dueTime, TimeSpan.FromMilliseconds(-1));
         }
 
-        /// <summary>
-        /// Stops waiting for the trigger action.
-        /// </summary>
+        /// <inheritdoc />
         public void Stop()
         {
             DisposeTimer();

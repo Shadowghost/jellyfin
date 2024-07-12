@@ -1,7 +1,5 @@
 #nullable disable
 
-#pragma warning disable CS1591
-
 using System;
 using System.Globalization;
 using System.IO;
@@ -24,51 +22,15 @@ namespace Emby.Server.Implementations.ScheduledTasks
     /// </summary>
     public class ScheduledTaskWorker : IScheduledTaskWorker
     {
-        /// <summary>
-        /// The options for the json Serializer.
-        /// </summary>
         private readonly JsonSerializerOptions _jsonOptions = JsonDefaults.Options;
-
-        /// <summary>
-        /// Gets or sets the application paths.
-        /// </summary>
-        /// <value>The application paths.</value>
         private readonly IApplicationPaths _applicationPaths;
-
-        /// <summary>
-        /// Gets or sets the logger.
-        /// </summary>
-        /// <value>The logger.</value>
         private readonly ILogger _logger;
-
-        /// <summary>
-        /// Gets or sets the task manager.
-        /// </summary>
-        /// <value>The task manager.</value>
         private readonly ITaskManager _taskManager;
-
-        /// <summary>
-        /// The _last execution result sync lock.
-        /// </summary>
-        private readonly object _lastExecutionResultSyncLock = new object();
-
-        private bool _readFromFile = false;
-
-        /// <summary>
-        /// The _last execution result.
-        /// </summary>
+        private readonly object _lastExecutionResultSyncLock = new();
+        private bool _readFromFile;
         private TaskResult _lastExecutionResult;
-
         private Task _currentTask;
-
-        /// <summary>
-        /// The _triggers.
-        /// </summary>
         private Tuple<TaskTriggerInfo, ITaskTrigger>[] _triggers;
-
-        /// <summary>
-        /// The _id.
-        /// </summary>
         private string _id;
 
         /// <summary>
@@ -104,18 +66,13 @@ namespace Emby.Server.Implementations.ScheduledTasks
             InitTriggerEvents();
         }
 
+        /// <inheritdoc />
         public event EventHandler<GenericEventArgs<double>> TaskProgress;
 
-        /// <summary>
-        /// Gets the scheduled task.
-        /// </summary>
-        /// <value>The scheduled task.</value>
+        /// <inheritdoc />
         public IScheduledTask ScheduledTask { get; private set; }
 
-        /// <summary>
-        /// Gets the last execution result.
-        /// </summary>
-        /// <value>The last execution result.</value>
+        /// <inheritdoc />
         public TaskResult LastExecutionResult
         {
             get
@@ -169,22 +126,13 @@ namespace Emby.Server.Implementations.ScheduledTasks
             }
         }
 
-        /// <summary>
-        /// Gets the name.
-        /// </summary>
-        /// <value>The name.</value>
+        /// <inheritdoc />
         public string Name => ScheduledTask.Name;
 
-        /// <summary>
-        /// Gets the description.
-        /// </summary>
-        /// <value>The description.</value>
+        /// <inheritdoc />
         public string Description => ScheduledTask.Description;
 
-        /// <summary>
-        /// Gets the category.
-        /// </summary>
-        /// <value>The category.</value>
+        /// <inheritdoc />
         public string Category => ScheduledTask.Category;
 
         /// <summary>
@@ -199,10 +147,7 @@ namespace Emby.Server.Implementations.ScheduledTasks
         /// <value>The current execution start time.</value>
         private DateTime CurrentExecutionStartTime { get; set; }
 
-        /// <summary>
-        /// Gets the state.
-        /// </summary>
-        /// <value>The state.</value>
+        /// <inheritdoc />
         public TaskState State
         {
             get
@@ -218,10 +163,7 @@ namespace Emby.Server.Implementations.ScheduledTasks
             }
         }
 
-        /// <summary>
-        /// Gets the current progress.
-        /// </summary>
-        /// <value>The current progress.</value>
+        /// <inheritdoc />
         public double? CurrentProgress { get; private set; }
 
         /// <summary>
@@ -247,11 +189,7 @@ namespace Emby.Server.Implementations.ScheduledTasks
             }
         }
 
-        /// <summary>
-        /// Gets or sets the triggers that define when the task will run.
-        /// </summary>
-        /// <value>The triggers.</value>
-        /// <exception cref="ArgumentNullException"><c>value</c> is <c>null</c>.</exception>
+        /// <inheritdoc />
         public TaskTriggerInfo[] Triggers
         {
             get
@@ -272,10 +210,7 @@ namespace Emby.Server.Implementations.ScheduledTasks
             }
         }
 
-        /// <summary>
-        /// Gets the unique id.
-        /// </summary>
-        /// <value>The unique id.</value>
+        /// <inheritdoc />
         public string Id
         {
             get
@@ -290,6 +225,7 @@ namespace Emby.Server.Implementations.ScheduledTasks
             ReloadTriggerEvents(true);
         }
 
+        /// <inheritdoc />
         public void ReloadTriggerEvents()
         {
             ReloadTriggerEvents(false);
@@ -529,14 +465,14 @@ namespace Emby.Server.Implementations.ScheduledTasks
             }
             catch
             {
-                return new TaskTriggerInfo[]
-                {
-                    new TaskTriggerInfo
+                return
+                [
+                    new()
                     {
                         IntervalTicks = TimeSpan.FromDays(1).Ticks,
                         Type = TaskTriggerInfo.TriggerInterval
                     }
-                };
+                ];
             }
         }
 
@@ -589,9 +525,7 @@ namespace Emby.Server.Implementations.ScheduledTasks
             ((TaskManager)_taskManager).OnTaskCompleted(this, result);
         }
 
-        /// <summary>
-        /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
-        /// </summary>
+        /// <inheritdoc />
         public void Dispose()
         {
             Dispose(true);
