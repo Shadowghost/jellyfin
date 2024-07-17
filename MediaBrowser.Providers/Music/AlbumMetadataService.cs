@@ -38,6 +38,9 @@ namespace MediaBrowser.Providers.Music
         }
 
         /// <inheritdoc />
+        protected override bool EnableUpdatingPremiereDateFromChildren => true;
+
+        /// <inheritdoc />
         protected override bool EnableUpdatingGenresFromChildren => true;
 
         /// <inheritdoc />
