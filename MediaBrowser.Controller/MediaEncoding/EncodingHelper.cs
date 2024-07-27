@@ -7052,8 +7052,8 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             var channels = state.OutputAudioChannels;
 
-            var useDownMixAlgorithm = (state.AudioStream?.Channels is > 2 && encodingOptions.DownMixStereoAlgorithm == DownMixStereoAlgorithms.Rfc7845)
-                                      || (state.AudioStream?.Channels is 6 && encodingOptions.DownMixStereoAlgorithm != DownMixStereoAlgorithms.None);
+            var useDownMixAlgorithm = state.AudioStream is not null
+                                      && DownMixAlgorithmsHelper.AlgorithmFilterStrings.ContainsKey((encodingOptions.DownMixStereoAlgorithm, DownMixAlgorithmsHelper.InferChannelLayout(state.AudioStream)));
 
             if (channels.HasValue && !useDownMixAlgorithm)
             {

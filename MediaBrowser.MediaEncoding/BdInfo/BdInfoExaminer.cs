@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using BDInfo;
 using MediaBrowser.Model.Entities;
@@ -106,7 +107,7 @@ public class BdInfoExaminer : IBlurayExaminer
             BitRate = Convert.ToInt32(videoStream.BitRate),
             Width = videoStream.Width,
             Height = videoStream.Height,
-            Codec = videoStream.CodecShortName,
+            Codec = GetNormalizedCodec(videoStream),
             IsInterlaced = videoStream.IsInterlaced,
             Type = MediaStreamType.Video,
             Index = index
@@ -133,9 +134,10 @@ public class BdInfoExaminer : IBlurayExaminer
     {
         var stream = new MediaStream
         {
-            Codec = audioStream.CodecShortName,
+            Codec = GetNormalizedCodec(audioStream),
             Language = audioStream.LanguageCode,
-            Channels = audioStream.ChannelCount,
+            ChannelLayout = string.Format(CultureInfo.InvariantCulture, "{0:D}.{1:D}", audioStream.ChannelCount, audioStream.LFE),
+            Channels = audioStream.ChannelCount + audioStream.LFE,
             SampleRate = audioStream.SampleRate,
             Type = MediaStreamType.Audio,
             Index = index
@@ -148,11 +150,6 @@ public class BdInfoExaminer : IBlurayExaminer
             stream.BitRate = bitrate;
         }
 
-        if (audioStream.LFE > 0)
-        {
-            stream.Channels = audioStream.ChannelCount + 1;
-        }
-
         streams.Add(stream);
     }
 
@@ -161,24 +158,27 @@ public class BdInfoExaminer : IBlurayExaminer
     /// </summary>
     /// <param name="streams">The streams.</param>
     /// <param name="index">The stream index.</param>
-    /// <param name="textStream">The stream.</param>
-    private void AddSubtitleStream(List<MediaStream> streams, int index, TSStream textStream)
+    /// <param name="stream">The stream.</param>
+    private void AddSubtitleStream(List<MediaStream> streams, int index, TSStream stream)
     {
         streams.Add(new MediaStream
         {
-            Language = textStream.LanguageCode,
-            Codec = NormalizeSubtitleCodec(textStream.StreamType),
+            Language = stream.LanguageCode,
+            Codec = GetNormalizedCodec(stream),
             Type = MediaStreamType.Subtitle,
             Index = index
         });
     }
 
-    private string NormalizeSubtitleCodec(TSStreamType codec)
-        => codec switch
+    private string GetNormalizedCodec(TSStream stream)
+        => stream.StreamType switch
         {
-            TSStreamType.INTERACTIVE_GRAPHICS => "igs",
+            TSStreamType.MPEG1_VIDEO => "mpeg1video",
+            TSStreamType.MPEG2_VIDEO => "mpeg2video",
+            TSStreamType.VC1_VIDEO => "vc1",
+            TSStreamType.AC3_PLUS_AUDIO or TSStreamType.AC3_PLUS_SECONDARY_AUDIO => "eac3",
+            TSStreamType.DTS_AUDIO or TSStreamType.DTS_HD_AUDIO or TSStreamType.DTS_HD_MASTER_AUDIO or TSStreamType.DTS_HD_SECONDARY_AUDIO => "dts",
             TSStreamType.PRESENTATION_GRAPHICS => "pgssub",
-            TSStreamType.SUBTITLE => "sub",
-            _ => throw new ArgumentOutOfRangeException(nameof(codec), $"Invalid stream type for subtitle: {codec}")
+            _ => stream.CodecShortName
         };
 }

@@ -56,23 +56,6 @@ namespace Jellyfin.Server.Implementations.Devices
             {
                 _deviceOptions.TryAdd(deviceOption.DeviceId, deviceOption);
             }
-            _devices = new ConcurrentDictionary<int, Device>();
-            _deviceOptions = new ConcurrentDictionary<string, DeviceOptions>();
-
-            using var dbContext = _dbProvider.CreateDbContext();
-            foreach (var device in dbContext.Devices
-                         .OrderBy(d => d.Id)
-                         .AsEnumerable())
-            {
-                _devices.TryAdd(device.Id, device);
-            }
-
-            foreach (var deviceOption in dbContext.DeviceOptions
-                         .OrderBy(d => d.Id)
-                         .AsEnumerable())
-            {
-                _deviceOptions.TryAdd(deviceOption.DeviceId, deviceOption);
-            }
         }
 
         /// <inheritdoc />
