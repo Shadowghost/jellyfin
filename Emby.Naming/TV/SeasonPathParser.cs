@@ -28,7 +28,7 @@ namespace Emby.Naming.TV
         public static SeasonPathParserResult Parse(string path, string? parentPath, bool supportSpecialAliases, bool supportNumericSeasonFolders)
         {
             var result = new SeasonPathParserResult();
-            var parentFolderName = Path.GetFileName(parentPath);
+            var parentFolderName = parentPath is null ? null : new DirectoryInfo(parentPath).Name;
 
             var (seasonNumber, isSeasonFolder) = GetSeasonNumberFromPath(path, parentFolderName, supportSpecialAliases, supportNumericSeasonFolders);
 

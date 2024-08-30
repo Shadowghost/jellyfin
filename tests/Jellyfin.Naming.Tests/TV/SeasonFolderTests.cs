@@ -26,7 +26,7 @@ namespace Jellyfin.Naming.Tests.TV
         [InlineData("/Drive/extras", "/Drive", 0, true)]
         [InlineData("/Drive/specials", "/Drive", 0, true)]
         [InlineData("/Drive/Episode 1 Season 2", "/Drive", null, false)]
-        public void GetSeasonNumberFromPathTest(string path, string parentPath, int? seasonNumber, bool isSeasonDirectory)
+        public void GetSeasonNumberFromPathTest(string path, string? parentPath, int? seasonNumber, bool isSeasonDirectory)
         {
             var result = SeasonPathParser.Parse(path, parentPath, true, true);
 
