@@ -16,6 +16,7 @@ using Emby.Server.Implementations.Library.Resolvers;
 using Emby.Server.Implementations.Library.Validators;
 using Emby.Server.Implementations.Playlists;
 using Emby.Server.Implementations.ScheduledTasks.Tasks;
+using Emby.Server.Implementations.Sorting;
 using Jellyfin.Data.Entities;
 using Jellyfin.Data.Enums;
 using Jellyfin.Extensions;
@@ -1528,7 +1529,7 @@ namespace Emby.Server.Implementations.Library
             {
                 var userViews = UserViewManager.GetUserViews(new UserViewQuery
                 {
-                    UserId = user.Id,
+                    User = user,
                     IncludeHidden = true,
                     IncludeExternalContent = allowExternalContent
                 });
@@ -1710,13 +1711,19 @@ namespace Emby.Server.Implementations.Library
         /// <inheritdoc />
         public IEnumerable<BaseItem> Sort(IEnumerable<BaseItem> items, User? user, IEnumerable<ItemSortBy> sortBy, SortOrder sortOrder)
         {
-            var isFirst = true;
-
             IOrderedEnumerable<BaseItem>? orderedItems = null;
 
             foreach (var orderBy in sortBy.Select(o => GetComparer(o, user)).Where(c => c is not null))
             {
-                if (isFirst)
+                if (orderBy is RandomComparer)
+                {
+                    var randomItems = items.ToArray();
+                    Random.Shared.Shuffle(randomItems);
+                    items = randomItems;
+                    // Items are no longer ordered at this point, so set orderedItems back to null
+                    orderedItems = null;
+                }
+                else if (orderedItems is null)
                 {
                     orderedItems = sortOrder == SortOrder.Descending
                         ? items.OrderByDescending(i => i, orderBy)
@@ -1728,8 +1735,6 @@ namespace Emby.Server.Implementations.Library
                         ? orderedItems!.ThenByDescending(i => i, orderBy)
                         : orderedItems!.ThenBy(i => i, orderBy); // orderedItems is set during the first iteration
                 }
-
-                isFirst = false;
             }
 
             return orderedItems ?? items;
@@ -1738,8 +1743,6 @@ namespace Emby.Server.Implementations.Library
         /// <inheritdoc />
         public IEnumerable<BaseItem> Sort(IEnumerable<BaseItem> items, User? user, IEnumerable<(ItemSortBy OrderBy, SortOrder SortOrder)> orderBy)
         {
-            var isFirst = true;
-
             IOrderedEnumerable<BaseItem>? orderedItems = null;
 
             foreach (var (name, sortOrder) in orderBy)
@@ -1750,7 +1753,15 @@ namespace Emby.Server.Implementations.Library
                     continue;
                 }
 
-                if (isFirst)
+                if (comparer is RandomComparer)
+                {
+                    var randomItems = items.ToArray();
+                    Random.Shared.Shuffle(randomItems);
+                    items = randomItems;
+                    // Items are no longer ordered at this point, so set orderedItems back to null
+                    orderedItems = null;
+                }
+                else if (orderedItems is null)
                 {
                     orderedItems = sortOrder == SortOrder.Descending
                         ? items.OrderByDescending(i => i, comparer)
@@ -1762,8 +1773,6 @@ namespace Emby.Server.Implementations.Library
                         ? orderedItems!.ThenByDescending(i => i, comparer)
                         : orderedItems!.ThenBy(i => i, comparer); // orderedItems is set during the first iteration
                 }
-
-                isFirst = false;
             }
 
             return orderedItems ?? items;
@@ -2464,8 +2473,11 @@ namespace Emby.Server.Implementations.Library
         }
 
         /// <inheritdoc />
-        public int? GetSeasonNumberFromPath(string path)
-            => SeasonPathParser.Parse(path, true, true).SeasonNumber;
+        public int? GetSeasonNumberFromPath(string path, Guid? parentId)
+        {
+            var parentPath = parentId.HasValue ? GetItemById(parentId.Value)?.ContainingFolderPath : null;
+            return SeasonPathParser.Parse(path, parentPath, true, true).SeasonNumber;
+        }
 
         /// <inheritdoc />
         public bool FillMissingEpisodeNumbersFromPath(Episode episode, bool forceRefresh)

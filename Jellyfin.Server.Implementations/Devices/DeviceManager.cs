@@ -87,6 +87,8 @@ namespace Jellyfin.Server.Implementations.Devices
 
             _deviceOptions[deviceId] = deviceOptions;
 
+            _deviceOptions[deviceId] = deviceOptions;
+
             DeviceOptionsUpdated?.Invoke(this, new GenericEventArgs<Tuple<string, DeviceOptions>>(new Tuple<string, DeviceOptions>(deviceId, deviceOptions)));
         }
 

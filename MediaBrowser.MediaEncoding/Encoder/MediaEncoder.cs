@@ -193,7 +193,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
                 _threads = EncodingHelper.GetNumberOfThreads(null, options, null);
 
-                _isPkeyPauseSupported = validator.CheckSupportedRuntimeKey("p      pause transcoding");
+                _isPkeyPauseSupported = validator.CheckSupportedRuntimeKey("p      pause transcoding", _ffmpegVersion);
 
                 // Check the Vaapi device vendor
                 if (OperatingSystem.IsLinux()
@@ -625,7 +625,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
             {
                 try
                 {
-                    return await ExtractImageInternal(inputArgument, container, videoStream, imageStreamIndex, threedFormat, offset, true, targetFormat, cancellationToken).ConfigureAwait(false);
+                    return await ExtractImageInternal(inputArgument, container, videoStream, imageStreamIndex, threedFormat, offset, true, targetFormat, false, cancellationToken).ConfigureAwait(false);
                 }
                 catch (ArgumentException)
                 {
@@ -637,7 +637,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
                 }
             }
 
-            return await ExtractImageInternal(inputArgument, container, videoStream, imageStreamIndex, threedFormat, offset, false, targetFormat, cancellationToken).ConfigureAwait(false);
+            return await ExtractImageInternal(inputArgument, container, videoStream, imageStreamIndex, threedFormat, offset, false, targetFormat, isAudio, cancellationToken).ConfigureAwait(false);
         }
 
         private string GetImageResolutionParameter()
@@ -663,7 +663,17 @@ namespace MediaBrowser.MediaEncoding.Encoder
             return imageResolutionParameter;
         }
 
-        private async Task<string> ExtractImageInternal(string inputPath, string container, MediaStream videoStream, int? imageStreamIndex, Video3DFormat? threedFormat, TimeSpan? offset, bool useIFrame, ImageFormat? targetFormat, CancellationToken cancellationToken)
+        private async Task<string> ExtractImageInternal(
+            string inputPath,
+            string container,
+            MediaStream videoStream,
+            int? imageStreamIndex,
+            Video3DFormat? threedFormat,
+            TimeSpan? offset,
+            bool useIFrame,
+            ImageFormat? targetFormat,
+            bool isAudio,
+            CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(inputPath);
 
@@ -722,7 +732,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
             var vf = string.Join(',', filters);
             var mapArg = imageStreamIndex.HasValue ? (" -map 0:" + imageStreamIndex.Value.ToString(CultureInfo.InvariantCulture)) : string.Empty;
-            var args = string.Format(CultureInfo.InvariantCulture, "-i {0}{3} -threads {4} -v quiet -vframes 1 -vf {2}{5} -f image2 \"{1}\"", inputPath, tempExtractPath, vf, mapArg, _threads, GetImageResolutionParameter());
+            var args = string.Format(CultureInfo.InvariantCulture, "-i {0}{3} -threads {4} -v quiet -vframes 1 -vf {2}{5} -f image2 \"{1}\"", inputPath, tempExtractPath, vf, mapArg, _threads, isAudio ? string.Empty : GetImageResolutionParameter());
 
             if (offset.HasValue)
             {
@@ -756,8 +766,6 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
             using (var processWrapper = new ProcessWrapper(process, this))
             {
-                bool ranToCompletion;
-
                 using (await _thumbnailResourcePool.LockAsync(cancellationToken).ConfigureAwait(false))
                 {
                     StartProcess(processWrapper);
@@ -771,22 +779,18 @@ namespace MediaBrowser.MediaEncoding.Encoder
                     try
                     {
                         await process.WaitForExitAsync(TimeSpan.FromMilliseconds(timeoutMs)).ConfigureAwait(false);
-                        ranToCompletion = true;
                     }
-                    catch (OperationCanceledException)
+                    catch (OperationCanceledException ex)
                     {
                         process.Kill(true);
-                        ranToCompletion = false;
+                        throw new FfmpegException(string.Format(CultureInfo.InvariantCulture, "ffmpeg image extraction timed out for {0} after {1}ms", inputPath, timeoutMs), ex);
                     }
                 }
 
-                var exitCode = ranToCompletion ? processWrapper.ExitCode ?? 0 : -1;
                 var file = _fileSystem.GetFileInfo(tempExtractPath);
 
-                if (exitCode == -1 || !file.Exists || file.Length == 0)
+                if (processWrapper.ExitCode > 0 || !file.Exists || file.Length == 0)
                 {
-                    _logger.LogError("ffmpeg image extraction failed for {Path}", inputPath);
-
                     throw new FfmpegException(string.Format(CultureInfo.InvariantCulture, "ffmpeg image extraction failed for {0}", inputPath));
                 }
 
@@ -1149,18 +1153,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
         /// <inheritdoc />
         public IReadOnlyList<string> GetPrimaryPlaylistM2tsFiles(string path)
-        {
-            // Get all playable .m2ts files
-            var validPlaybackFiles = _blurayExaminer.GetDiscInfo(path).Files;
-
-            // Get all files from the BDMV/STREAMING directory
-            // Only return playable local .m2ts files
-            var files = _fileSystem.GetFiles(Path.Join(path, "BDMV", "STREAM")).ToList();
-            return validPlaybackFiles
-                .Select(validFile => files.FirstOrDefault(f => Path.GetFileName(f.FullName.AsSpan()).Equals(validFile, StringComparison.OrdinalIgnoreCase))?.FullName)
-                .Where(f => f is not null)
-                .ToList();
-        }
+            => _blurayExaminer.GetDiscInfo(path).Files;
 
         /// <inheritdoc />
         public string GetInputPathArgument(EncodingJobInfo state)
@@ -1171,8 +1164,8 @@ namespace MediaBrowser.MediaEncoding.Encoder
         {
             return mediaSource.VideoType switch
             {
-                VideoType.Dvd => GetInputArgument(GetPrimaryPlaylistVobFiles(path, null).ToList(), mediaSource),
-                VideoType.BluRay => GetInputArgument(GetPrimaryPlaylistM2tsFiles(path).ToList(), mediaSource),
+                VideoType.Dvd => GetInputArgument(GetPrimaryPlaylistVobFiles(path, null), mediaSource),
+                VideoType.BluRay => GetInputArgument(GetPrimaryPlaylistM2tsFiles(path), mediaSource),
                 _ => GetInputArgument(path, mediaSource)
             };
         }
@@ -1197,6 +1190,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
             }
 
             // Generate concat configuration entries for each file and write to file
+            Directory.CreateDirectory(Path.GetDirectoryName(concatFilePath));
             using StreamWriter sw = new StreamWriter(concatFilePath);
             foreach (var path in files)
             {

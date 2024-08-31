@@ -27,6 +27,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
             "msmpeg4",
             "dca",
             "ac3",
+            "ac4",
             "aac",
             "mp3",
             "flac",
@@ -61,10 +62,6 @@ namespace MediaBrowser.MediaEncoding.Encoder
             "libx264",
             "libx265",
             "libsvtav1",
-            "mpeg4",
-            "msmpeg4",
-            "libvpx",
-            "libvpx-vp9",
             "aac",
             "aac_at",
             "libfdk_aac",
@@ -167,6 +164,8 @@ namespace MediaBrowser.MediaEncoding.Encoder
         private readonly ILogger _logger;
 
         private readonly string _encoderPath;
+
+        private readonly Version _minFFmpegMultiThreadedCli = new Version(7, 0);
 
         public EncoderValidator(ILogger logger, string encoderPath)
         {
@@ -477,7 +476,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
             return false;
         }
 
-        public bool CheckSupportedRuntimeKey(string keyDesc)
+        public bool CheckSupportedRuntimeKey(string keyDesc, Version? ffmpegVersion)
         {
             if (string.IsNullOrEmpty(keyDesc))
             {
@@ -487,7 +486,9 @@ namespace MediaBrowser.MediaEncoding.Encoder
             string output;
             try
             {
-                output = GetProcessOutput(_encoderPath, "-hide_banner -f lavfi -i nullsrc=s=1x1:d=500 -f null -", true, "?");
+                // With multi-threaded cli support, FFmpeg 7 is less sensitive to keyboard input
+                var duration = ffmpegVersion >= _minFFmpegMultiThreadedCli ? 10000 : 1000;
+                output = GetProcessOutput(_encoderPath, $"-hide_banner -f lavfi -i nullsrc=s=1x1:d={duration} -f null -", true, "?");
             }
             catch (Exception ex)
             {
