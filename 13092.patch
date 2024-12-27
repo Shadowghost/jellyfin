@@ -1,0 +1,122 @@
+From ef13a18450c742e29144acf0ccf7e3ccc4621398 Mon Sep 17 00:00:00 2001
+From: TheMelmacian <76712303+TheMelmacian@users.noreply.github.com>
+Date: Sat, 23 Nov 2024 11:18:27 +0100
+Subject: [PATCH 1/2] fix(MovieNfoParser): parsing of <set> elements
+
+---
+ .../Parsers/MovieNfoParser.cs                 | 23 ++++++++-----------
+ .../Parsers/MovieNfoParserTests.cs            | 18 +++++++++++++++
+ .../Test Data/Lilo & Stitch.nfo               |  7 ++++++
+ 3 files changed, 35 insertions(+), 13 deletions(-)
+ create mode 100644 tests/Jellyfin.XbmcMetadata.Tests/Test Data/Lilo & Stitch.nfo
+
+diff --git a/MediaBrowser.XbmcMetadata/Parsers/MovieNfoParser.cs b/MediaBrowser.XbmcMetadata/Parsers/MovieNfoParser.cs
+index 2d65188b632..ae7e0322a77 100644
+--- a/MediaBrowser.XbmcMetadata/Parsers/MovieNfoParser.cs
++++ b/MediaBrowser.XbmcMetadata/Parsers/MovieNfoParser.cs
+@@ -82,21 +82,13 @@ protected override void FetchDataFromXmlNode(XmlReader reader, MetadataResult<Vi
+ 
+                         if (!string.IsNullOrWhiteSpace(val) && movie is not null)
+                         {
+-                            // TODO Handle this better later
+-                            if (!val.Contains('<', StringComparison.Ordinal))
++                            try
+                             {
+-                                movie.CollectionName = val;
++                                ParseSetXml(val, movie);
+                             }
+-                            else
++                            catch (Exception ex)
+                             {
+-                                try
+-                                {
+-                                    ParseSetXml(val, movie);
+-                                }
+-                                catch (Exception ex)
+-                                {
+-                                    Logger.LogError(ex, "Error parsing set node");
+-                                }
++                                Logger.LogError(ex, "Error parsing set node");
+                             }
+                         }
+ 
+@@ -139,7 +131,12 @@ private void ParseSetXml(string xml, Movie movie)
+                     // Loop through each element
+                     while (!reader.EOF && reader.ReadState == ReadState.Interactive)
+                     {
+-                        if (reader.NodeType == XmlNodeType.Element)
++                        if (reader.NodeType == XmlNodeType.Text && reader.Depth == 1)
++                        {
++                            movie.CollectionName = reader.Value;
++                            break;
++                        }
++                        else if (reader.NodeType == XmlNodeType.Element)
+                         {
+                             switch (reader.Name)
+                             {
+diff --git a/tests/Jellyfin.XbmcMetadata.Tests/Parsers/MovieNfoParserTests.cs b/tests/Jellyfin.XbmcMetadata.Tests/Parsers/MovieNfoParserTests.cs
+index 075c70da88b..599b3cc4e10 100644
+--- a/tests/Jellyfin.XbmcMetadata.Tests/Parsers/MovieNfoParserTests.cs
++++ b/tests/Jellyfin.XbmcMetadata.Tests/Parsers/MovieNfoParserTests.cs
+@@ -257,5 +257,23 @@ public void Fetch_NullResult_ThrowsArgumentException()
+ 
+             Assert.Throws<ArgumentException>(() => _parser.Fetch(result, string.Empty, CancellationToken.None));
+         }
++
++        [Fact]
++        public void Parsing_Fields_With_Escaped_Xml_Special_Characters_Success()
++        {
++            var result = new MetadataResult<Video>()
++            {
++                Item = new Movie()
++            };
++
++            _parser.Fetch(result, "Test Data/Lilo & Stitch.nfo", CancellationToken.None);
++            var item = (Movie)result.Item;
++
++            Assert.Equal("Lilo & Stitch", item.Name);
++            Assert.Equal("Lilo & Stitch", item.OriginalTitle);
++            Assert.Equal("Lilo & Stitch Collection", item.CollectionName);
++            Assert.StartsWith(">>", item.Overview, StringComparison.InvariantCulture);
++            Assert.EndsWith("<<", item.Overview, StringComparison.InvariantCulture);
++        }
+     }
+ }
+diff --git a/tests/Jellyfin.XbmcMetadata.Tests/Test Data/Lilo & Stitch.nfo b/tests/Jellyfin.XbmcMetadata.Tests/Test Data/Lilo & Stitch.nfo
+new file mode 100644
+index 00000000000..1eab687a2d3
+--- /dev/null
++++ b/tests/Jellyfin.XbmcMetadata.Tests/Test Data/Lilo & Stitch.nfo	
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8" standalone="yes"?>
++<movie>
++  <title>Lilo &amp; Stitch</title>
++  <originaltitle>Lilo &amp; Stitch</originaltitle>
++  <set>Lilo &amp; Stitch Collection</set>
++  <plot>&gt;&gt;As Stitch, a runaway genetic experiment from a faraway planet, wreaks havoc on the Hawaiian Islands, he becomes the mischievous adopted alien "puppy" of an independent little girl named Lilo and learns about loyalty, friendship, and ʻohana, the Hawaiian tradition of family.&lt;&lt;</plot>
++</movie>
+
+From 5df03b901029689ba79bbfa6427c5b4a9fa6e939 Mon Sep 17 00:00:00 2001
+From: TheMelmacian <76712303+TheMelmacian@users.noreply.github.com>
+Date: Sun, 1 Dec 2024 21:20:51 +0100
+Subject: [PATCH 2/2] write Kodi conform set element to nfo files
+
+---
+ MediaBrowser.XbmcMetadata/Savers/MovieNfoSaver.cs | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/MediaBrowser.XbmcMetadata/Savers/MovieNfoSaver.cs b/MediaBrowser.XbmcMetadata/Savers/MovieNfoSaver.cs
+index bc344d87e09..e85e369d91e 100644
+--- a/MediaBrowser.XbmcMetadata/Savers/MovieNfoSaver.cs
++++ b/MediaBrowser.XbmcMetadata/Savers/MovieNfoSaver.cs
+@@ -115,7 +115,9 @@ protected override void WriteCustomElements(BaseItem item, XmlWriter writer)
+             {
+                 if (!string.IsNullOrEmpty(movie.CollectionName))
+                 {
+-                    writer.WriteElementString("set", movie.CollectionName);
++                    writer.WriteStartElement("set");
++                    writer.WriteElementString("name", movie.CollectionName);
++                    writer.WriteEndElement();
+                 }
+             }
+         }
