@@ -1759,6 +1759,12 @@ namespace MediaBrowser.Model.Dlna
                     continue;
                 }
 
+                // No way to express this
+                if (condition.Condition == ProfileConditionType.GreaterThanEqual)
+                {
+                    continue;
+                }
+
                 switch (condition.Property)
                 {
                     case ProfileConditionValue.AudioBitrate:
