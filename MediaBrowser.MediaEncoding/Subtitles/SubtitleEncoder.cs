@@ -539,14 +539,15 @@ namespace MediaBrowser.MediaEncoding.Subtitles
 
             foreach (var subtitleStream in subtitleStreams)
             {
-                if (!subtitleStream.Path.EndsWith(".mks", StringComparison.OrdinalIgnoreCase))
+                var sourcePath = subtitleStream.Path;
+                if (string.IsNullOrEmpty(sourcePath) || !sourcePath.EndsWith(".mks", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
 
-                if (!mksFiles.Contains(subtitleStream.Path))
+                if (!mksFiles.Contains(sourcePath))
                 {
-                    mksFiles.Add(subtitleStream.Path);
+                    mksFiles.Add(sourcePath);
                 }
             }
 
@@ -610,7 +611,7 @@ namespace MediaBrowser.MediaEncoding.Subtitles
 
             foreach (var subtitleStream in subtitleStreams)
             {
-                if (subtitleStream.Path.EndsWith(".mks", StringComparison.OrdinalIgnoreCase))
+                if (!string.IsNullOrEmpty(subtitleStream.Path) && subtitleStream.Path.EndsWith(".mks", StringComparison.OrdinalIgnoreCase))
                 {
                     _logger.LogDebug("Subtitle {Index} for file {InputPath} is part in an MKS file. Skipping", inputPath, subtitleStream.Index);
                     continue;
