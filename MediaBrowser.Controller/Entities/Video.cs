@@ -447,7 +447,7 @@ namespace MediaBrowser.Controller.Entities
             foreach (var child in LinkedAlternateVersions)
             {
                 // Reset the cached value
-                if (child.ItemId.IsNullOrEmpty())
+                if (child.ItemId is not null)
                 {
                     child.ItemId = null;
                 }
