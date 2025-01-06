@@ -127,14 +127,14 @@ namespace Emby.Server.Implementations.Library.Validators
                             {
                                 Name = collectionName,
                                 IsLocked = true
-                            });
+                            }).ConfigureAwait(false);
 
-                            await _collectionManager.AddToCollectionAsync(boxSet.Id, movieIds);
+                            await _collectionManager.AddToCollectionAsync(boxSet.Id, movieIds).ConfigureAwait(false);
                         }
                     }
                     else
                     {
-                        await _collectionManager.AddToCollectionAsync(boxSet.Id, movieIds);
+                        await _collectionManager.AddToCollectionAsync(boxSet.Id, movieIds).ConfigureAwait(false);
                     }
 
                     numComplete++;
