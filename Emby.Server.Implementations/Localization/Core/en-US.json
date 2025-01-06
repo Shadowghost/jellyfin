@@ -135,5 +135,7 @@
     "TaskExtractMediaSegments": "Media Segment Scan",
     "TaskExtractMediaSegmentsDescription": "Extracts or obtains media segments from MediaSegment enabled plugins.",
     "TaskMoveTrickplayImages": "Migrate Trickplay Image Location",
-    "TaskMoveTrickplayImagesDescription": "Moves existing trickplay files according to the library settings."
+    "TaskMoveTrickplayImagesDescription": "Moves existing trickplay files according to the library settings.",
+    "TaskCleanStale": "Cleanup items with stale file references",
+    "TaskCleanStaleDescription": "Removes items referencing non-existing files."
 }
