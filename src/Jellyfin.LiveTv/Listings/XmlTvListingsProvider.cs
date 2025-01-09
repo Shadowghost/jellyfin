@@ -167,7 +167,7 @@ public class XmlTvListingsProvider : IListingsProvider
         var rating = program.Ratings?.FirstOrDefault()?.Value.NullIfEmpty();
         var backdrop = program.Images.FirstOrDefault(i => i.Type == XmlTv.Enums.ImageType.Backdrop)?.Path;
         var poster = program.Images.FirstOrDefault(i => i.Type == XmlTv.Enums.ImageType.Poster)?.Path;
-        var icon = program.Icons.FirstOrDefault()?.Source;
+        var icon = program.Icons.OrderBy(i => i.Width * i.Height).FirstOrDefault()?.Source;
         var image = backdrop.NullIfEmpty() ?? poster.NullIfEmpty() ?? icon.NullIfEmpty();
 
         var programInfo = new ProgramInfo
