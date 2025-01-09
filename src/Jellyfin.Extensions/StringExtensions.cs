@@ -123,5 +123,15 @@ namespace Jellyfin.Extensions
         {
             return (_transliterator.Value is null) ? text : _transliterator.Value.Transliterate(text);
         }
+
+        /// <summary>
+        /// Returns null if the string is empty, otherwise the string.
+        /// </summary>
+        /// <param name="text">The string to act on.</param>
+        /// <returns>The string if not empty, otherwise null.</returns>
+        public static string? NullIfEmpty(this string? text)
+        {
+            return string.IsNullOrEmpty(text) ? null : text;
+        }
     }
 }

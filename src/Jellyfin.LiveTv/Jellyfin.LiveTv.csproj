@@ -12,8 +12,11 @@
 
   <ItemGroup>
     <PackageReference Include="AsyncKeyedLock" />
-    <PackageReference Include="Jellyfin.XmlTv" />
     <PackageReference Include="System.Linq.Async" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../Jellyfin.XmlTv/src/Jellyfin.XmlTv/Jellyfin.XmlTv.csproj" />
   </ItemGroup>
 
   <ItemGroup>
