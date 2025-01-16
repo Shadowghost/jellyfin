@@ -27,7 +27,6 @@ public sealed class AutoDiscoveryHost : BackgroundService
     private readonly ILogger<AutoDiscoveryHost> _logger;
     private readonly IServerApplicationHost _appHost;
     private readonly IConfigurationManager _configurationManager;
-    private readonly INetworkManager _networkManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AutoDiscoveryHost" /> class.
@@ -35,17 +34,14 @@ public sealed class AutoDiscoveryHost : BackgroundService
     /// <param name="logger">The <see cref="ILogger{AutoDiscoveryHost}"/>.</param>
     /// <param name="appHost">The <see cref="IServerApplicationHost"/>.</param>
     /// <param name="configurationManager">The <see cref="IConfigurationManager"/>.</param>
-    /// <param name="networkManager">The <see cref="INetworkManager"/>.</param>
     public AutoDiscoveryHost(
         ILogger<AutoDiscoveryHost> logger,
         IServerApplicationHost appHost,
-        IConfigurationManager configurationManager,
-        INetworkManager networkManager)
+        IConfigurationManager configurationManager)
     {
         _logger = logger;
         _appHost = appHost;
         _configurationManager = configurationManager;
-        _networkManager = networkManager;
     }
 
     /// <inheritdoc />
