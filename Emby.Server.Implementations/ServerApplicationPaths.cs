@@ -96,5 +96,8 @@ namespace Emby.Server.Implementations
 
         /// <inheritdoc />
         public string VirtualInternalMetadataPath => "%MetadataPath%";
+
+        /// <inheritdoc />
+        public string TrickplayPath => Path.Combine(InternalMetadataPath, "trickplay");
     }
 }

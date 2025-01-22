@@ -68,6 +68,12 @@ namespace MediaBrowser.Controller
         string InternalMetadataPath { get; }
 
         /// <summary>
+        /// Gets the trickplay path, either a custom path or the default.
+        /// </summary>
+        /// <value>The trickplay path.</value>
+        string TrickplayPath { get; }
+
+        /// <summary>
         /// Gets the virtual internal metadata path, either a custom path or the default.
         /// </summary>
         /// <value>The virtual internal metadata path.</value>
