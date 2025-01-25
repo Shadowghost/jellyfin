@@ -85,7 +85,7 @@ public class MoveTrickplayFiles : IMigrationRoutine
 
                 var oldPath = GetOldTrickplayDirectory(item, trickplayInfo.Width);
                 var newPath = _trickplayManager.GetTrickplayDirectory(item, trickplayInfo.TileWidth, trickplayInfo.TileHeight, trickplayInfo.Width, false);
-                if (_fileSystem.DirectoryExists(newPath))
+                if (_fileSystem.DirectoryExists(oldPath))
                 {
                     _fileSystem.MoveDirectory(oldPath, newPath);
                 }
