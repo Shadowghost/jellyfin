@@ -643,7 +643,7 @@ public class GuideManager : IGuideManager
             return (item, false, true);
         }
 
-        return (item, isNew, isUpdated);
+        return (item, false, false);
     }
 
     private static bool UpdateImages(BaseItem item, ProgramInfo info)
