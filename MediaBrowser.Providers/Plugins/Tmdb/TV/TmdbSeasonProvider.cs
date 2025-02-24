@@ -121,9 +121,34 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
         }
 
         /// <inheritdoc />
-        public Task<IEnumerable<RemoteSearchResult>> GetSearchResults(SeasonInfo searchInfo, CancellationToken cancellationToken)
+        public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(SeasonInfo searchInfo, CancellationToken cancellationToken)
         {
-            return Task.FromResult(Enumerable.Empty<RemoteSearchResult>());
+            // The search query must provide a season number
+            if (!searchInfo.IndexNumber.HasValue)
+            {
+                return [];
+            }
+
+            var metadataResult = await GetMetadata(searchInfo, cancellationToken).ConfigureAwait(false);
+            if (!metadataResult.HasMetadata)
+            {
+                return [];
+            }
+
+            var item = metadataResult.Item;
+
+            return
+            [
+                new RemoteSearchResult
+                {
+                    IndexNumber = item.IndexNumber,
+                    Name = item.Name,
+                    PremiereDate = item.PremiereDate,
+                    ProductionYear = item.ProductionYear,
+                    ProviderIds = item.ProviderIds,
+                    SearchProviderName = Name,
+                }
+            ];
         }
 
         /// <inheritdoc />
