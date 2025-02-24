@@ -1053,9 +1053,17 @@ namespace Emby.Server.Implementations.Library
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
             // Quickly scan CollectionFolders for changes
-            foreach (var folder in GetUserRootFolder().Children.OfType<Folder>())
+            foreach (var child in GetUserRootFolder().Children.OfType<Folder>())
             {
-                await folder.RefreshMetadata(cancellationToken).ConfigureAwait(false);
+                // If the user has somehow deleted the collection directory, remove the metadata from the database.
+                if (child is CollectionFolder collectionFolder && !Directory.Exists(collectionFolder.Path))
+                {
+                    _itemRepository.DeleteItem(collectionFolder.Id);
+                }
+                else
+                {
+                    await child.RefreshMetadata(cancellationToken).ConfigureAwait(false);
+                }
             }
         }
 
@@ -2625,15 +2633,6 @@ namespace Emby.Server.Implementations.Library
                 if (season is not null)
                 {
                     episode.ParentIndexNumber = season.IndexNumber;
-                }
-                else
-                {
-                    /*
-                    Anime series don't generally have a season in their file name, however,
-                    TVDb needs a season to correctly get the metadata.
-                    Hence, a null season needs to be filled with something. */
-                    // FIXME perhaps this would be better for TVDb parser to ask for season 1 if no season is specified
-                    episode.ParentIndexNumber = 1;
                 }
 
                 if (episode.ParentIndexNumber.HasValue)
