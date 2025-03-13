@@ -1509,13 +1509,13 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 param += encoderPreset switch
                 {
-                        EncoderPreset.veryslow => " -preset p7",
-                        EncoderPreset.slower => " -preset p6",
-                        EncoderPreset.slow => " -preset p5",
-                        EncoderPreset.medium => " -preset p4",
-                        EncoderPreset.fast => " -preset p3",
-                        EncoderPreset.faster => " -preset p2",
-                        _ => " -preset p1"
+                    EncoderPreset.veryslow => " -preset p7",
+                    EncoderPreset.slower => " -preset p6",
+                    EncoderPreset.slow => " -preset p5",
+                    EncoderPreset.medium => " -preset p4",
+                    EncoderPreset.fast => " -preset p3",
+                    EncoderPreset.faster => " -preset p2",
+                    _ => " -preset p1"
                 };
             }
             else if (string.Equals(videoEncoder, "h264_amf", StringComparison.OrdinalIgnoreCase) // h264 (h264_amf)
@@ -1525,11 +1525,11 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 param += encoderPreset switch
                 {
-                        EncoderPreset.veryslow => " -quality quality",
-                        EncoderPreset.slower => " -quality quality",
-                        EncoderPreset.slow => " -quality quality",
-                        EncoderPreset.medium => " -quality balanced",
-                        _ => " -quality speed"
+                    EncoderPreset.veryslow => " -quality quality",
+                    EncoderPreset.slower => " -quality quality",
+                    EncoderPreset.slow => " -quality quality",
+                    EncoderPreset.medium => " -quality balanced",
+                    _ => " -quality speed"
                 };
 
                 if (string.Equals(videoEncoder, "hevc_amf", StringComparison.OrdinalIgnoreCase)
@@ -1549,11 +1549,11 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 param += encoderPreset switch
                 {
-                        EncoderPreset.veryslow => " -prio_speed 0",
-                        EncoderPreset.slower => " -prio_speed 0",
-                        EncoderPreset.slow => " -prio_speed 0",
-                        EncoderPreset.medium => " -prio_speed 0",
-                        _ => " -prio_speed 1"
+                    EncoderPreset.veryslow => " -prio_speed 0",
+                    EncoderPreset.slower => " -prio_speed 0",
+                    EncoderPreset.slow => " -prio_speed 0",
+                    EncoderPreset.medium => " -prio_speed 0",
+                    _ => " -prio_speed 1"
                 };
             }
 
@@ -6619,6 +6619,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 || string.Equals("yuv420p12le", videoStream.PixelFormat, StringComparison.OrdinalIgnoreCase)
                 || string.Equals("yuv422p12le", videoStream.PixelFormat, StringComparison.OrdinalIgnoreCase)
                 || string.Equals("yuv444p12le", videoStream.PixelFormat, StringComparison.OrdinalIgnoreCase);
+            var isAv1SupportedSwFormatsVt = is8_10bitSwFormatsVt || string.Equals("yuv420p12le", videoStream.PixelFormat, StringComparison.OrdinalIgnoreCase);
 
             // The related patches make videotoolbox hardware surface working is only available in jellyfin-ffmpeg 7.0.1 at the moment.
             bool useHwSurface = (_mediaEncoder.EncoderVersion >= _minFFmpegWorkingVtHwSurface) && IsVideoToolboxFullSupported();
@@ -6651,6 +6652,13 @@ namespace MediaBrowser.Controller.MediaEncoding
                     || string.Equals("h265", videoStream.Codec, StringComparison.OrdinalIgnoreCase))
                 {
                     return GetHwaccelType(state, options, "hevc", bitDepth, useHwSurface);
+                }
+
+                if (string.Equals("av1", videoStream.Codec, StringComparison.OrdinalIgnoreCase)
+                    && isAv1SupportedSwFormatsVt
+                    && _mediaEncoder.IsVideoToolboxAv1DecodeAvailable)
+                {
+                    return GetHwaccelType(state, options, "av1", bitDepth, useHwSurface);
                 }
             }
 
