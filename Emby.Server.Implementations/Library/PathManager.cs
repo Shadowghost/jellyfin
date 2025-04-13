@@ -94,7 +94,8 @@ public class PathManager : IPathManager
             GetAttachmentFolderPath(mediaSourceId),
             GetSubtitleFolderPath(mediaSourceId),
             GetTrickplayDirectory(item, false),
-            GetTrickplayDirectory(item, true)
+            GetTrickplayDirectory(item, true),
+            GetChapterImageFolderPath(item)
         ];
     }
 }

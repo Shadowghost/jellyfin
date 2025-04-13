@@ -69,21 +69,32 @@ public class PeopleRepository(IDbContextFactory<JellyfinDbContext> dbProvider, I
     public void UpdatePeople(Guid itemId, IReadOnlyList<PersonInfo> people)
     {
         using var context = _dbProvider.CreateDbContext();
+        using var transaction = context.Database.BeginTransaction();
 
-        // TODO: yes for __SOME__ reason there can be duplicates.
+        // Deduplicate people
         people = people.DistinctBy(e => e.Id).ToArray();
-        var personids = people.Select(f => f.Id);
-        var existingPersons = context.Peoples.Where(p => personids.Contains(p.Id)).Select(f => f.Id).ToArray();
-        context.Peoples.AddRange(people.Where(e => !existingPersons.Contains(e.Id)).Select(Map));
+        var personIds = people.Select(f => f.Id).ToArray();
+
+        // Find existing people
+        var existingPersonIds = context.Peoples.Where(p => personIds.Contains(p.Id)).Select(f => f.Id).ToHashSet();
+
+        // Add missing people
+        var newPeople = people.Where(e => !existingPersonIds.Contains(e.Id)).Select(Map);
+        context.Peoples.AddRange(newPeople);
         context.SaveChanges();
 
-        var maps = context.PeopleBaseItemMap.Where(e => e.ItemId == itemId).ToList();
+        // Handle mappings
+        var existingMaps = context.PeopleBaseItemMap.Where(e => e.ItemId == itemId).ToList();
+        var mapsToAdd = new List<PeopleBaseItemMap>();
+        var mapsToKeep = new HashSet<Guid>();
+
         foreach (var person in people)
         {
-            var existingMap = maps.FirstOrDefault(e => e.PeopleId == person.Id);
+            var existingMap = existingMaps.FirstOrDefault(e => e.PeopleId == person.Id);
             if (existingMap is null)
             {
-                context.PeopleBaseItemMap.Add(new PeopleBaseItemMap()
+                // Create new mapping
+                mapsToAdd.Add(new PeopleBaseItemMap
                 {
                     Item = null!,
                     ItemId = itemId,
@@ -96,14 +107,25 @@ public class PeopleRepository(IDbContextFactory<JellyfinDbContext> dbProvider, I
             }
             else
             {
-                // person mapping already exists so remove from list
-                maps.Remove(existingMap);
+                // Update existing mapping if needed
+                existingMap.ListOrder = person.SortOrder;
+                existingMap.SortOrder = person.SortOrder;
+                existingMap.Role = person.Role;
+
+                // Mark as one to keep
+                mapsToKeep.Add(existingMap.PeopleId);
             }
         }
 
-        context.PeopleBaseItemMap.RemoveRange(maps);
+        // Add all new mappings
+        context.PeopleBaseItemMap.AddRange(mapsToAdd);
+
+        // Remove mappings that aren't in the input list
+        var mapsToRemove = existingMaps.Where(m => !mapsToKeep.Contains(m.PeopleId)).ToList();
+        context.PeopleBaseItemMap.RemoveRange(mapsToRemove);
 
         context.SaveChanges();
+        transaction.Commit();
     }
 
     private PersonInfo Map(People people)
