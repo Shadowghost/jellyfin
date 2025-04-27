@@ -21,14 +21,14 @@ namespace Jellyfin.Server.Migrations.Routines;
 /// </summary>
 public class RefreshInternalDateModified : IDatabaseMigrationRoutine
 {
-    private readonly ILogger<MoveExtractedFiles> _logger;
+    private readonly ILogger<RefreshInternalDateModified> _logger;
     private readonly IDbContextFactory<JellyfinDbContext> _dbProvider;
     private readonly IFileSystem _fileSystem;
     private readonly IServerApplicationHost _applicationHost;
     private readonly bool _useFileCreationTimeForDateAdded;
 
     private IReadOnlyList<string> _internalTypes = [
-         typeof(MediaBrowser.Controller.Entities.Genre).FullName!,
+         typeof(Genre).FullName!,
          typeof(MusicGenre).FullName!,
          typeof(MusicArtist).FullName!,
          typeof(People).FullName!,
@@ -51,7 +51,7 @@ public class RefreshInternalDateModified : IDatabaseMigrationRoutine
         IServerApplicationPaths applicationPaths,
         IServerConfigurationManager configurationManager,
         IDbContextFactory<JellyfinDbContext> dbProvider,
-        ILogger<MoveExtractedFiles> logger,
+        ILogger<RefreshInternalDateModified> logger,
         IFileSystem fileSystem)
     {
         _dbProvider = dbProvider;
@@ -106,15 +106,15 @@ public class RefreshInternalDateModified : IDatabaseMigrationRoutine
                     var realPath = _applicationHost.ExpandVirtualPath(item.Path);
                     if (_internalPaths.Any(path => realPath.StartsWith(path, StringComparison.Ordinal)))
                     {
-                        var writeTime = _fileSystem.GetLastWriteTimeUtc(itemPath);
+                        var writeTime = _fileSystem.GetLastWriteTimeUtc(realPath);
                         var itemModificationTime = item.DateModified;
                         if (writeTime != itemModificationTime)
                         {
-                            _logger.LogDebug("Reset file modification date: Old: {Old} - New: {New} - Path: {Path}", itemModificationTime, writeTime, itemPath);
+                            _logger.LogDebug("Reset file modification date: Old: {Old} - New: {New} - Path: {Path}", itemModificationTime, writeTime, realPath);
                             item.DateModified = writeTime;
                             if (_useFileCreationTimeForDateAdded)
                             {
-                                item.DateCreated = _fileSystem.GetCreationTimeUtc(itemPath);
+                                item.DateCreated = _fileSystem.GetCreationTimeUtc(realPath);
                             }
 
                             itemCount++;
@@ -131,6 +131,8 @@ public class RefreshInternalDateModified : IDatabaseMigrationRoutine
 
             _logger.LogInformation("Checked: {Count} - Refreshed: {Items} - Time: {Time}", offset, itemCount, sw.Elapsed);
         } while (offset < records);
+
+        context.SaveChanges();
 
         _logger.LogInformation("Refreshed DateModified for {Count} items in {Time}", itemCount, sw.Elapsed);
     }
