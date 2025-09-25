@@ -83,11 +83,11 @@ public class PeopleValidationTask : IScheduledTask, IConfigurableScheduledTask
                     .Where(e => e.Count() > 1)
                     .Select(e => e.Select(f => f.Id).ToArray());
 
-            var total = dupQuery.Count();
+            var total = await dupQuery.CountAsync(cancellationToken).ConfigureAwait(false);
 
             const int PartitionSize = 100;
-            var iterator = 0;
             int itemCounter;
+            var processedCount = 0;
             var buffer = ArrayPool<Guid[]>.Shared.Rent(PartitionSize)!;
             try
             {
@@ -95,6 +95,7 @@ public class PeopleValidationTask : IScheduledTask, IConfigurableScheduledTask
                 {
                     itemCounter = 0;
                     await foreach (var item in dupQuery
+                        .Skip(processedCount)
                         .Take(PartitionSize)
                         .AsAsyncEnumerable()
                         .WithCancellation(cancellationToken)
@@ -112,10 +113,9 @@ public class PeopleValidationTask : IScheduledTask, IConfigurableScheduledTask
                             .ExecuteUpdateAsync(e => e.SetProperty(f => f.PeopleId, reference), cancellationToken)
                             .ConfigureAwait(false);
                         await context.Peoples.Where(e => dups.Contains(e.Id)).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
-                        subProgress.Report(100f / total * ((iterator * PartitionSize) + i));
+                        processedCount++;
+                        subProgress.Report(100f / total * processedCount);
                     }
-
-                    iterator++;
                 } while (itemCounter == PartitionSize && !cancellationToken.IsCancellationRequested);
             }
             finally
