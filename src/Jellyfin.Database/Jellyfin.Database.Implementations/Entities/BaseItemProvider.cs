@@ -18,7 +18,7 @@ public class BaseItemProvider
     public required BaseItemEntity Item { get; set; }
 
     /// <summary>
-    /// Gets or Sets the ProvidersId.
+    /// Gets or Sets the ProviderId.
     /// </summary>
     public required string ProviderId { get; set; }
 

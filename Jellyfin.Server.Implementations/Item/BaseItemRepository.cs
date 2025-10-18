@@ -579,7 +579,7 @@ public sealed class BaseItemRepository
         ArgumentNullException.ThrowIfNull(items);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var tuples = new List<(BaseItemDto Item, List<Guid>? AncestorIds, BaseItemDto TopParent, IEnumerable<string> UserDataKey, List<string> InheritedTags)>();
+        var tuples = new List<(BaseItemDto Item, List<Guid>? AncestorIds, BaseItemDto TopParent, IEnumerable<string> UserDataKeys, List<string> InheritedTags)>();
         foreach (var item in items.GroupBy(e => e.Id).Select(e => e.Last()).Where(e => e.Id != PlaceholderId))
         {
             var ancestorIds = item.SupportsAncestors ?
@@ -588,18 +588,22 @@ public sealed class BaseItemRepository
 
             var topParent = item.GetTopParent();
 
-            var userdataKey = item.GetUserDataKeys();
+            var userdataKeys = item.GetUserDataKeys();
             var inheritedTags = item.GetInheritedTags();
 
-            tuples.Add((item, ancestorIds, topParent, userdataKey, inheritedTags));
+            tuples.Add((item, ancestorIds, topParent, userdataKeys, inheritedTags));
         }
 
         using var context = _dbProvider.CreateDbContext();
         using var transaction = context.Database.BeginTransaction();
 
         var ids = tuples.Select(f => f.Item.Id).ToArray();
-        var existingItems = context.BaseItems.Where(e => ids.Contains(e.Id)).Select(f => f.Id).ToArray();
-        var newItems = tuples.Where(e => !existingItems.Contains(e.Item.Id)).ToArray();
+        var existingItems = context.BaseItems.Where(e => ids.Contains(e.Id)).Include(i => i.Provider).Include(i => i.UserData);
+        var existingItemIds = existingItems.Select(f => f.Id).ToArray();
+        var groupedItems = tuples.ToLookup(e => existingItemIds.Contains(e.Item.Id));
+        var existing = groupedItems[true].ToDictionary(e => e.Item.Id);
+        var newItems = groupedItems[false].ToList();
+        var oldItemsToReAttach = existingItems.Where(e => existing.ContainsKey(e.Id)).Where(e => e.Provider != null && existing[e.Id].UserDataKeys.Except(e.Provider.Select(u => u.ProviderValue)).Any());
 
         foreach (var item in tuples)
         {
@@ -607,7 +611,7 @@ public sealed class BaseItemRepository
             // TODO: refactor this "inconsistency"
             entity.TopParentId = item.TopParent?.Id;
 
-            if (!existingItems.Any(e => e == entity.Id))
+            if (!existingItemIds.Any(e => e == entity.Id))
             {
                 context.BaseItems.Add(entity);
             }
@@ -620,16 +624,16 @@ public sealed class BaseItemRepository
 
         context.SaveChanges();
 
-        foreach (var item in newItems)
+        foreach (var item in oldItemsToReAttach)
         {
             // reattach old userData entries
-            var userKeys = item.UserDataKey.ToArray();
+            var userKeys = existing[item.Id].UserDataKeys;
             var retentionDate = (DateTime?)null;
             context.UserData
                 .Where(e => e.ItemId == PlaceholderId)
                 .Where(e => userKeys.Contains(e.CustomDataKey))
                 .ExecuteUpdate(e => e
-                    .SetProperty(f => f.ItemId, item.Item.Id)
+                    .SetProperty(f => f.ItemId, item.Id)
                     .SetProperty(f => f.RetentionDate, retentionDate));
         }
 
