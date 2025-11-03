@@ -7,6 +7,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using AsyncKeyedLock;
 using Jellyfin.Data.Enums;
 using Jellyfin.Extensions.Json;
 using MediaBrowser.Common.Net;
@@ -23,12 +24,13 @@ namespace MediaBrowser.Providers.Plugins.Omdb;
 /// <summary>
 /// Provider for OMDB service.
 /// </summary>
-public class OmdbProvider
+public class OmdbProvider : IDisposable
 {
     private readonly IFileSystem _fileSystem;
     private readonly IServerConfigurationManager _configurationManager;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly JsonSerializerOptions _jsonOptions;
+    private readonly AsyncKeyedLocker<string> _cacheLocker = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OmdbProvider"/> class.
@@ -187,15 +189,26 @@ public class OmdbProvider
             return false;
         }
 
+        // OMDB has no localization, exclude any localized information
         var isEnglishRequested = IsConfiguredForEnglish(item, language);
-        // Only take the name and rating if the user's language is set to English, since Omdb has no localization
         if (isEnglishRequested)
         {
-            item.Name = result.Title;
-
-            if (string.Equals(country, "us", StringComparison.OrdinalIgnoreCase))
+            var title = result.Title;
+            if (!string.IsNullOrEmpty(title))
             {
-                item.OfficialRating = result.Rated;
+                item.Overview = title;
+            }
+
+            var rating = result.Rated;
+            if (string.Equals(country, "us", StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(rating))
+            {
+                item.OfficialRating = rating;
+            }
+
+            var overview = result.Plot;
+            if (!string.IsNullOrEmpty(overview))
+            {
+                item.Overview = overview;
             }
         }
 
@@ -205,7 +218,6 @@ public class OmdbProvider
         }
 
         var tomatoScore = result.GetRottenTomatoScore();
-
         if (tomatoScore.HasValue)
         {
             item.CriticRating = tomatoScore;
@@ -300,36 +312,39 @@ public class OmdbProvider
         var imdbParam = imdbId.StartsWith("tt", StringComparison.OrdinalIgnoreCase) ? imdbId : "tt" + imdbId;
 
         var path = GetDataFilePath(imdbParam);
-        var fileInfo = _fileSystem.GetFileSystemInfo(path);
 
-        if (fileInfo.Exists)
+        using (await _cacheLocker.LockAsync(imdbId).ConfigureAwait(false))
         {
-            // If it's recent or automatic updates are enabled, don't re-download
-            if ((DateTime.UtcNow - _fileSystem.GetLastWriteTimeUtc(fileInfo)).TotalDays <= 1)
+            var fileInfo = _fileSystem.GetFileSystemInfo(path);
+            if (fileInfo.Exists)
             {
-                return path;
+                // If it's recent or automatic updates are enabled, don't re-download
+                if ((DateTime.UtcNow - _fileSystem.GetLastWriteTimeUtc(fileInfo)).TotalDays <= 1)
+                {
+                    return path;
+                }
             }
-        }
-        else
-        {
-            var parentDirectory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(parentDirectory))
+            else
             {
-                Directory.CreateDirectory(parentDirectory);
+                var parentDirectory = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(parentDirectory))
+                {
+                    Directory.CreateDirectory(parentDirectory);
+                }
             }
-        }
 
-        var url = GetOmdbUrl(
-            string.Format(
-                CultureInfo.InvariantCulture,
-                "i={0}&plot=short&tomatoes=true&r=json",
-                imdbParam));
+            var url = GetOmdbUrl(
+                string.Format(
+                    CultureInfo.InvariantCulture,
+                    "i={0}&plot=short&tomatoes=true&r=json",
+                    imdbParam));
 
-        var rootObject = await _httpClientFactory.CreateClient(NamedClient.Default).GetFromJsonAsync<RootObject>(url, _jsonOptions, cancellationToken).ConfigureAwait(false);
-        FileStream jsonFileStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, IODefaults.FileStreamBufferSize, FileOptions.Asynchronous);
-        await using (jsonFileStream.ConfigureAwait(false))
-        {
-            await JsonSerializer.SerializeAsync(jsonFileStream, rootObject, _jsonOptions, cancellationToken).ConfigureAwait(false);
+            var rootObject = await _httpClientFactory.CreateClient(NamedClient.Default).GetFromJsonAsync<RootObject>(url, _jsonOptions, cancellationToken).ConfigureAwait(false);
+            FileStream jsonFileStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, IODefaults.FileStreamBufferSize, FileOptions.Asynchronous);
+            await using (jsonFileStream.ConfigureAwait(false))
+            {
+                await JsonSerializer.SerializeAsync(jsonFileStream, rootObject, _jsonOptions, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         return path;
@@ -475,5 +490,24 @@ public class OmdbProvider
 
         // The data isn't localized and so can only be used for English users
         return string.Equals(language, "en", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Disposes all members of this class.
+    /// </summary>
+    /// <param name="disposing">Defines if the class has been cleaned up by a dispose or finalizer.</param>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _cacheLocker.Dispose();
+        }
     }
 }

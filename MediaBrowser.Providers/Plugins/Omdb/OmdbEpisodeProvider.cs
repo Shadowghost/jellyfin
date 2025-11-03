@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading;
@@ -15,7 +16,7 @@ namespace MediaBrowser.Providers.Plugins.Omdb;
 /// <summary>
 /// OMDb episode metadata provider.
 /// </summary>
-public class OmdbEpisodeProvider : IRemoteMetadataProvider<Episode, EpisodeInfo>, IHasOrder
+public class OmdbEpisodeProvider : IRemoteMetadataProvider<Episode, EpisodeInfo>, IHasOrder, IDisposable
 {
     private readonly OmdbItemProvider _itemProvider;
     private readonly OmdbProvider _omdbProvider;
@@ -86,5 +87,25 @@ public class OmdbEpisodeProvider : IRemoteMetadataProvider<Episode, EpisodeInfo>
     public Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
     {
         return _itemProvider.GetImageResponse(url, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Disposes all members of this class.
+    /// </summary>
+    /// <param name="disposing">Defines if the class has been cleaned up by a dispose or finalizer.</param>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _itemProvider.Dispose();
+            _omdbProvider.Dispose();
+        }
     }
 }

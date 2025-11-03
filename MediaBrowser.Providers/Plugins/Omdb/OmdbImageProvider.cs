@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading;
@@ -17,7 +18,7 @@ namespace MediaBrowser.Providers.Plugins.Omdb;
 /// <summary>
 /// OMDb image provider.
 /// </summary>
-public class OmdbImageProvider : IRemoteImageProvider, IHasOrder
+public class OmdbImageProvider : IRemoteImageProvider, IHasOrder, IDisposable
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly OmdbProvider _omdbProvider;
@@ -85,5 +86,24 @@ public class OmdbImageProvider : IRemoteImageProvider, IHasOrder
     public bool Supports(BaseItem item)
     {
         return item is Movie || item is Trailer || item is Episode;
+    }
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Disposes all members of this class.
+    /// </summary>
+    /// <param name="disposing">Defines if the class has been cleaned up by a dispose or finalizer.</param>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _omdbProvider.Dispose();
+        }
     }
 }

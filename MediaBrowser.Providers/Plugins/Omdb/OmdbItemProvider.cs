@@ -29,7 +29,7 @@ namespace MediaBrowser.Providers.Plugins.Omdb;
 /// OMDb item metadata provider for movies, series, and trailers.
 /// </summary>
 public class OmdbItemProvider : IRemoteMetadataProvider<Series, SeriesInfo>,
-    IRemoteMetadataProvider<Movie, MovieInfo>, IRemoteMetadataProvider<Trailer, TrailerInfo>, IHasOrder
+    IRemoteMetadataProvider<Movie, MovieInfo>, IRemoteMetadataProvider<Trailer, TrailerInfo>, IHasOrder, IDisposable
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILibraryManager _libraryManager;
@@ -156,24 +156,26 @@ public class OmdbItemProvider : IRemoteMetadataProvider<Series, SeriesInfo>,
         if (isSearch)
         {
             var searchResultList = await response.Content.ReadFromJsonAsync<SearchResultList>(_jsonOptions, cancellationToken).ConfigureAwait(false);
-            if (searchResultList?.Search is not null)
+            if (searchResultList is not null)
             {
-                var resultCount = searchResultList.Search.Count;
-                var result = new RemoteSearchResult[resultCount];
-                for (var i = 0; i < resultCount; i++)
+                if (string.Equals(searchResultList.Response, "true", StringComparison.OrdinalIgnoreCase) && int.TryParse(searchResultList.TotalResults, out var resultCount) && resultCount > 0)
                 {
-                    result[i] = ResultToMetadataResult(searchResultList.Search[i], searchInfo, indexNumberEnd);
-                }
+                    var result = new RemoteSearchResult[resultCount];
+                    for (var i = 0; i < resultCount; i++)
+                    {
+                        result[i] = ResultToMetadataResult(searchResultList.Search![i], searchInfo, indexNumberEnd);
+                    }
 
-                return result;
+                    return result;
+                }
             }
         }
         else
         {
             var result = await response.Content.ReadFromJsonAsync<SearchResult>(_jsonOptions, cancellationToken).ConfigureAwait(false);
-            if (string.Equals(result?.Response, "true", StringComparison.OrdinalIgnoreCase))
+            if (result is not null && string.Equals(result.Response, "true", StringComparison.OrdinalIgnoreCase))
             {
-                return [ResultToMetadataResult(result!, searchInfo, indexNumberEnd)];
+                return [ResultToMetadataResult(result, searchInfo, indexNumberEnd)];
             }
         }
 
@@ -264,6 +266,7 @@ public class OmdbItemProvider : IRemoteMetadataProvider<Series, SeriesInfo>,
     {
         var results = await GetSearchResultsInternal(info, false, cancellationToken).ConfigureAwait(false);
         var first = results.FirstOrDefault();
+
         return first?.GetProviderId(MetadataProvider.Imdb);
     }
 
@@ -271,5 +274,24 @@ public class OmdbItemProvider : IRemoteMetadataProvider<Series, SeriesInfo>,
     public Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
     {
         return _httpClientFactory.CreateClient(NamedClient.Default).GetAsync(url, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Disposes all members of this class.
+    /// </summary>
+    /// <param name="disposing">Defines if the class has been cleaned up by a dispose or finalizer.</param>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _omdbProvider.Dispose();
+        }
     }
 }
