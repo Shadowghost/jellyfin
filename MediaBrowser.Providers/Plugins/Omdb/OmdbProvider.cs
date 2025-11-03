@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -13,6 +14,7 @@ using Jellyfin.Extensions.Json;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
@@ -136,51 +138,42 @@ public class OmdbProvider : IDisposable
     /// <param name="language">Episode language.</param>
     /// <param name="country">Country of origin.</param>
     /// <param name="cancellationToken">CancellationToken to use for operation.</param>
-    /// <typeparam name="T">The first generic type parameter.</typeparam>
     /// <returns>Whether operation was successful.</returns>
-    public async Task<bool> FetchEpisodeData<T>(MetadataResult<T> itemResult, int episodeNumber, int seasonNumber, string? episodeImdbId, string seriesImdbId, string language, string country, CancellationToken cancellationToken)
-        where T : BaseItem
+    public async Task<bool> FetchEpisodeData(MetadataResult<Episode> itemResult, int episodeNumber, int seasonNumber, string? episodeImdbId, string seriesImdbId, string language, string country, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(seriesImdbId))
         {
             throw new ArgumentNullException(nameof(seriesImdbId));
         }
 
-        var item = itemResult.Item;
-        item.IndexNumber = episodeNumber;
-        item.ParentIndexNumber = seasonNumber;
+        var item = new Episode
+        {
+            IndexNumber = episodeNumber,
+            ParentIndexNumber = seasonNumber
+        };
 
         var seasonResult = await GetSeasonRootObject(seriesImdbId, seasonNumber, cancellationToken).ConfigureAwait(false);
-
         if (seasonResult?.Episodes is null)
         {
             return false;
         }
 
         RootObject? result = null;
-
         if (!string.IsNullOrWhiteSpace(episodeImdbId))
         {
-            foreach (var episode in seasonResult.Episodes)
+            var episode = seasonResult.Episodes.FirstOrDefault(episode => string.Equals(episodeImdbId, episode.ImdbId, StringComparison.OrdinalIgnoreCase));
+            if (episode is not null)
             {
-                if (string.Equals(episodeImdbId, episode.ImdbId, StringComparison.OrdinalIgnoreCase))
-                {
-                    result = episode;
-                    break;
-                }
+                result = episode;
             }
         }
 
-        // finally, search by numbers
         if (result is null)
         {
-            foreach (var episode in seasonResult.Episodes)
+            var episode = seasonResult.Episodes.FirstOrDefault(episode => episode.Episode == episodeNumber);
+            if (episode is not null)
             {
-                if (episode.Episode == episodeNumber)
-                {
-                    result = episode;
-                    break;
-                }
+                result = episode;
             }
         }
 
@@ -237,6 +230,9 @@ public class OmdbProvider : IDisposable
         item.TrySetProviderId(MetadataProvider.Imdb, result.ImdbId);
 
         ParseAdditionalMetadata(itemResult, result, isEnglishRequested);
+
+        itemResult.Item = item;
+        itemResult.QueriedById = true;
 
         return true;
     }

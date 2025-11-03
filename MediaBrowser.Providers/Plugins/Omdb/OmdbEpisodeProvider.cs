@@ -53,11 +53,7 @@ public class OmdbEpisodeProvider : IRemoteMetadataProvider<Episode, EpisodeInfo>
     /// <inheritdoc />
     public async Task<MetadataResult<Episode>> GetMetadata(EpisodeInfo info, CancellationToken cancellationToken)
     {
-        var result = new MetadataResult<Episode>
-        {
-            Item = new Episode(),
-            QueriedById = true
-        };
+        var result = new MetadataResult<Episode>();
 
         // Allowing this will dramatically increase scan times
         if (info.IsMissingEpisode)
@@ -69,7 +65,7 @@ public class OmdbEpisodeProvider : IRemoteMetadataProvider<Episode, EpisodeInfo>
             && !string.IsNullOrEmpty(seriesImdbId)
             && info.IndexNumber.HasValue)
         {
-            result.HasMetadata = await _omdbProvider.FetchEpisodeData(
+            await _omdbProvider.FetchEpisodeData(
                 result,
                 info.IndexNumber.Value,
                 info.ParentIndexNumber ?? 1,
