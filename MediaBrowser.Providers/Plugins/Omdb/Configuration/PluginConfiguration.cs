@@ -1,11 +1,14 @@
-#pragma warning disable CS1591
-
 using MediaBrowser.Model.Plugins;
 
-namespace MediaBrowser.Providers.Plugins.Omdb
+namespace MediaBrowser.Providers.Plugins.Omdb;
+
+/// <summary>
+/// Plugin configuration for OMDb provider.
+/// </summary>
+public class PluginConfiguration : BasePluginConfiguration
 {
-    public class PluginConfiguration : BasePluginConfiguration
-    {
-        public bool CastAndCrew { get; set; }
-    }
+    /// <summary>
+    /// Gets or sets a value indicating whether to fetch cast and crew information.
+    /// </summary>
+    public bool CastAndCrew { get; set; }
 }
