@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -268,11 +267,54 @@ public sealed class LimitedConcurrencyLibraryScheduler : ILimitedConcurrencyLibr
             await _tasks.Writer.WriteAsync(item, CancellationToken.None).ConfigureAwait(false);
         }
 
-        Worker();
-        _logger.LogDebug("Wait for {NoWorkers} to complete.", workItems.Length);
-        await Task.WhenAll([.. workItems.Select(f => f.Done.Task)]).ConfigureAwait(false);
-        _logger.LogDebug("{NoWorkers} completed.", workItems.Length);
-        ScheduleTaskCleanup();
+        if (_deadlockDetector.Value is not null)
+        {
+            _logger.LogDebug("Nested invocation detected, process in-place.");
+            try
+            {
+                // we are in a nested loop. There is no reason to spawn a task here as that would just lead to deadlocks and no additional concurrency is achieved
+                while (workItems.Any(e => !e.Done.Task.IsCompleted) && (await ChannelTryTake(_tasks.Reader, TimeSpan.FromMilliseconds(200), _deadlockDetector.Value.Token).ConfigureAwait(false) is { } item))
+                {
+                    await ProcessItem(item).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException) when (_deadlockDetector.Value.IsCancellationRequested)
+            {
+                // operation is cancelled. Do nothing.
+            }
+
+            _logger.LogDebug("process in-place done.");
+        }
+        else
+        {
+            Worker();
+            _logger.LogDebug("Wait for {NoWorkers} to complete.", workItems.Length);
+            await Task.WhenAll([.. workItems.Select(f => f.Done.Task)]).ConfigureAwait(false);
+            _logger.LogDebug("{NoWorkers} completed.", workItems.Length);
+            ScheduleTaskCleanup();
+        }
+    }
+
+    /// <summary>
+    /// Waits for for the specified interval OR CancellationToken to retrieve an item from the channel reader. Returns null if either condition elapses.
+    /// </summary>
+    /// <typeparam name="T">Type of item.</typeparam>
+    /// <param name="channelReader">Channel reader from which to read.</param>
+    /// <param name="interval">Interval to wait before aborting.</param>
+    /// <param name="linkedToken">CancellationToken to trigger abort.</param>
+    /// <returns>Retrieved item, or null if one of the supplied conditions elapses.</returns>
+    private static async Task<T?> ChannelTryTake<T>(ChannelReader<T> channelReader, TimeSpan interval, CancellationToken linkedToken)
+    {
+        using var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(linkedToken);
+        cancellationTokenSource.CancelAfter(interval);
+        try
+        {
+            return await channelReader.ReadAsync(cancellationTokenSource.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return default(T);
+        }
     }
 
     /// <inheritdoc/>
