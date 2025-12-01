@@ -668,22 +668,34 @@ namespace MediaBrowser.Controller.Entities
                 }
             }
 
-            return LibraryManager.GetCount(new InternalItemsQuery(user)
+            var result = GetItems(new InternalItemsQuery(user)
             {
                 Recursive = false,
-                Parent = this
+                Limit = 0,
+                Parent = this,
+                DtoOptions = new DtoOptions(false)
+                {
+                    EnableImages = false
+                }
             });
+
+            return result.TotalRecordCount;
         }
 
         public virtual int GetRecursiveChildCount(User user)
         {
-            return LibraryManager.GetCount(new InternalItemsQuery(user)
+            return GetItems(new InternalItemsQuery(user)
             {
                 Recursive = true,
-                Parent = this,
                 IsFolder = false,
-                IsVirtualItem = false
-            });
+                IsVirtualItem = false,
+                EnableTotalRecordCount = true,
+                Limit = 0,
+                DtoOptions = new DtoOptions(false)
+                {
+                    EnableImages = false
+                }
+            }).TotalRecordCount;
         }
 
         public QueryResult<BaseItem> QueryRecursive(InternalItemsQuery query)
