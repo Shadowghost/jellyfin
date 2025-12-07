@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.IO;
 using MediaBrowser.Controller.Resolvers;
@@ -114,7 +115,7 @@ public class DotIgnoreIgnoreRule : IResolverIgnoreRule
         // If no valid rules were added, fall back to ignoring everything (like an empty .ignore file)
         if (validRulesAdded == 0)
         {
-            return true;
+            ignore.Add("*");
         }
 
          // Mitigate the problem of the Ignore library not handling Windows paths correctly.
