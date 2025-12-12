@@ -1584,25 +1584,20 @@ public sealed class BaseItemRepository
             }
         }
 
-        if (orderedQuery is null)
-        {
-            return query.OrderBy(e => e.SortName);
-        }
-
         foreach (var item in orderBy.Skip(1))
         {
             var expression = OrderMapper.MapOrderByField(item.OrderBy, filter, context);
             if (item.SortOrder == SortOrder.Ascending)
             {
-                orderedQuery = orderedQuery.ThenBy(expression);
+                orderedQuery = orderedQuery!.ThenBy(expression);
             }
             else
             {
-                orderedQuery = orderedQuery.ThenByDescending(expression);
+                orderedQuery = orderedQuery!.ThenByDescending(expression);
             }
         }
 
-        return orderedQuery;
+        return orderedQuery ?? query;
     }
 
     private IQueryable<BaseItemEntity> TranslateQuery(
