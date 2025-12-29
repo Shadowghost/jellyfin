@@ -61,8 +61,8 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
 
             var item = metadataResult.Item;
 
-            return new[]
-            {
+            return
+            [
                 new RemoteSearchResult
                 {
                     IndexNumber = item.IndexNumber,
@@ -74,7 +74,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
                     SearchProviderName = Name,
                     IndexNumberEnd = item.IndexNumberEnd
                 }
-            };
+            ];
         }
 
         /// <inheritdoc />
