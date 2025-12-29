@@ -56,9 +56,9 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.People
                     }
 
                     result.SetProviderId(MetadataProvider.Tmdb, personResult.Id.ToString(CultureInfo.InvariantCulture));
-                    result.TrySetProviderId(MetadataProvider.Imdb, personResult.ExternalIds.ImdbId);
+                    result.TrySetProviderId(MetadataProvider.Imdb, personResult.ExternalIds?.ImdbId);
 
-                    return new[] { result };
+                    return [result];
                 }
             }
 
@@ -122,7 +122,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.People
 
                 if (!string.IsNullOrWhiteSpace(person.PlaceOfBirth))
                 {
-                    item.ProductionLocations = new[] { person.PlaceOfBirth };
+                    item.ProductionLocations = [person.PlaceOfBirth];
                 }
 
                 item.SetProviderId(MetadataProvider.Tmdb, person.Id.ToString(CultureInfo.InvariantCulture));

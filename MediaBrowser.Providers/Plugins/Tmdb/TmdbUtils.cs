@@ -69,20 +69,20 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
         /// <returns>The Jellyfin person type.</returns>
         public static PersonKind MapCrewToPersonType(Crew crew)
         {
-            if (crew.Department.Equals("production", StringComparison.OrdinalIgnoreCase)
-                && crew.Job.Equals("director", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(crew.Department, "production", StringComparison.OrdinalIgnoreCase)
+                && crew.Job?.Equals("director", StringComparison.OrdinalIgnoreCase) == true)
             {
                 return PersonKind.Director;
             }
 
-            if (crew.Department.Equals("production", StringComparison.OrdinalIgnoreCase)
-                && crew.Job.Equals("producer", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(crew.Department, "production", StringComparison.OrdinalIgnoreCase)
+                && crew.Job?.Equals("producer", StringComparison.OrdinalIgnoreCase) == true)
             {
                 return PersonKind.Producer;
             }
 
-            if (crew.Department.Equals("writing", StringComparison.OrdinalIgnoreCase)
-                && crew.Job.Equals("writer", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(crew.Department, "writing", StringComparison.OrdinalIgnoreCase)
+                && crew?.Job?.Equals("writer", StringComparison.OrdinalIgnoreCase) == true)
             {
                 return PersonKind.Writer;
             }
@@ -97,9 +97,9 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
         /// <returns>A boolean indicating whether the video is a trailer.</returns>
         public static bool IsTrailerType(Video video)
         {
-            return video.Site.Equals("youtube", StringComparison.OrdinalIgnoreCase)
-                   && (video.Type.Equals("trailer", StringComparison.OrdinalIgnoreCase)
-                       || video.Type.Equals("teaser", StringComparison.OrdinalIgnoreCase));
+            return string.Equals(video.Site, "youtube", StringComparison.OrdinalIgnoreCase)
+                   && (string.Equals(video.Type, "trailer", StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(video.Type, "teaser", StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>
@@ -207,11 +207,18 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
         /// </summary>
         /// <param name="countryCode">The ISO 3166-1 country code of the rating country.</param>
         /// <param name="ratingValue">The rating value returned by the TMDb API.</param>
-        /// <returns>The combined parental rating of country code+rating value.</returns>
-        public static string BuildParentalRating(string countryCode, string ratingValue)
+        /// <returns>The combined parental rating of country code+rating value, or null if ratingValue is null or empty.</returns>
+        public static string? BuildParentalRating(string? countryCode, string? ratingValue)
         {
+            if (string.IsNullOrEmpty(ratingValue))
+            {
+                return null;
+            }
+
             // Exclude US because we store US values as TV-14 without the country code.
-            var ratingPrefix = string.Equals(countryCode, "US", StringComparison.OrdinalIgnoreCase) ? string.Empty : countryCode + "-";
+            var ratingPrefix = string.Equals(countryCode, "US", StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(countryCode)
+                ? string.Empty
+                : countryCode + "-";
             var newRating = ratingPrefix + ratingValue;
 
             return newRating.Replace("DE-", "FSK-", StringComparison.OrdinalIgnoreCase);
