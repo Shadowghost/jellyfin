@@ -123,73 +123,89 @@ jobs:
           import yaml
           from collections import defaultdict
 
+          # Read file and extract just the paths section (before endpoints: which has complex keys)
           with open('openapi-diff.yaml', 'r') as f:
-              diff = yaml.safe_load(f)
+              content = f.read()
+
+          paths_yaml = content.split('\nendpoints:', 1)[0]
+          diff = yaml.safe_load(paths_yaml)
 
           if not diff:
               exit(0)
 
-          # Collect changes by endpoint
           endpoints = defaultdict(list)
           total_changes = 0
+          current_endpoint = None
 
-          def collect_changes(obj, path_parts, method=None, endpoint=None):
-              """Recursively collect changes from the diff structure."""
-              global total_changes
+          def simplify_path(parts):
+              """Extract meaningful property path from full YAML path."""
+              # Filter out structural keys like 'modified', 'properties', 'schema', etc.
+              skip = {'modified', 'properties', 'schema', 'content', 'items', 'allOf', 'anyOf', 'oneOf'}
+              meaningful = []
+              for p in parts:
+                  if p not in skip and not p.startswith('application/'):
+                      meaningful.append(str(p))
+              return '/'.join(meaningful) if meaningful else 'schema'
+
+          def collect_changes(obj, path_parts):
+              """Recursively collect from/to changes."""
+              global total_changes, current_endpoint
               if not isinstance(obj, dict):
                   return
 
-              # If we have an endpoint context, collect the change
-              if endpoint and any(k in obj for k in ['from', 'to', 'added', 'deleted']):
-                  change_path = '/'.join(path_parts)
-                  if 'from' in obj and 'to' in obj:
-                      endpoints[endpoint].append(f"Changed `{change_path}`: `{obj['from']}` → `{obj['to']}`")
+              # Check for from/to change
+              if 'from' in obj and 'to' in obj:
+                  prop_path = simplify_path(path_parts)
+                  from_val = obj['from']
+                  to_val = obj['to']
+                  # Format the change description
+                  if from_val is None:
+                      desc = f"`{prop_path}` set to `{to_val}`"
+                  elif to_val is None:
+                      desc = f"`{prop_path}` removed (was `{from_val}`)"
+                  else:
+                      desc = f"`{prop_path}`: `{from_val}` → `{to_val}`"
+                  if desc not in endpoints[current_endpoint]:
+                      endpoints[current_endpoint].append(desc)
                       total_changes += 1
-                  elif 'added' in obj:
-                      for item in (obj['added'] if isinstance(obj['added'], list) else [obj['added']]):
-                          endpoints[endpoint].append(f"Added `{change_path}`: `{item}`")
-                          total_changes += 1
-                  elif 'deleted' in obj:
-                      for item in (obj['deleted'] if isinstance(obj['deleted'], list) else [obj['deleted']]):
-                          endpoints[endpoint].append(f"Removed `{change_path}`: `{item}`")
-                          total_changes += 1
                   return
 
               for key, value in obj.items():
-                  if key in ['added', 'deleted', 'modified']:
-                      if isinstance(value, dict):
-                          for sub_key, sub_value in value.items():
-                              new_path = path_parts + [sub_key] if path_parts else [sub_key]
-                              collect_changes(sub_value, new_path, method, endpoint)
-                  elif key == 'paths' and isinstance(value, dict):
-                      for change_type in ['added', 'deleted', 'modified']:
-                          if change_type in value and isinstance(value[change_type], dict):
-                              for api_path, path_data in value[change_type].items():
-                                  if change_type == 'added':
-                                      endpoints[f"* {api_path}"].append("Endpoint added")
-                                      total_changes += 1
-                                  elif change_type == 'deleted':
-                                      endpoints[f"* {api_path}"].append("Endpoint removed")
-                                      total_changes += 1
-                                  elif change_type == 'modified' and isinstance(path_data, dict):
-                                      ops = path_data.get('operations', {})
-                                      for op_type in ['added', 'deleted', 'modified']:
-                                          if op_type in ops and isinstance(ops[op_type], dict):
-                                              for http_method, op_data in ops[op_type].items():
-                                                  ep = f"{http_method.upper()} {api_path}"
-                                                  if op_type == 'added':
-                                                      endpoints[ep].append("Operation added")
-                                                      total_changes += 1
-                                                  elif op_type == 'deleted':
-                                                      endpoints[ep].append("Operation removed")
-                                                      total_changes += 1
-                                                  else:
-                                                      collect_changes(op_data, [], http_method.upper(), ep)
-                  else:
-                      new_path = path_parts + [key] if path_parts else [key]
-                      collect_changes(value, new_path, method, endpoint)
+                  if isinstance(value, dict):
+                      collect_changes(value, path_parts + [key])
+                  elif isinstance(value, list):
+                      for i, item in enumerate(value):
+                          if isinstance(item, dict):
+                              collect_changes(item, path_parts + [f"{key}[{i}]"])
 
-          collect_changes(diff, [])
+          # Process paths
+          if 'paths' in diff:
+              paths_data = diff['paths']
+              for change_type in ['added', 'deleted', 'modified']:
+                  if change_type not in paths_data:
+                      continue
+                  for api_path, path_data in paths_data[change_type].items():
+                      if change_type == 'added':
+                          endpoints[f"* {api_path}"].append("Endpoint added")
+                          total_changes += 1
+                      elif change_type == 'deleted':
+                          endpoints[f"* {api_path}"].append("Endpoint removed")
+                          total_changes += 1
+                      elif 'operations' in path_data:
+                          ops = path_data['operations']
+                          for op_type in ['added', 'deleted', 'modified']:
+                              if op_type not in ops:
+                                  continue
+                              for method, method_data in ops[op_type].items():
+                                  current_endpoint = f"{method.upper()} {api_path}"
+                                  if op_type == 'added':
+                                      endpoints[current_endpoint].append("Operation added")
+                                      total_changes += 1
+                                  elif op_type == 'deleted':
+                                      endpoints[current_endpoint].append("Operation removed")
+                                      total_changes += 1
+                                  else:
+                                      collect_changes(method_data, [])
 
           # Generate summary
           table = ["| Metric | Count |", "|:--|--:|"]
