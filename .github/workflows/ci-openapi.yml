@@ -137,6 +137,7 @@ jobs:
           import re
           from collections import defaultdict
 
+          # changelog.md is owned by root (created by Docker), read it and write to new file
           with open('changelog.md', 'r') as f:
               content = f.read()
 
@@ -191,15 +192,15 @@ jobs:
 
           output.append('</details>')
 
-          with open('changelog.md', 'w') as f:
+          with open('changelog_formatted.md', 'w') as f:
               f.write('\n'.join(output))
           EOF
 
       - name: Add changelog to workflow summary
         if: ${{ steps.check-diff.outputs.has_changes == 'true' }}
         run: |
-          if [ -f changelog.md ]; then
-            cat changelog.md >> $GITHUB_STEP_SUMMARY
+          if [ -f changelog_formatted.md ]; then
+            cat changelog_formatted.md >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Find difference comment
@@ -218,7 +219,7 @@ jobs:
           issue-number: ${{ github.event.pull_request.number }}
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
           edit-mode: replace
-          body-path: changelog.md
+          body-path: changelog_formatted.md
 
       - name: Update comment (no changes)
         uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
