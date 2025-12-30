@@ -161,24 +161,31 @@ jobs:
               return False
 
           def find_dto_and_property(path_parts):
-              """Find the DTO type (parent with properties) and the property being changed."""
+              """Find the innermost DTO type (parent with properties) and the property being changed."""
               parts_list = list(path_parts)
               dto_type = None
               prop_name = None
 
+              # Find the deepest DTO type that has properties (not additionalProperties)
+              # additionalProperties means dictionary access, not nested DTO
               for i, part in enumerate(parts_list):
                   if i + 1 < len(parts_list) and parts_list[i + 1] == 'properties':
                       if is_potential_dto(part):
                           dto_type = part
+                          prop_name = None  # Reset prop_name for new DTO
                           if i + 3 < len(parts_list) and parts_list[i + 2] == 'modified':
                               candidate = parts_list[i + 3]
                               if is_potential_dto(candidate):
                                   prop_name = candidate
-                          break
-                  elif i + 1 < len(parts_list) and parts_list[i + 1] == 'additionalProperties':
-                      if is_potential_dto(part):
-                          dto_type = part
-                          break
+                          # Don't break - continue to find deeper DTO types
+
+              # For additionalProperties changes, use the property name if we have one
+              if 'additionalProperties' in parts_list and prop_name is None and dto_type:
+                  # Find the property name that has additionalProperties
+                  for i, part in enumerate(parts_list):
+                      if i + 1 < len(parts_list) and parts_list[i + 1] == 'additionalProperties':
+                          if is_potential_dto(part):
+                              prop_name = part
 
               if not dto_type:
                   for part in reversed(parts_list):
@@ -264,9 +271,19 @@ jobs:
                                       collect_changes(method_data, [])
 
           # Consolidate similar nullable changes under each DTO
+          # Only group properties that have the same direction on all endpoints
           consolidated_dto_changes = defaultdict(lambda: defaultdict(set))
 
           for dto_type, changes in dto_changes.items():
+              # Track which properties have conflicting directions
+              prop_directions = defaultdict(set)  # prop -> set of (from, to) tuples
+              for change_desc, endpoints in changes.items():
+                  if 'nullable:' in change_desc:
+                      match = re.match(r'`(\w+)` nullable: `(\w+)` → `(\w+)`', change_desc)
+                      if match:
+                          prop, from_v, to_v = match.groups()
+                          prop_directions[prop].add((from_v, to_v))
+
               nullable_changes = {}
               other_changes = {}
 
@@ -275,11 +292,16 @@ jobs:
                       match = re.match(r'`(\w+)` nullable: `(\w+)` → `(\w+)`', change_desc)
                       if match:
                           prop, from_v, to_v = match.groups()
-                          key = (from_v, to_v)
-                          if key not in nullable_changes:
-                              nullable_changes[key] = {'props': set(), 'endpoints': set()}
-                          nullable_changes[key]['props'].add(prop)
-                          nullable_changes[key]['endpoints'].update(endpoints)
+                          # Only consolidate if this property has a single direction
+                          if len(prop_directions[prop]) == 1:
+                              key = (from_v, to_v)
+                              if key not in nullable_changes:
+                                  nullable_changes[key] = {'props': set(), 'endpoints': set()}
+                              nullable_changes[key]['props'].add(prop)
+                              nullable_changes[key]['endpoints'].update(endpoints)
+                          else:
+                              # Keep as separate entry with endpoint count
+                              other_changes[f"`{prop}` nullable `{from_v}` → `{to_v}` ({len(endpoints)} endpoints)"] = endpoints
                       else:
                           other_changes[change_desc] = endpoints
                   else:
@@ -287,10 +309,7 @@ jobs:
 
               for (from_v, to_v), data in nullable_changes.items():
                   props = sorted(data['props'])
-                  if len(props) > 5:
-                      props_str = ', '.join(f'`{p}`' for p in props[:5]) + f" (+{len(props)-5} more)"
-                  else:
-                      props_str = ', '.join(f'`{p}`' for p in props)
+                  props_str = ', '.join(f'`{p}`' for p in props)
                   change_desc = f"nullable `{from_v}` → `{to_v}` for: {props_str}"
                   consolidated_dto_changes[dto_type][change_desc] = data['endpoints']
 
