@@ -100,6 +100,7 @@ jobs:
 
       - name: Detect OpenAPI changes
         id: openapi-diff
+        continue-on-error: true
         uses: oasdiff/oasdiff-action/diff@1c611ffb1253a72924624aa4fb662e302b3565d3 # v0.0.21
         with:
           base: openapi-base/openapi.json
@@ -118,6 +119,7 @@ jobs:
       - name: Generate changelog
         id: openapi-changelog
         if: ${{ steps.check-diff.outputs.has_changes == 'true' }}
+        continue-on-error: true
         uses: oasdiff/oasdiff-action/changelog@1c611ffb1253a72924624aa4fb662e302b3565d3 # v0.0.21
         with:
           base: openapi-base/openapi.json
