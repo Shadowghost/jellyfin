@@ -175,29 +175,54 @@ jobs:
               if entry not in paths[key][severity]:
                   paths[key][severity].append(entry)
 
-          # Generate markdown
-          output = [f'<!--openapi-diff-workflow-comment-->\n## OpenAPI Changes\n{summary}\n']
-          output.append(f'<details>\n<summary>View changes by endpoint ({len(paths)} endpoints affected)</summary>\n')
+          total_endpoints = len(paths)
 
-          for path in sorted(paths.keys()):
-              changes = paths[path]
-              counts = []
-              for sev, label in [('error', 'err'), ('warning', 'warn'), ('info', 'info')]:
-                  if changes[sev]:
-                      counts.append(f"{len(changes[sev])} {label}")
+          def generate_output(max_size=None):
+              """Generate markdown output, optionally truncated to max_size."""
+              output = [f'<!--openapi-diff-workflow-comment-->\n## OpenAPI Changes\n{summary}\n']
+              output.append(f'<details>\n<summary>View changes by endpoint ({total_endpoints} endpoints affected)</summary>\n')
 
-              output.append(f'<details>\n<summary><code>{path}</code> ({", ".join(counts)})</summary>\n')
-              for severity in ['error', 'warning', 'info']:
-                  if changes[severity]:
-                      output.append(f'**{severity.title()}s:**')
-                      output.extend(f'- {item}' for item in changes[severity])
-                      output.append('')
-              output.append('</details>\n')
+              endpoints_shown = 0
+              truncated = False
+              for path in sorted(paths.keys()):
+                  changes = paths[path]
+                  counts = []
+                  for sev, label in [('error', 'err'), ('warning', 'warn'), ('info', 'info')]:
+                      if changes[sev]:
+                          counts.append(f"{len(changes[sev])} {label}")
 
-          output.append('</details>')
+                  endpoint_block = [f'<details>\n<summary><code>{path}</code> ({", ".join(counts)})</summary>\n']
+                  for severity in ['error', 'warning', 'info']:
+                      if changes[severity]:
+                          endpoint_block.append(f'**{severity.title()}s:**')
+                          endpoint_block.extend(f'- {item}' for item in changes[severity])
+                          endpoint_block.append('')
+                  endpoint_block.append('</details>\n')
 
+                  if max_size:
+                      current_size = len('\n'.join(output))
+                      endpoint_size = len('\n'.join(endpoint_block))
+                      if current_size + endpoint_size > max_size:
+                          truncated = True
+                          break
+
+                  output.extend(endpoint_block)
+                  endpoints_shown += 1
+
+              if truncated:
+                  remaining = total_endpoints - endpoints_shown
+                  output.append(f'\n*... and {remaining} more endpoints. Download the `changelog-formatted` artifact for the full changelog.*\n')
+
+              output.append('</details>')
+              return '\n'.join(output)
+
+          # Generate full changelog for artifact
+          with open('changelog_formatted_full.md', 'w') as f:
+              f.write(generate_output())
+
+          # Generate truncated changelog for PR comment (GitHub comments max 65536 chars)
           with open('changelog_formatted.md', 'w') as f:
-              f.write('\n'.join(output))
+              f.write(generate_output(max_size=60000))
           EOF
 
       - name: Upload raw changelog
@@ -207,6 +232,15 @@ jobs:
           name: changelog-raw
           retention-days: 7
           path: changelog.md
+
+      - name: Upload formatted changelog
+        if: ${{ always() && steps.check-diff.outputs.has_changes == 'true' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: changelog-formatted
+          retention-days: 7
+          path: changelog_formatted_full.md
+          if-no-files-found: ignore
 
       - name: Add changelog to workflow summary
         if: ${{ steps.check-diff.outputs.has_changes == 'true' }}
