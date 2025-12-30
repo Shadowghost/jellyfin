@@ -154,7 +154,10 @@ jobs:
           else:
               summary = "API Changes"
 
-          # Parse entries: "error [type] at file\nin API METHOD /path\nmessage"
+          # Parse entries - handle both \r\n and \n line endings
+          content = content.replace('\r\n', '\n')
+
+          # Pattern: "error [type] at file\nin API METHOD /path\nmessage"
           pattern = r'(error|warning|info) \[([^\]]+)\] at [^\n]+\nin API (\w+) ([^\n]+)\n([^\n]+)'
           matches = re.findall(pattern, content)
 
@@ -195,6 +198,14 @@ jobs:
           with open('changelog_formatted.md', 'w') as f:
               f.write('\n'.join(output))
           EOF
+
+      - name: Upload raw changelog
+        if: ${{ always() && steps.check-diff.outputs.has_changes == 'true' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: changelog-raw
+          retention-days: 7
+          path: changelog.md
 
       - name: Add changelog to workflow summary
         if: ${{ steps.check-diff.outputs.has_changes == 'true' }}
