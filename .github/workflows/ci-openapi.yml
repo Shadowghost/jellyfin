@@ -126,19 +126,80 @@ jobs:
           revision: openapi-head/openapi.json
           output-to-file: changelog.md
 
-      - name: Prepend comment marker
+      - name: Format changelog
         if: ${{ steps.check-diff.outputs.has_changes == 'true' }}
-        run: sed -i '1s/^/<!--openapi-diff-workflow-comment-->\n/' changelog.md
+        run: |
+          if [ ! -f changelog.md ]; then
+            exit 0
+          fi
+
+          python3 << 'EOF'
+          import re
+          from collections import defaultdict
+
+          with open('changelog.md', 'r') as f:
+              content = f.read()
+
+          # Extract and format summary as table
+          summary_match = re.match(r'^(\d+) changes: (\d+) error, (\d+) warning, (\d+) info', content, re.MULTILINE)
+          if summary_match:
+              total, errors, warnings, infos = summary_match.groups()
+              table = ["| Type | Count |", "|:--|--:|"]
+              table.append(f"| Errors | {errors} |")
+              table.append(f"| Warnings | {warnings} |")
+              table.append(f"| Info | {infos} |")
+              table.append(f"| **Total** | **{total}** |")
+              summary = "\n".join(table)
+          else:
+              summary = "API Changes"
+
+          # Parse entries: "error [type] at file\nin API METHOD /path\nmessage"
+          pattern = r'(error|warning|info) \[([^\]]+)\] at [^\n]+\nin API (\w+) ([^\n]+)\n([^\n]+)'
+          matches = re.findall(pattern, content)
+
+          def format_message(msg):
+              # Format property paths and status codes with backticks
+              msg = re.sub(r"'([^']+)'", r'`\1`', msg)
+              return msg
+
+          # Group by path
+          paths = defaultdict(lambda: {'error': [], 'warning': [], 'info': []})
+          for severity, change_type, method, path, message in matches:
+              key = f"{method} {path}"
+              entry = f"`{change_type}`: {format_message(message)}"
+              if entry not in paths[key][severity]:
+                  paths[key][severity].append(entry)
+
+          # Generate markdown
+          output = [f'<!--openapi-diff-workflow-comment-->\n## OpenAPI Changes\n{summary}\n']
+          output.append(f'<details>\n<summary>View changes by endpoint ({len(paths)} endpoints affected)</summary>\n')
+
+          for path in sorted(paths.keys()):
+              changes = paths[path]
+              counts = []
+              for sev, label in [('error', 'err'), ('warning', 'warn'), ('info', 'info')]:
+                  if changes[sev]:
+                      counts.append(f"{len(changes[sev])} {label}")
+
+              output.append(f'<details>\n<summary><code>{path}</code> ({", ".join(counts)})</summary>\n')
+              for severity in ['error', 'warning', 'info']:
+                  if changes[severity]:
+                      output.append(f'**{severity.title()}s:**')
+                      output.extend(f'- {item}' for item in changes[severity])
+                      output.append('')
+              output.append('</details>\n')
+
+          output.append('</details>')
+
+          with open('changelog.md', 'w') as f:
+              f.write('\n'.join(output))
+          EOF
 
       - name: Add changelog to workflow summary
         if: ${{ steps.check-diff.outputs.has_changes == 'true' }}
         run: |
           if [ -f changelog.md ]; then
-            # Truncate if too large for summary (max ~1MB)
-            head -c 65000 changelog.md >> $GITHUB_STEP_SUMMARY
-            if [ $(wc -c < changelog.md) -gt 65000 ]; then
-              echo -e "\n\n... (changelog truncated, see full diff in artifacts)" >> $GITHUB_STEP_SUMMARY
-            fi
+            cat changelog.md >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Find difference comment
