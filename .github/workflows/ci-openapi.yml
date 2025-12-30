@@ -157,8 +157,9 @@ jobs:
           # Parse entries - handle both \r\n and \n line endings
           content = content.replace('\r\n', '\n')
 
-          # Pattern: "error [type] at file\nin API METHOD /path\nmessage"
-          pattern = r'(error|warning|info) \[([^\]]+)\] at [^\n]+\nin API (\w+) ([^\n]+)\n([^\n]+)'
+          # Pattern: "error    [type] at file\nin API METHOD /path\nmessage"
+          # Note: multiple spaces/tabs between severity and bracket
+          pattern = r'(error|warning|info)\s+\[([^\]]+)\] at [^\n]+\nin API (\w+) ([^\n]+)\n([^\n]+)'
           matches = re.findall(pattern, content)
 
           def format_message(msg):
@@ -223,14 +224,33 @@ jobs:
           direction: last
           body-includes: openapi-diff-workflow-comment
 
+      - name: Check formatted changelog exists
+        id: check-formatted
+        if: ${{ always() && steps.check-diff.outputs.has_changes == 'true' }}
+        run: |
+          if [ -f changelog_formatted.md ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Post or update comment (changes found)
         uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
-        if: ${{ always() && steps.check-diff.outputs.has_changes == 'true' }}
+        if: ${{ always() && steps.check-formatted.outputs.exists == 'true' }}
         with:
           issue-number: ${{ github.event.pull_request.number }}
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
           edit-mode: replace
           body-path: changelog_formatted.md
+
+      - name: Post raw changelog if formatting failed
+        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
+        if: ${{ always() && steps.check-diff.outputs.has_changes == 'true' && steps.check-formatted.outputs.exists == 'false' }}
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          edit-mode: replace
+          body-path: changelog.md
 
       - name: Update comment (no changes)
         uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
