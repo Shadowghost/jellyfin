@@ -101,10 +101,11 @@ jobs:
       - name: Detect OpenAPI changes
         id: openapi-diff
         continue-on-error: true
-        uses: oasdiff/oasdiff-action/diff@1c611ffb1253a72924624aa4fb662e302b3565d3 # v0.0.21
+        uses: Shadowghost/oasdiff-action/diff@flatten
         with:
           base: openapi-base/openapi.json
           revision: openapi-head/openapi.json
+          flatten: true
           output-to-file: openapi-diff.yaml
 
       - name: Check for changes
@@ -121,6 +122,7 @@ jobs:
         run: |
           python3 << 'EOF'
           import yaml
+          import re
           from collections import defaultdict
 
           # Read file and extract just the paths section (before endpoints: which has complex keys)
@@ -133,41 +135,99 @@ jobs:
           if not diff:
               exit(0)
 
-          endpoints = defaultdict(list)
-          total_changes = 0
+          # Track DTO changes: dto_type -> {change_desc -> set of endpoints}
+          dto_changes = defaultdict(lambda: defaultdict(set))
+          endpoint_unique_changes = defaultdict(list)
           current_endpoint = None
 
-          def simplify_path(parts):
-              """Extract meaningful property path from full YAML path."""
-              # Filter out structural keys like 'modified', 'properties', 'schema', etc.
-              skip = {'modified', 'properties', 'schema', 'content', 'items', 'allOf', 'anyOf', 'oneOf'}
-              meaningful = []
-              for p in parts:
-                  if p not in skip and not p.startswith('application/'):
-                      meaningful.append(str(p))
-              return '/'.join(meaningful) if meaningful else 'schema'
+          # Structural keywords that are NOT DTO type names
+          STRUCTURAL = {'modified', 'added', 'deleted', 'properties', 'schema', 'content',
+                        'items', 'allOf', 'anyOf', 'oneOf', 'responses', 'operations',
+                        'requestBody', 'parameters', 'additionalProperties', 'nullable',
+                        'description', 'from', 'to', 'base', 'revision', 'diff', 'index', 'component'}
+
+          def is_potential_dto(name):
+              """Check if a name looks like a DTO type (PascalCase, not a structural keyword)."""
+              if not isinstance(name, str):
+                  return False
+              if name.lower() in {s.lower() for s in STRUCTURAL}:
+                  return False
+              if name.startswith('application/'):
+                  return False
+              if name.isdigit():
+                  return False
+              if name and name[0].isupper():
+                  return True
+              return False
+
+          def find_dto_and_property(path_parts):
+              """Find the DTO type (parent with properties) and the property being changed."""
+              parts_list = list(path_parts)
+              dto_type = None
+              prop_name = None
+
+              for i, part in enumerate(parts_list):
+                  if i + 1 < len(parts_list) and parts_list[i + 1] == 'properties':
+                      if is_potential_dto(part):
+                          dto_type = part
+                          if i + 3 < len(parts_list) and parts_list[i + 2] == 'modified':
+                              candidate = parts_list[i + 3]
+                              if is_potential_dto(candidate):
+                                  prop_name = candidate
+                          break
+                  elif i + 1 < len(parts_list) and parts_list[i + 1] == 'additionalProperties':
+                      if is_potential_dto(part):
+                          dto_type = part
+                          break
+
+              if not dto_type:
+                  for part in reversed(parts_list):
+                      if is_potential_dto(part):
+                          dto_type = part
+                          break
+
+              return dto_type, prop_name
 
           def collect_changes(obj, path_parts):
               """Recursively collect from/to changes."""
-              global total_changes, current_endpoint
+              global current_endpoint
               if not isinstance(obj, dict):
                   return
 
-              # Check for from/to change
               if 'from' in obj and 'to' in obj:
-                  prop_path = simplify_path(path_parts)
                   from_val = obj['from']
                   to_val = obj['to']
-                  # Format the change description
-                  if from_val is None:
-                      desc = f"`{prop_path}` set to `{to_val}`"
-                  elif to_val is None:
-                      desc = f"`{prop_path}` removed (was `{from_val}`)"
+
+                  if 'additionalPropertiesAllowed' in path_parts:
+                      return
+
+                  dto_type, prop_name = find_dto_and_property(path_parts)
+                  change_type = path_parts[-1] if path_parts else 'unknown'
+
+                  if dto_type:
+                      if change_type == 'nullable' and prop_name:
+                          change_desc = f"`{prop_name}` nullable: `{from_val}` → `{to_val}`"
+                      elif change_type == 'nullable':
+                          change_desc = f"nullable: `{from_val}` → `{to_val}`"
+                      elif change_type == 'description':
+                          from_short = str(from_val)[:50] + "..." if len(str(from_val)) > 50 else str(from_val)
+                          to_short = str(to_val)[:50] + "..." if len(str(to_val)) > 50 else str(to_val)
+                          change_desc = f"description: `{from_short}` → `{to_short}`"
+                      else:
+                          if prop_name:
+                              change_desc = f"`{prop_name}`.`{change_type}`: `{from_val}` → `{to_val}`"
+                          else:
+                              change_desc = f"`{change_type}`: `{from_val}` → `{to_val}`"
+                      dto_changes[dto_type][change_desc].add(current_endpoint)
                   else:
-                      desc = f"`{prop_path}`: `{from_val}` → `{to_val}`"
-                  if desc not in endpoints[current_endpoint]:
-                      endpoints[current_endpoint].append(desc)
-                      total_changes += 1
+                      prop_path = '/'.join(str(p) for p in path_parts if p not in STRUCTURAL and not str(p).startswith('application/'))
+                      if from_val is None:
+                          desc = f"`{prop_path}` set to `{to_val}`"
+                      elif to_val is None:
+                          desc = f"`{prop_path}` removed (was `{from_val}`)"
+                      else:
+                          desc = f"`{prop_path}`: `{from_val}` → `{to_val}`"
+                      endpoint_unique_changes[current_endpoint].append(desc)
                   return
 
               for key, value in obj.items():
@@ -176,7 +236,7 @@ jobs:
                   elif isinstance(value, list):
                       for i, item in enumerate(value):
                           if isinstance(item, dict):
-                              collect_changes(item, path_parts + [f"{key}[{i}]"])
+                              collect_changes(item, path_parts + [key])
 
           # Process paths
           if 'paths' in diff:
@@ -186,11 +246,9 @@ jobs:
                       continue
                   for api_path, path_data in paths_data[change_type].items():
                       if change_type == 'added':
-                          endpoints[f"* {api_path}"].append("Endpoint added")
-                          total_changes += 1
+                          endpoint_unique_changes[f"* {api_path}"].append("Endpoint added")
                       elif change_type == 'deleted':
-                          endpoints[f"* {api_path}"].append("Endpoint removed")
-                          total_changes += 1
+                          endpoint_unique_changes[f"* {api_path}"].append("Endpoint removed")
                       elif 'operations' in path_data:
                           ops = path_data['operations']
                           for op_type in ['added', 'deleted', 'modified']:
@@ -199,49 +257,120 @@ jobs:
                               for method, method_data in ops[op_type].items():
                                   current_endpoint = f"{method.upper()} {api_path}"
                                   if op_type == 'added':
-                                      endpoints[current_endpoint].append("Operation added")
-                                      total_changes += 1
+                                      endpoint_unique_changes[current_endpoint].append("Operation added")
                                   elif op_type == 'deleted':
-                                      endpoints[current_endpoint].append("Operation removed")
-                                      total_changes += 1
+                                      endpoint_unique_changes[current_endpoint].append("Operation removed")
                                   else:
                                       collect_changes(method_data, [])
 
-          # Generate summary
-          table = ["| Metric | Count |", "|:--|--:|"]
-          table.append(f"| Endpoints affected | {len(endpoints)} |")
-          table.append(f"| **Total changes** | **{total_changes}** |")
-          summary = "\n".join(table)
+          # Consolidate similar nullable changes under each DTO
+          consolidated_dto_changes = defaultdict(lambda: defaultdict(set))
 
-          total_endpoints = len(endpoints)
+          for dto_type, changes in dto_changes.items():
+              nullable_changes = {}
+              other_changes = {}
+
+              for change_desc, endpoints in changes.items():
+                  if 'nullable:' in change_desc:
+                      match = re.match(r'`(\w+)` nullable: `(\w+)` → `(\w+)`', change_desc)
+                      if match:
+                          prop, from_v, to_v = match.groups()
+                          key = (from_v, to_v)
+                          if key not in nullable_changes:
+                              nullable_changes[key] = {'props': set(), 'endpoints': set()}
+                          nullable_changes[key]['props'].add(prop)
+                          nullable_changes[key]['endpoints'].update(endpoints)
+                      else:
+                          other_changes[change_desc] = endpoints
+                  else:
+                      other_changes[change_desc] = endpoints
+
+              for (from_v, to_v), data in nullable_changes.items():
+                  props = sorted(data['props'])
+                  if len(props) > 5:
+                      props_str = ', '.join(f'`{p}`' for p in props[:5]) + f" (+{len(props)-5} more)"
+                  else:
+                      props_str = ', '.join(f'`{p}`' for p in props)
+                  change_desc = f"nullable `{from_v}` → `{to_v}` for: {props_str}"
+                  consolidated_dto_changes[dto_type][change_desc] = data['endpoints']
+
+              for change_desc, endpoints in other_changes.items():
+                  consolidated_dto_changes[dto_type][change_desc] = endpoints
+
+          # Separate DTOs: common (many endpoints) vs endpoint-specific
+          THRESHOLD = 5
+          common_dtos = {}
+          specific_dtos = {}
+          for dto_type, changes in consolidated_dto_changes.items():
+              total_endpoints = len(set().union(*changes.values()))
+              if total_endpoints >= THRESHOLD:
+                  common_dtos[dto_type] = changes
+              else:
+                  specific_dtos[dto_type] = changes
+
+          # Merge specific DTOs into endpoint changes
+          for dto_type, changes in specific_dtos.items():
+              for ep in set().union(*changes.values()):
+                  for change_desc in changes.keys():
+                      if ep in changes[change_desc]:
+                          if ep not in endpoint_unique_changes:
+                              endpoint_unique_changes[ep] = []
+                          endpoint_unique_changes[ep].append(f"`{dto_type}`: {change_desc}")
+
+          # Generate summary
+          total_endpoints = len(set().union(
+              *[set().union(*changes.values()) for changes in consolidated_dto_changes.values()],
+              set(endpoint_unique_changes.keys())
+          ))
+          table = ["| Metric | Count |", "|:--|--:|"]
+          table.append(f"| Common DTO/Schema types | {len(common_dtos)} |")
+          table.append(f"| Endpoint-specific changes | {len(endpoint_unique_changes)} |")
+          table.append(f"| **Total endpoints affected** | **{total_endpoints}** |")
+          summary = "\n".join(table)
 
           def generate_output(max_size=None):
               output = [f'<!--openapi-diff-workflow-comment-->\n## OpenAPI Changes\n{summary}\n']
-              output.append(f'<details>\n<summary>View changes by endpoint ({total_endpoints} endpoints affected)</summary>\n')
 
-              endpoints_shown = 0
-              truncated = False
-              for ep in sorted(endpoints.keys()):
-                  changes = endpoints[ep]
-                  endpoint_block = [f'<details>\n<summary><code>{ep}</code> ({len(changes)} changes)</summary>\n']
-                  endpoint_block.extend(f'- {change}' for change in changes)
-                  endpoint_block.append('\n</details>\n')
+              # Common DTO changes section
+              if common_dtos:
+                  output.append('### Schema/DTO Changes\n')
+                  output.append('These changes affect multiple endpoints:\n')
+                  for dto_type in sorted(common_dtos.keys()):
+                      changes = common_dtos[dto_type]
+                      total = len(set().union(*changes.values()))
+                      output.append(f'<details>\n<summary><code>{dto_type}</code> ({total} endpoints)</summary>\n')
+                      for change_desc, endpoints in sorted(changes.items()):
+                          output.append(f'- {change_desc}')
+                      output.append('\n</details>\n')
 
-                  if max_size:
-                      current_size = len('\n'.join(output))
-                      endpoint_size = len('\n'.join(endpoint_block))
-                      if current_size + endpoint_size > max_size:
-                          truncated = True
-                          break
+              if endpoint_unique_changes:
+                  output.append(f'<details>\n<summary>Endpoint-specific changes ({len(endpoint_unique_changes)} endpoints)</summary>\n')
+                  endpoints_shown = 0
+                  truncated = False
+                  for ep in sorted(endpoint_unique_changes.keys()):
+                      changes = endpoint_unique_changes[ep]
+                      endpoint_block = [f'<details>\n<summary><code>{ep}</code> ({len(changes)} changes)</summary>\n']
+                      for change in changes[:20]:
+                          endpoint_block.append(f'- {change}')
+                      if len(changes) > 20:
+                          endpoint_block.append(f'- ... and {len(changes) - 20} more changes')
+                      endpoint_block.append('\n</details>\n')
 
-                  output.extend(endpoint_block)
-                  endpoints_shown += 1
+                      if max_size:
+                          current_size = len('\n'.join(output))
+                          endpoint_size = len('\n'.join(endpoint_block))
+                          if current_size + endpoint_size > max_size:
+                              truncated = True
+                              break
 
-              if truncated:
-                  remaining = total_endpoints - endpoints_shown
-                  output.append(f'\n*... and {remaining} more endpoints. Download the `openapi-changelog` artifact for the full changelog.*\n')
+                      output.extend(endpoint_block)
+                      endpoints_shown += 1
 
-              output.append('</details>')
+                  if truncated:
+                      remaining = len(endpoint_unique_changes) - endpoints_shown
+                      output.append(f'\n*... and {remaining} more endpoints. Download the `openapi-changelog` artifact for the full changelog.*\n')
+                  output.append('</details>')
+
               return '\n'.join(output)
 
           # Generate full changelog for artifact
