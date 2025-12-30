@@ -157,9 +157,9 @@ jobs:
           # Parse entries - handle both \r\n and \n line endings
           content = content.replace('\r\n', '\n')
 
-          # Pattern: "error    [type] at file\nin API METHOD /path\nmessage"
-          # Note: multiple spaces/tabs between severity and bracket
-          pattern = r'(error|warning|info)\s+\[([^\]]+)\] at [^\n]+\nin API (\w+) ([^\n]+)\n([^\n]+)'
+          # Format uses TAB characters:
+          # error\t[type] at file\t\n\tin API METHOD /path\n\t\tmessage\n\n
+          pattern = r'(error|warning|info)\t\[([^\]]+)\]\s+at\s+[^\n]+\n\tin API\s+(\w+)\s+([^\n]+)\n\t\t([^\n]+)'
           matches = re.findall(pattern, content)
 
           def format_message(msg):
