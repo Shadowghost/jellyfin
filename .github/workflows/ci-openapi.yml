@@ -116,88 +116,100 @@ jobs:
             echo "has_changes=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Generate changelog
-        id: openapi-changelog
-        if: ${{ steps.check-diff.outputs.has_changes == 'true' }}
-        continue-on-error: true
-        uses: oasdiff/oasdiff-action/changelog@1c611ffb1253a72924624aa4fb662e302b3565d3 # v0.0.21
-        with:
-          base: openapi-base/openapi.json
-          revision: openapi-head/openapi.json
-          output-to-file: changelog.md
-
       - name: Format changelog
         if: ${{ steps.check-diff.outputs.has_changes == 'true' }}
         run: |
-          if [ ! -f changelog.md ]; then
-            exit 0
-          fi
-
           python3 << 'EOF'
-          import re
+          import yaml
           from collections import defaultdict
 
-          # changelog.md is owned by root (created by Docker), read it and write to new file
-          with open('changelog.md', 'r') as f:
-              content = f.read()
+          with open('openapi-diff.yaml', 'r') as f:
+              diff = yaml.safe_load(f)
 
-          # Extract and format summary as table
-          summary_match = re.match(r'^(\d+) changes: (\d+) error, (\d+) warning, (\d+) info', content, re.MULTILINE)
-          if summary_match:
-              total, errors, warnings, infos = summary_match.groups()
-              table = ["| Type | Count |", "|:--|--:|"]
-              table.append(f"| Errors | {errors} |")
-              table.append(f"| Warnings | {warnings} |")
-              table.append(f"| Info | {infos} |")
-              table.append(f"| **Total** | **{total}** |")
-              summary = "\n".join(table)
-          else:
-              summary = "API Changes"
+          if not diff:
+              exit(0)
 
-          # Parse entries - handle both \r\n and \n line endings
-          content = content.replace('\r\n', '\n')
+          # Collect changes by endpoint
+          endpoints = defaultdict(list)
+          total_changes = 0
 
-          # Format uses TAB characters:
-          # error\t[type] at file\t\n\tin API METHOD /path\n\t\tmessage\n\n
-          pattern = r'(error|warning|info)\t\[([^\]]+)\]\s+at\s+[^\n]+\n\tin API\s+(\w+)\s+([^\n]+)\n\t\t([^\n]+)'
-          matches = re.findall(pattern, content)
+          def collect_changes(obj, path_parts, method=None, endpoint=None):
+              """Recursively collect changes from the diff structure."""
+              global total_changes
+              if not isinstance(obj, dict):
+                  return
 
-          def format_message(msg):
-              # Format property paths and status codes with backticks
-              msg = re.sub(r"'([^']+)'", r'`\1`', msg)
-              return msg
+              # If we have an endpoint context, collect the change
+              if endpoint and any(k in obj for k in ['from', 'to', 'added', 'deleted']):
+                  change_path = '/'.join(path_parts)
+                  if 'from' in obj and 'to' in obj:
+                      endpoints[endpoint].append(f"Changed `{change_path}`: `{obj['from']}` → `{obj['to']}`")
+                      total_changes += 1
+                  elif 'added' in obj:
+                      for item in (obj['added'] if isinstance(obj['added'], list) else [obj['added']]):
+                          endpoints[endpoint].append(f"Added `{change_path}`: `{item}`")
+                          total_changes += 1
+                  elif 'deleted' in obj:
+                      for item in (obj['deleted'] if isinstance(obj['deleted'], list) else [obj['deleted']]):
+                          endpoints[endpoint].append(f"Removed `{change_path}`: `{item}`")
+                          total_changes += 1
+                  return
 
-          # Group by path
-          paths = defaultdict(lambda: {'error': [], 'warning': [], 'info': []})
-          for severity, change_type, method, path, message in matches:
-              key = f"{method} {path}"
-              entry = f"`{change_type}`: {format_message(message)}"
-              if entry not in paths[key][severity]:
-                  paths[key][severity].append(entry)
+              for key, value in obj.items():
+                  if key in ['added', 'deleted', 'modified']:
+                      if isinstance(value, dict):
+                          for sub_key, sub_value in value.items():
+                              new_path = path_parts + [sub_key] if path_parts else [sub_key]
+                              collect_changes(sub_value, new_path, method, endpoint)
+                  elif key == 'paths' and isinstance(value, dict):
+                      for change_type in ['added', 'deleted', 'modified']:
+                          if change_type in value and isinstance(value[change_type], dict):
+                              for api_path, path_data in value[change_type].items():
+                                  if change_type == 'added':
+                                      endpoints[f"* {api_path}"].append("Endpoint added")
+                                      total_changes += 1
+                                  elif change_type == 'deleted':
+                                      endpoints[f"* {api_path}"].append("Endpoint removed")
+                                      total_changes += 1
+                                  elif change_type == 'modified' and isinstance(path_data, dict):
+                                      ops = path_data.get('operations', {})
+                                      for op_type in ['added', 'deleted', 'modified']:
+                                          if op_type in ops and isinstance(ops[op_type], dict):
+                                              for http_method, op_data in ops[op_type].items():
+                                                  ep = f"{http_method.upper()} {api_path}"
+                                                  if op_type == 'added':
+                                                      endpoints[ep].append("Operation added")
+                                                      total_changes += 1
+                                                  elif op_type == 'deleted':
+                                                      endpoints[ep].append("Operation removed")
+                                                      total_changes += 1
+                                                  else:
+                                                      collect_changes(op_data, [], http_method.upper(), ep)
+                  else:
+                      new_path = path_parts + [key] if path_parts else [key]
+                      collect_changes(value, new_path, method, endpoint)
 
-          total_endpoints = len(paths)
+          collect_changes(diff, [])
+
+          # Generate summary
+          table = ["| Metric | Count |", "|:--|--:|"]
+          table.append(f"| Endpoints affected | {len(endpoints)} |")
+          table.append(f"| **Total changes** | **{total_changes}** |")
+          summary = "\n".join(table)
+
+          total_endpoints = len(endpoints)
 
           def generate_output(max_size=None):
-              """Generate markdown output, optionally truncated to max_size."""
               output = [f'<!--openapi-diff-workflow-comment-->\n## OpenAPI Changes\n{summary}\n']
               output.append(f'<details>\n<summary>View changes by endpoint ({total_endpoints} endpoints affected)</summary>\n')
 
               endpoints_shown = 0
               truncated = False
-              for path in sorted(paths.keys()):
-                  changes = paths[path]
-                  counts = []
-                  for sev, label in [('error', 'err'), ('warning', 'warn'), ('info', 'info')]:
-                      if changes[sev]:
-                          counts.append(f"{len(changes[sev])} {label}")
-
-                  endpoint_block = [f'<details>\n<summary><code>{path}</code> ({", ".join(counts)})</summary>\n']
-                  for severity in ['error', 'warning', 'info']:
-                      if changes[severity]:
-                          endpoint_block.append(f'**{severity.title()}s:**')
-                          endpoint_block.extend(f'- {item}' for item in changes[severity])
-                          endpoint_block.append('')
-                  endpoint_block.append('</details>\n')
+              for ep in sorted(endpoints.keys()):
+                  changes = endpoints[ep]
+                  endpoint_block = [f'<details>\n<summary><code>{ep}</code> ({len(changes)} changes)</summary>\n']
+                  endpoint_block.extend(f'- {change}' for change in changes)
+                  endpoint_block.append('\n</details>\n')
 
                   if max_size:
                       current_size = len('\n'.join(output))
@@ -211,7 +223,7 @@ jobs:
 
               if truncated:
                   remaining = total_endpoints - endpoints_shown
-                  output.append(f'\n*... and {remaining} more endpoints. Download the `changelog-formatted` artifact for the full changelog.*\n')
+                  output.append(f'\n*... and {remaining} more endpoints. Download the `openapi-changelog` artifact for the full changelog.*\n')
 
               output.append('</details>')
               return '\n'.join(output)
@@ -225,19 +237,19 @@ jobs:
               f.write(generate_output(max_size=60000))
           EOF
 
-      - name: Upload raw changelog
+      - name: Upload openapi diff
         if: ${{ always() && steps.check-diff.outputs.has_changes == 'true' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: changelog-raw
+          name: openapi-diff
           retention-days: 7
-          path: changelog.md
+          path: openapi-diff.yaml
 
       - name: Upload formatted changelog
         if: ${{ always() && steps.check-diff.outputs.has_changes == 'true' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: changelog-formatted
+          name: openapi-changelog
           retention-days: 7
           path: changelog_formatted_full.md
           if-no-files-found: ignore
