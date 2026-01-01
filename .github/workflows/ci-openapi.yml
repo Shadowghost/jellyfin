@@ -119,7 +119,7 @@ jobs:
 
       - name: Add changelog to workflow summary
         if: ${{ steps.openapi-diff.outputs.has-changes == 'true' }}
-        run: cat openapi-changelog.md >> $GITHUB_STEP_SUMMARY
+        run: echo '${{ steps.openapi-diff.outputs.markdown-output }}' >> $GITHUB_STEP_SUMMARY
 
   publish-unstable:
     name: OpenAPI - Publish Unstable Spec
