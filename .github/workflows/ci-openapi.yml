@@ -98,6 +98,20 @@ jobs:
           name: openapi-base
           path: openapi-base
 
+      - name: Setup Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: 'stable'
+          cache: false
+
+      - name: Flatten allOf schemas
+        run: |
+          go install github.com/tufin/oasdiff@latest
+          oasdiff flatten openapi-base/openapi.json > openapi-base/openapi-flattened.json
+          oasdiff flatten openapi-head/openapi.json > openapi-head/openapi-flattened.json
+          mv openapi-base/openapi-flattened.json openapi-base/openapi.json
+          mv openapi-head/openapi-flattened.json openapi-head/openapi.json
+
       - name: Detect OpenAPI changes
         id: openapi-diff
         uses: Shadowghost/openapi-diff-action@main
