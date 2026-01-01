@@ -98,15 +98,9 @@ jobs:
           name: openapi-base
           path: openapi-base
 
-      - name: Setup Go
-        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
-        with:
-          go-version: 'stable'
-          cache: false
-
       - name: Detect OpenAPI changes
         id: openapi-diff
-        uses: Shadowghost/openapi-diff-action@main
+        uses: Shadowghost/openapi-diff-action@v1.0.0
         with:
           old-spec: openapi-base/openapi.json
           new-spec: openapi-head/openapi.json
@@ -114,14 +108,6 @@ jobs:
           add-pr-comment: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload formatted changelog
-        if: ${{ always() && steps.openapi-diff.outputs.has-changes == 'true' }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: openapi-changelog
-          retention-days: 7
-          path: openapi-changelog.md
-          if-no-files-found: ignore
 
   publish-unstable:
     name: OpenAPI - Publish Unstable Spec
