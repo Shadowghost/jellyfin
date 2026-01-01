@@ -104,18 +104,6 @@ jobs:
           go-version: 'stable'
           cache: false
 
-#      - name: Flatten allOf schemas # Workaround https://github.com/OpenAPITools/openapi-diff/issues/124
-#        run: |
-#          go install github.com/oasdiff/oasdiff@latest
-#          oasdiff flatten openapi-base/openapi.json > openapi-base/openapi-flattened.json
-#          oasdiff flatten openapi-head/openapi.json > openapi-head/openapi-flattened.json
-#          mv openapi-base/openapi-flattened.json openapi-base/openapi.json
-#          mv openapi-head/openapi-flattened.json openapi-head/openapi.json
-
-      - name: Workaround openapi-diff issue
-        run: |
-          sed -i 's/"allOf"/"oneOf"/g' openapi-head/openapi.json
-          sed -i 's/"allOf"/"oneOf"/g' openapi-base/openapi.json
       - name: Detect OpenAPI changes
         id: openapi-diff
         uses: Shadowghost/openapi-diff-action@main
