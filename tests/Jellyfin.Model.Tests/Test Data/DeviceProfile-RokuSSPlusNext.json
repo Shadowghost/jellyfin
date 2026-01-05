@@ -49,8 +49,7 @@
             "MaxAudioChannels": " 2",
             "MinSegments": 0,
             "SegmentLength": 0,
-            "BreakOnNonKeyFrames": false,
-            "$type": "TranscodingProfile"
+                        "$type": "TranscodingProfile"
         },
         {
             "Container": "mp3",
@@ -66,8 +65,7 @@
             "MaxAudioChannels": "2",
             "MinSegments": 0,
             "SegmentLength": 0,
-            "BreakOnNonKeyFrames": false,
-            "$type": "TranscodingProfile"
+                        "$type": "TranscodingProfile"
         },
         {
             "Container": "mp3",
@@ -83,8 +81,7 @@
             "MaxAudioChannels": "2",
             "MinSegments": 0,
             "SegmentLength": 0,
-            "BreakOnNonKeyFrames": false,
-            "$type": "TranscodingProfile"
+                        "$type": "TranscodingProfile"
         },
         {
             "Container": "aac",
@@ -100,8 +97,7 @@
             "MaxAudioChannels": " 2",
             "MinSegments": 0,
             "SegmentLength": 0,
-            "BreakOnNonKeyFrames": false,
-            "$type": "TranscodingProfile"
+                        "$type": "TranscodingProfile"
         },
         {
             "Container": "ts",
@@ -118,8 +114,7 @@
             "MaxAudioChannels": " 2",
             "MinSegments": 1,
             "SegmentLength": 0,
-            "BreakOnNonKeyFrames": false,
-            "$type": "TranscodingProfile"
+                        "$type": "TranscodingProfile"
         },
         {
             "Container": "mp4",
@@ -135,8 +130,7 @@
             "EnableSubtitlesInManifest": false,
             "MinSegments": 0,
             "SegmentLength": 0,
-            "BreakOnNonKeyFrames": false,
-            "$type": "TranscodingProfile"
+                        "$type": "TranscodingProfile"
         }
     ],
     "CodecProfiles": [

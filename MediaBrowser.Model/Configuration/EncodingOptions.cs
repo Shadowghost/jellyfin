@@ -59,6 +59,7 @@ public class EncodingOptions
         EnableSubtitleExtraction = true;
         AllowOnDemandMetadataBasedKeyframeExtractionForExtensions = ["mkv"];
         HardwareDecodingCodecs = ["h264", "vc1"];
+        HlsAudioSeekStrategy = HlsAudioSeekStrategy.DisableAccurateSeek;
     }
 
     /// <summary>
@@ -295,4 +296,9 @@ public class EncodingOptions
     /// Gets or sets the file extensions on-demand metadata based keyframe extraction is enabled for.
     /// </summary>
     public string[] AllowOnDemandMetadataBasedKeyframeExtractionForExtensions { get; set; }
+
+    /// <summary>
+    /// Gets or sets the method used for audio seeking in HLS.
+    /// </summary>
+    public HlsAudioSeekStrategy HlsAudioSeekStrategy { get; set; }
 }

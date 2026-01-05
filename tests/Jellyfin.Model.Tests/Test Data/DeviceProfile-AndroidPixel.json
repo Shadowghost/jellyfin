@@ -152,8 +152,7 @@
             "EnableSubtitlesInManifest": false,
             "MinSegments": 0,
             "SegmentLength": 0,
-            "BreakOnNonKeyFrames": false,
-            "$type": "TranscodingProfile"
+                        "$type": "TranscodingProfile"
         },
         {
             "Container": "mkv",
@@ -169,8 +168,7 @@
             "EnableSubtitlesInManifest": false,
             "MinSegments": 0,
             "SegmentLength": 0,
-            "BreakOnNonKeyFrames": false,
-            "$type": "TranscodingProfile"
+                        "$type": "TranscodingProfile"
         },
         {
             "Container": "mp3",
@@ -185,8 +183,7 @@
             "EnableSubtitlesInManifest": false,
             "MinSegments": 0,
             "SegmentLength": 0,
-            "BreakOnNonKeyFrames": false,
-            "$type": "TranscodingProfile"
+                        "$type": "TranscodingProfile"
         }
     ],
     "ContainerProfiles": [
