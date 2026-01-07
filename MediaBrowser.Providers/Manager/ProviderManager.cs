@@ -75,6 +75,7 @@ namespace MediaBrowser.Providers.Manager
         private IMetadataSaver[] _savers = [];
         private IExternalId[] _externalIds = [];
         private IExternalUrlProvider[] _externalUrlProviders = [];
+        private ISimilarItemsProvider[] _similarItemsProviders = [];
         private bool _isProcessingRefreshQueue;
         private bool _disposed;
 
@@ -137,15 +138,118 @@ namespace MediaBrowser.Providers.Manager
             IEnumerable<IMetadataProvider> metadataProviders,
             IEnumerable<IMetadataSaver> metadataSavers,
             IEnumerable<IExternalId> externalIds,
-            IEnumerable<IExternalUrlProvider> externalUrlProviders)
+            IEnumerable<IExternalUrlProvider> externalUrlProviders,
+            IEnumerable<ISimilarItemsProvider> similarItemsProviders)
         {
             _imageProviders = imageProviders.ToArray();
             _metadataServices = metadataServices.OrderBy(i => i.Order).ToArray();
             _metadataProviders = metadataProviders.ToArray();
             _externalIds = externalIds.OrderBy(i => i.ProviderName).ToArray();
             _externalUrlProviders = externalUrlProviders.OrderBy(i => i.Name).ToArray();
+            _similarItemsProviders = similarItemsProviders.ToArray();
 
             _savers = metadataSavers.ToArray();
+        }
+
+        /// <inheritdoc/>
+        public List<ISimilarItemsProvider> GetSimilarItemsProviders<T>()
+            where T : BaseItem
+        {
+            var providerInterfaceType = typeof(ISimilarItemsProvider<>).MakeGenericType(typeof(T));
+            return _similarItemsProviders
+                .Where(p => providerInterfaceType.IsAssignableFrom(p.GetType()))
+                .ToList();
+        }
+
+        /// <inheritdoc/>
+        public IReadOnlyList<BaseItem> GetSimilarItems(
+            BaseItem item,
+            IReadOnlyList<Guid> excludeArtistIds,
+            Jellyfin.Database.Implementations.Entities.User user,
+            DtoOptions dtoOptions,
+            int? limit,
+            LibraryOptions libraryOptions)
+        {
+            ArgumentNullException.ThrowIfNull(item);
+            ArgumentNullException.ThrowIfNull(excludeArtistIds);
+
+            var requestedLimit = limit ?? 20;
+
+            // Get providers that handle this item type
+            var itemType = item.GetType();
+            var providerInterfaceType = typeof(ISimilarItemsProvider<>).MakeGenericType(itemType);
+            var matchingProviders = _similarItemsProviders
+                .Where(p => providerInterfaceType.IsAssignableFrom(p.GetType()))
+                .ToList();
+
+            // Get type options for ordering/filtering
+            var typeOptions = libraryOptions?.GetTypeOptions(item.GetType().Name);
+
+            // Filter by enabled providers if configured
+            if (typeOptions?.SimilarItemProviders?.Length > 0)
+            {
+                matchingProviders = matchingProviders
+                    .Where(p => typeOptions.SimilarItemProviders.Contains(p.Name, StringComparer.OrdinalIgnoreCase))
+                    .ToList();
+            }
+
+            // Order by configuration
+            var orderedProviders = matchingProviders
+                .OrderBy(p => GetConfiguredSimilarProviderOrder(typeOptions?.SimilarItemProviderOrder, p.Name))
+                .ToList();
+
+            // Accumulate results from providers in order
+            var results = new List<BaseItem>();
+            var excludeIds = new HashSet<Guid> { item.Id };
+
+            foreach (var provider in orderedProviders)
+            {
+                if (results.Count >= requestedLimit)
+                {
+                    break;
+                }
+
+                // Build query with current exclusions
+                var query = new SimilarItemsQuery
+                {
+                    User = user,
+                    Limit = requestedLimit - results.Count,
+                    DtoOptions = dtoOptions,
+                    ExcludeItemIds = [.. excludeIds],
+                    ExcludeArtistIds = excludeArtistIds
+                };
+
+                // Use reflection to call the GetSimilarItems method with the correct type
+                var method = providerInterfaceType.GetMethod(nameof(ISimilarItemsProvider<BaseItem>.GetSimilarItems));
+                var providerResults = method?.Invoke(provider, [item, query]) as IReadOnlyList<BaseItem> ?? [];
+
+                foreach (var result in providerResults)
+                {
+                    if (!excludeIds.Contains(result.Id))
+                    {
+                        results.Add(result);
+                        excludeIds.Add(result.Id);
+
+                        if (results.Count >= requestedLimit)
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            return results;
+        }
+
+        private static int GetConfiguredSimilarProviderOrder(string[]? orderConfig, string providerName)
+        {
+            if (orderConfig is null || orderConfig.Length == 0)
+            {
+                return int.MaxValue;
+            }
+
+            var index = Array.FindIndex(orderConfig, name => string.Equals(name, providerName, StringComparison.OrdinalIgnoreCase));
+            return index >= 0 ? index : int.MaxValue;
         }
 
         /// <inheritdoc/>
@@ -588,6 +692,14 @@ namespace MediaBrowser.Providers.Manager
             {
                 Name = i.Name,
                 Type = MetadataPluginType.MediaSegmentProvider
+            }));
+
+            // Similar items providers
+            var similarItemsProviders = GetSimilarItemsProviders<T>();
+            pluginList.AddRange(similarItemsProviders.Select(i => new MetadataPlugin
+            {
+                Name = i.Name,
+                Type = i.Type
             }));
 
             summary.Plugins = pluginList.ToArray();
