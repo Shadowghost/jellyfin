@@ -509,12 +509,12 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
         /// Gets similar movies for a movie from the TMDb API.
         /// </summary>
         /// <param name="tmdbId">The TMDb id of the movie.</param>
+        /// <param name="limit">The maximum number of similar movies to return.</param>
         /// <param name="language">The language for results.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>A list of similar movies (at least 100 or all available).</returns>
-        public async Task<IReadOnlyList<SearchMovie>> GetMovieSimilarAsync(int tmdbId, string? language, CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<SearchMovie>> GetMovieSimilarAsync(int tmdbId, int limit, string? language, CancellationToken cancellationToken)
         {
-            const int MinimumItems = 100;
             var key = $"moviesimilar-{tmdbId.ToString(CultureInfo.InvariantCulture)}-{language}";
             if (_memoryCache.TryGetValue(key, out List<SearchMovie>? cachedMovies) && cachedMovies is not null)
             {
@@ -530,7 +530,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
             do
             {
                 var searchResults = await _tmDbClient
-                    .GetMovieSimilarAsync(tmdbId, language, page: page, cancellationToken: cancellationToken)
+                    .GetMovieSimilarAsync(tmdbId, language, page, cancellationToken)
                     .ConfigureAwait(false);
 
                 if (searchResults?.Results is null || searchResults.Results.Count == 0)
@@ -542,7 +542,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
                 totalPages = searchResults.TotalPages;
                 page++;
             }
-            while (allResults.Count < MinimumItems && page <= totalPages);
+            while (allResults.Count < limit && page <= totalPages);
 
             if (allResults.Count > 0)
             {
@@ -556,12 +556,12 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
         /// Gets similar TV shows for a series from the TMDb API.
         /// </summary>
         /// <param name="tmdbId">The TMDb id of the TV show.</param>
+        /// <param name="limit">The maximum number of similar TV shows to return.</param>
         /// <param name="language">The language for results.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>A list of similar TV shows (at least 100 or all available).</returns>
-        public async Task<IReadOnlyList<SearchTv>> GetSeriesSimilarAsync(int tmdbId, string? language, CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<SearchTv>> GetSeriesSimilarAsync(int tmdbId, int limit, string? language, CancellationToken cancellationToken)
         {
-            const int MinimumItems = 100;
             var key = $"seriessimilar-{tmdbId.ToString(CultureInfo.InvariantCulture)}-{language}";
             if (_memoryCache.TryGetValue(key, out List<SearchTv>? cachedSeries) && cachedSeries is not null)
             {
@@ -577,7 +577,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
             do
             {
                 var searchResults = await _tmDbClient
-                    .GetTvShowSimilarAsync(tmdbId, language, page: page, cancellationToken: cancellationToken)
+                    .GetTvShowSimilarAsync(tmdbId, language, page, cancellationToken)
                     .ConfigureAwait(false);
 
                 if (searchResults?.Results is null || searchResults.Results.Count == 0)
@@ -589,7 +589,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
                 totalPages = searchResults.TotalPages;
                 page++;
             }
-            while (allResults.Count < MinimumItems && page <= totalPages);
+            while (allResults.Count < limit && page <= totalPages);
 
             if (allResults.Count > 0)
             {

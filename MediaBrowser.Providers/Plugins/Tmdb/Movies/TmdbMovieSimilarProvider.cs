@@ -72,7 +72,8 @@ public class TmdbMovieSimilarProvider : ISimilarItemsProvider<Movie>
             return [];
         }
 
-        var similarTmdbIds = GetSimilarTmdbIdsAsync(tmdbId, CancellationToken.None)
+        var requestedLimit = query.Limit ?? 50;
+        var similarTmdbIds = GetSimilarTmdbIdsAsync(tmdbId, requestedLimit, CancellationToken.None)
             .ConfigureAwait(false)
             .GetAwaiter()
             .GetResult();
@@ -85,7 +86,6 @@ public class TmdbMovieSimilarProvider : ISimilarItemsProvider<Movie>
         var results = new List<BaseItem>();
         var seenIds = new HashSet<Guid>(query.ExcludeItemIds);
         var providerName = MetadataProvider.Tmdb.ToString();
-        var requestedLimit = query.Limit ?? 50;
 
         foreach (var similarId in similarTmdbIds)
         {
@@ -122,7 +122,7 @@ public class TmdbMovieSimilarProvider : ISimilarItemsProvider<Movie>
         return results;
     }
 
-    private async Task<IReadOnlyList<int>> GetSimilarTmdbIdsAsync(int tmdbId, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<int>> GetSimilarTmdbIdsAsync(int tmdbId, int limit, CancellationToken cancellationToken)
     {
         var cachePath = GetCachePath(tmdbId);
 
@@ -154,7 +154,7 @@ public class TmdbMovieSimilarProvider : ISimilarItemsProvider<Movie>
 
         try
         {
-            var similar = await _tmdbClientManager.GetMovieSimilarAsync(tmdbId, TmdbUtils.GetImageLanguagesParam(string.Empty), cancellationToken).ConfigureAwait(false);
+            var similar = await _tmdbClientManager.GetMovieSimilarAsync(tmdbId, limit, TmdbUtils.GetImageLanguagesParam(string.Empty), cancellationToken).ConfigureAwait(false);
             var similarIds = similar.Select(s => s.Id).ToList();
 
             await SaveCacheAsync(cachePath, similarIds, cancellationToken).ConfigureAwait(false);
