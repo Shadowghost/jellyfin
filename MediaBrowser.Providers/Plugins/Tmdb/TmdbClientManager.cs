@@ -511,27 +511,45 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
         /// <param name="tmdbId">The TMDb id of the movie.</param>
         /// <param name="language">The language for results.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A list of similar movies.</returns>
+        /// <returns>A list of similar movies (at least 100 or all available).</returns>
         public async Task<IReadOnlyList<SearchMovie>> GetMovieSimilarAsync(int tmdbId, string? language, CancellationToken cancellationToken)
         {
+            const int MinimumItems = 100;
             var key = $"moviesimilar-{tmdbId.ToString(CultureInfo.InvariantCulture)}-{language}";
-            if (_memoryCache.TryGetValue(key, out SearchContainer<SearchMovie>? movies) && movies?.Results is not null)
+            if (_memoryCache.TryGetValue(key, out List<SearchMovie>? cachedMovies) && cachedMovies is not null)
             {
-                return movies.Results;
+                return cachedMovies;
             }
 
             await EnsureClientConfigAsync().ConfigureAwait(false);
 
-            var searchResults = await _tmDbClient
-                .GetMovieSimilarAsync(tmdbId, language, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
+            var allResults = new List<SearchMovie>();
+            var page = 1;
+            int totalPages;
 
-            if (searchResults?.Results?.Count > 0)
+            do
             {
-                _memoryCache.Set(key, searchResults, TimeSpan.FromHours(CacheDurationInHours));
+                var searchResults = await _tmDbClient
+                    .GetMovieSimilarAsync(tmdbId, language, page: page, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (searchResults?.Results is null || searchResults.Results.Count == 0)
+                {
+                    break;
+                }
+
+                allResults.AddRange(searchResults.Results);
+                totalPages = searchResults.TotalPages;
+                page++;
+            }
+            while (allResults.Count < MinimumItems && page <= totalPages);
+
+            if (allResults.Count > 0)
+            {
+                _memoryCache.Set(key, allResults, TimeSpan.FromHours(CacheDurationInHours));
             }
 
-            return searchResults?.Results ?? [];
+            return allResults;
         }
 
         /// <summary>
@@ -540,27 +558,45 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
         /// <param name="tmdbId">The TMDb id of the TV show.</param>
         /// <param name="language">The language for results.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A list of similar TV shows.</returns>
+        /// <returns>A list of similar TV shows (at least 100 or all available).</returns>
         public async Task<IReadOnlyList<SearchTv>> GetSeriesSimilarAsync(int tmdbId, string? language, CancellationToken cancellationToken)
         {
+            const int MinimumItems = 100;
             var key = $"seriessimilar-{tmdbId.ToString(CultureInfo.InvariantCulture)}-{language}";
-            if (_memoryCache.TryGetValue(key, out SearchContainer<SearchTv>? series) && series?.Results is not null)
+            if (_memoryCache.TryGetValue(key, out List<SearchTv>? cachedSeries) && cachedSeries is not null)
             {
-                return series.Results;
+                return cachedSeries;
             }
 
             await EnsureClientConfigAsync().ConfigureAwait(false);
 
-            var searchResults = await _tmDbClient
-                .GetTvShowSimilarAsync(tmdbId, language, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
+            var allResults = new List<SearchTv>();
+            var page = 1;
+            int totalPages;
 
-            if (searchResults?.Results?.Count > 0)
+            do
             {
-                _memoryCache.Set(key, searchResults, TimeSpan.FromHours(CacheDurationInHours));
+                var searchResults = await _tmDbClient
+                    .GetTvShowSimilarAsync(tmdbId, language, page: page, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (searchResults?.Results is null || searchResults.Results.Count == 0)
+                {
+                    break;
+                }
+
+                allResults.AddRange(searchResults.Results);
+                totalPages = searchResults.TotalPages;
+                page++;
+            }
+            while (allResults.Count < MinimumItems && page <= totalPages);
+
+            if (allResults.Count > 0)
+            {
+                _memoryCache.Set(key, allResults, TimeSpan.FromHours(CacheDurationInHours));
             }
 
-            return searchResults?.Results ?? [];
+            return allResults;
         }
 
         /// <summary>
