@@ -185,8 +185,8 @@ namespace MediaBrowser.Providers.Manager
             // Get type options for ordering/filtering
             var typeOptions = libraryOptions?.GetTypeOptions(item.GetType().Name);
 
-            // Filter by enabled providers if configured
-            if (typeOptions?.SimilarItemProviders?.Length > 0)
+            // Filter by enabled providers if TypeOptions is configured for this item type
+            if (typeOptions is not null)
             {
                 matchingProviders = matchingProviders
                     .Where(p => typeOptions.SimilarItemProviders.Contains(p.Name, StringComparer.OrdinalIgnoreCase))

@@ -85,7 +85,7 @@ public class TmdbSeriesSimilarProvider : ISimilarItemsProvider<Series>
         var results = new List<BaseItem>();
         var seenIds = new HashSet<Guid>(query.ExcludeItemIds);
         var providerName = MetadataProvider.Tmdb.ToString();
-        var requestedLimit = query.Limit ?? 20;
+        var requestedLimit = query.Limit ?? 50;
 
         foreach (var similarId in similarTmdbIds)
         {
