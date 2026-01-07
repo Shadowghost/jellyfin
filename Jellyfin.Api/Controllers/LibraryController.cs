@@ -763,10 +763,7 @@ public class LibraryController : BaseJellyfinApiController
             .AddClientFields(User);
 
         // Get library options for provider configuration
-        var libraryOptions = item.GetParents()
-            .OfType<CollectionFolder>()
-            .FirstOrDefault()
-            ?.GetLibraryOptions();
+        var libraryOptions = _libraryManager.GetLibraryOptions(item);
 
         var itemsResult = _providerManager.GetSimilarItems(
             item,
