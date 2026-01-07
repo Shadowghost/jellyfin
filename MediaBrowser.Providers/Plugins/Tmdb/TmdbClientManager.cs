@@ -506,6 +506,64 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
         }
 
         /// <summary>
+        /// Gets similar movies for a movie from the TMDb API.
+        /// </summary>
+        /// <param name="tmdbId">The TMDb id of the movie.</param>
+        /// <param name="language">The language for results.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A list of similar movies.</returns>
+        public async Task<IReadOnlyList<SearchMovie>> GetMovieSimilarAsync(int tmdbId, string? language, CancellationToken cancellationToken)
+        {
+            var key = $"moviesimilar-{tmdbId.ToString(CultureInfo.InvariantCulture)}-{language}";
+            if (_memoryCache.TryGetValue(key, out SearchContainer<SearchMovie>? movies) && movies?.Results is not null)
+            {
+                return movies.Results;
+            }
+
+            await EnsureClientConfigAsync().ConfigureAwait(false);
+
+            var searchResults = await _tmDbClient
+                .GetMovieSimilarAsync(tmdbId, language, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            if (searchResults?.Results?.Count > 0)
+            {
+                _memoryCache.Set(key, searchResults, TimeSpan.FromHours(CacheDurationInHours));
+            }
+
+            return searchResults?.Results ?? [];
+        }
+
+        /// <summary>
+        /// Gets similar TV shows for a series from the TMDb API.
+        /// </summary>
+        /// <param name="tmdbId">The TMDb id of the TV show.</param>
+        /// <param name="language">The language for results.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A list of similar TV shows.</returns>
+        public async Task<IReadOnlyList<SearchTv>> GetSeriesSimilarAsync(int tmdbId, string? language, CancellationToken cancellationToken)
+        {
+            var key = $"seriessimilar-{tmdbId.ToString(CultureInfo.InvariantCulture)}-{language}";
+            if (_memoryCache.TryGetValue(key, out SearchContainer<SearchTv>? series) && series?.Results is not null)
+            {
+                return series.Results;
+            }
+
+            await EnsureClientConfigAsync().ConfigureAwait(false);
+
+            var searchResults = await _tmDbClient
+                .GetTvShowSimilarAsync(tmdbId, language, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            if (searchResults?.Results?.Count > 0)
+            {
+                _memoryCache.Set(key, searchResults, TimeSpan.FromHours(CacheDurationInHours));
+            }
+
+            return searchResults?.Results ?? [];
+        }
+
+        /// <summary>
         /// Handles bad path checking and builds the absolute url.
         /// </summary>
         /// <param name="size">The image size to fetch.</param>
