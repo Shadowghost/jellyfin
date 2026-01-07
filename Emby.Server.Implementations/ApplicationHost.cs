@@ -93,6 +93,8 @@ using MediaBrowser.Model.Tasks;
 using MediaBrowser.Providers.Lyric;
 using MediaBrowser.Providers.Manager;
 using MediaBrowser.Providers.Plugins.Tmdb;
+using MediaBrowser.Providers.Plugins.Tmdb.Movies;
+using MediaBrowser.Providers.Plugins.Tmdb.TV;
 using MediaBrowser.Providers.Subtitles;
 using MediaBrowser.XbmcMetadata.Providers;
 using Microsoft.AspNetCore.Http;
@@ -485,6 +487,8 @@ namespace Emby.Server.Implementations
             serviceCollection.AddScoped<ISystemManager, SystemManager>();
 
             serviceCollection.AddSingleton<TmdbClientManager>();
+            serviceCollection.AddSingleton<TmdbMovieSimilarProvider>();
+            serviceCollection.AddSingleton<TmdbSeriesSimilarProvider>();
 
             serviceCollection.AddSingleton(NetManager);
 
@@ -684,7 +688,8 @@ namespace Emby.Server.Implementations
                 GetExports<IMetadataProvider>(),
                 GetExports<IMetadataSaver>(),
                 GetExports<IExternalId>(),
-                GetExports<IExternalUrlProvider>());
+                GetExports<IExternalUrlProvider>(),
+                GetExports<ISimilarItemsProvider>());
 
             Resolve<IMediaSourceManager>().AddParts(GetExports<IMediaSourceProvider>());
         }
