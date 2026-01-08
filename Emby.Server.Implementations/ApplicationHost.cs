@@ -92,6 +92,8 @@ using MediaBrowser.Model.System;
 using MediaBrowser.Model.Tasks;
 using MediaBrowser.Providers.Lyric;
 using MediaBrowser.Providers.Manager;
+using MediaBrowser.Providers.Plugins.ListenBrainz;
+using MediaBrowser.Providers.Plugins.ListenBrainz.Api;
 using MediaBrowser.Providers.Plugins.Tmdb;
 using MediaBrowser.Providers.Plugins.Tmdb.Movies;
 using MediaBrowser.Providers.Plugins.Tmdb.TV;
@@ -489,6 +491,9 @@ namespace Emby.Server.Implementations
             serviceCollection.AddSingleton<TmdbClientManager>();
             serviceCollection.AddSingleton<TmdbMovieSimilarProvider>();
             serviceCollection.AddSingleton<TmdbSeriesSimilarProvider>();
+
+            serviceCollection.AddSingleton<ListenBrainzLabsClient>();
+            serviceCollection.AddSingleton<ListenBrainzSimilarArtistProvider>();
 
             serviceCollection.AddSingleton(NetManager);
 
