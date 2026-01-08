@@ -25,7 +25,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV;
 /// </summary>
 public class TmdbSeriesSimilarProvider : ISimilarItemsProvider<Series>
 {
-    private const int CacheDurationInDays = 2;
+    private const int CacheDurationInDays = 14;
 
     private readonly ILibraryManager _libraryManager;
     private readonly IApplicationPaths _appPaths;
@@ -157,7 +157,10 @@ public class TmdbSeriesSimilarProvider : ISimilarItemsProvider<Series>
             var similar = await _tmdbClientManager.GetSeriesSimilarAsync(tmdbId, limit, TmdbUtils.GetImageLanguagesParam(string.Empty), cancellationToken).ConfigureAwait(false);
             var similarIds = similar.Select(s => s.Id).ToList();
 
-            await SaveCacheAsync(cachePath, similarIds, cancellationToken).ConfigureAwait(false);
+            if (similarIds.Count > 0)
+            {
+                await SaveCacheAsync(cachePath, similarIds, cancellationToken).ConfigureAwait(false);
+            }
 
             return similarIds;
         }
