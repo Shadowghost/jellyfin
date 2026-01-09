@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
@@ -15,6 +16,7 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Configuration;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
+using MediaBrowser.Model.Querying;
 using MediaBrowser.Providers.Plugins.ListenBrainz.Api;
 using Microsoft.Extensions.Logging;
 
@@ -70,116 +72,152 @@ public class ListenBrainzSimilarArtistProvider : ISimilarItemsProvider<MusicArti
         ArgumentNullException.ThrowIfNull(query);
 
         // Extract MusicBrainz Artist ID
-        if (!item.TryGetProviderId(MetadataProvider.MusicBrainzArtist, out var mbidStr)
-            || !Guid.TryParse(mbidStr, out var mbid))
+        if (!item.TryGetProviderId(MetadataProvider.MusicBrainzArtist, out var mbidStr) || !Guid.TryParse(mbidStr, out var mbid))
         {
             _logger.LogDebug("No MusicBrainz Artist ID found for {ArtistName}", item.Name);
             return [];
         }
 
-        var requestedLimit = query.Limit ?? 50;
-        var similarMbids = GetSimilarMbidsAsync(mbid, CancellationToken.None)
+        var requestedLimit = query.Limit ?? 10;
+
+        return GetSimilarItemsWithLibraryCheckAsync(mbid, requestedLimit, query, CancellationToken.None)
             .ConfigureAwait(false)
             .GetAwaiter()
             .GetResult();
+    }
 
-        if (similarMbids.Count == 0)
-        {
-            return [];
-        }
-
+    private async Task<List<BaseItem>> GetSimilarItemsWithLibraryCheckAsync(
+        Guid artistMbid,
+        int requestedLimit,
+        SimilarItemsQuery query,
+        CancellationToken cancellationToken)
+    {
+        var cachePath = GetCachePath(artistMbid);
         var results = new List<BaseItem>();
         var seenIds = new HashSet<Guid>(query.ExcludeItemIds);
         var providerName = MetadataProvider.MusicBrainzArtist.ToString();
 
-        foreach (var similarMbid in similarMbids)
+        // Try to use cache first
+        var cachedMbids = await TryReadCacheAsync(cachePath, cancellationToken).ConfigureAwait(false);
+        if (cachedMbids is not null)
+        {
+            var libraryItems = FindItemsInLibrary(cachedMbids, providerName, query);
+            foreach (var similarMbid in cachedMbids)
+            {
+                if (results.Count >= requestedLimit)
+                {
+                    break;
+                }
+
+                if (libraryItems.TryGetValue(similarMbid, out var foundItem) && seenIds.Add(foundItem.Id))
+                {
+                    results.Add(foundItem);
+                }
+            }
+
+            return results;
+        }
+
+        // No valid cache - fetch from ListenBrainz API
+        var allFetchedMbids = new List<Guid>();
+        try
+        {
+            var similarMbids = await _labsClient.GetSimilarArtistsAsync(artistMbid, cancellationToken).ConfigureAwait(false);
+            allFetchedMbids.AddRange(similarMbids);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Failed to fetch similar artists from ListenBrainz for {ArtistMbid}", artistMbid);
+            return results;
+        }
+
+        var fetchedLibraryItems = FindItemsInLibrary(allFetchedMbids, providerName, query);
+        foreach (var similarMbid in allFetchedMbids)
         {
             if (results.Count >= requestedLimit)
             {
                 break;
             }
 
-            var mbQuery = new InternalItemsQuery(query.User)
+            if (fetchedLibraryItems.TryGetValue(similarMbid, out var foundItem) && seenIds.Add(foundItem.Id))
             {
-                IncludeItemTypes = [BaseItemKind.MusicArtist],
-                HasAnyProviderId = new Dictionary<string, string>
-                {
-                    { providerName, similarMbid.ToString() }
-                },
-                Limit = 1,
-                DtoOptions = query.DtoOptions ?? new DtoOptions()
-            };
-
-            var items = _libraryManager.GetItemList(mbQuery);
-            foreach (var foundItem in items)
-            {
-                if (seenIds.Add(foundItem.Id))
-                {
-                    results.Add(foundItem);
-                    if (results.Count >= requestedLimit)
-                    {
-                        break;
-                    }
-                }
+                results.Add(foundItem);
             }
         }
 
-        _logger.LogDebug("Found {Count} similar artists in library for {ArtistName}", results.Count, item.Name);
+        if (allFetchedMbids.Count > 0)
+        {
+            await SaveCacheAsync(cachePath, allFetchedMbids, cancellationToken).ConfigureAwait(false);
+        }
 
         return results;
     }
 
-    private async Task<IReadOnlyList<Guid>> GetSimilarMbidsAsync(Guid artistMbid, CancellationToken cancellationToken)
+    private Dictionary<Guid, BaseItem> FindItemsInLibrary(IReadOnlyList<Guid> mbids, string providerName, SimilarItemsQuery query)
     {
-        var cachePath = GetCachePath(artistMbid);
-
-        var fileInfo = _fileSystem.GetFileSystemInfo(cachePath);
-        if (fileInfo.Exists
-            && (DateTime.UtcNow - _fileSystem.GetLastWriteTimeUtc(fileInfo)).TotalDays <= CacheDurationInDays)
+        if (mbids.Count == 0)
         {
-            try
+            return [];
+        }
+
+        // Ensure ProviderIds field is included so we can map results back
+        var dtoOptions = new DtoOptions(false) { Fields = [ItemFields.ProviderIds] };
+
+        var mbQuery = new InternalItemsQuery(query.User)
+        {
+            IncludeItemTypes = [BaseItemKind.MusicArtist],
+            HasAnyProviderIds = new Dictionary<string, string[]>
             {
-                var stream = File.OpenRead(cachePath);
-                await using (stream.ConfigureAwait(false))
-                {
-                    var cached = await JsonSerializer.DeserializeAsync<ListenBrainzSimilarCache>(
-                        stream, _jsonOptions, cancellationToken).ConfigureAwait(false);
-                    if (cached?.SimilarMbids is not null)
-                    {
-                        _logger.LogDebug("Using cached similar artists for {ArtistMbid}", artistMbid);
-                        return cached.SimilarMbids;
-                    }
-                }
-            }
-            catch (IOException ex)
+                { providerName, mbids.Select(id => id.ToString()).ToArray() }
+            },
+            DtoOptions = dtoOptions
+        };
+
+        var items = _libraryManager.GetItemList(mbQuery);
+        var result = new Dictionary<Guid, BaseItem>(items.Count);
+        foreach (var item in items)
+        {
+            if (item.TryGetProviderId(MetadataProvider.MusicBrainzArtist, out var itemMbidStr)
+                && Guid.TryParse(itemMbidStr, out var itemMbid))
             {
-                _logger.LogWarning(ex, "Failed to read ListenBrainz similar cache for {ArtistMbid}", artistMbid);
+                result.TryAdd(itemMbid, item);
             }
-            catch (JsonException ex)
-            {
-                _logger.LogWarning(ex, "Failed to parse ListenBrainz similar cache for {ArtistMbid}", artistMbid);
-            }
+        }
+
+        return result;
+    }
+
+    private async Task<List<Guid>?> TryReadCacheAsync(string cachePath, CancellationToken cancellationToken)
+    {
+        var fileInfo = _fileSystem.GetFileSystemInfo(cachePath);
+        if (!fileInfo.Exists || (DateTime.UtcNow - _fileSystem.GetLastWriteTimeUtc(fileInfo)).TotalDays > CacheDurationInDays)
+        {
+            return null;
         }
 
         try
         {
-            var similarMbids = await _labsClient.GetSimilarArtistsAsync(artistMbid, cancellationToken)
-                .ConfigureAwait(false);
-
-            var mbidList = new List<Guid>(similarMbids);
-
-            if (mbidList.Count > 0)
+            var stream = File.OpenRead(cachePath);
+            await using (stream.ConfigureAwait(false))
             {
-                await SaveCacheAsync(cachePath, mbidList, cancellationToken).ConfigureAwait(false);
+                var cached = await JsonSerializer.DeserializeAsync<ListenBrainzSimilarCache>(stream, _jsonOptions, cancellationToken).ConfigureAwait(false);
+                if (cached?.SimilarMbids is not null)
+                {
+                    _logger.LogDebug("Using cached similar artists for {CachePath}", cachePath);
+                    return cached.SimilarMbids;
+                }
             }
-
-            return mbidList;
         }
-        catch (HttpRequestException ex)
+        catch (IOException ex)
         {
-            _logger.LogWarning(ex, "Failed to fetch similar artists from ListenBrainz for {ArtistMbid}", artistMbid);
-            return [];
+            _logger.LogWarning(ex, "Failed to read ListenBrainz similar cache for {CachePath}", cachePath);
         }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse ListenBrainz similar cache for {CachePath}", cachePath);
+        }
+
+        return null;
     }
 
     private async Task SaveCacheAsync(string cachePath, List<Guid> similarMbids, CancellationToken cancellationToken)
