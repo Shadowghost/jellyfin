@@ -506,97 +506,51 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
         }
 
         /// <summary>
-        /// Gets similar movies for a movie from the TMDb API.
+        /// Gets a single page of similar movies for a movie from the TMDb API.
         /// </summary>
         /// <param name="tmdbId">The TMDb id of the movie.</param>
-        /// <param name="limit">The maximum number of similar movies to return.</param>
+        /// <param name="page">The page number to fetch (1-based).</param>
         /// <param name="language">The language for results.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A list of similar movies (at least 100 or all available).</returns>
-        public async Task<IReadOnlyList<SearchMovie>> GetMovieSimilarAsync(int tmdbId, int limit, string? language, CancellationToken cancellationToken)
+        /// <returns>A tuple containing the list of similar movies and the total number of pages available.</returns>
+        public async Task<(IReadOnlyList<SearchMovie> Results, int TotalPages)> GetMovieSimilarPageAsync(int tmdbId, int page, string? language, CancellationToken cancellationToken)
         {
-            var key = $"moviesimilar-{tmdbId.ToString(CultureInfo.InvariantCulture)}-{language}";
-            if (_memoryCache.TryGetValue(key, out List<SearchMovie>? cachedMovies) && cachedMovies is not null)
-            {
-                return cachedMovies;
-            }
-
             await EnsureClientConfigAsync().ConfigureAwait(false);
 
-            var allResults = new List<SearchMovie>();
-            var page = 1;
-            int totalPages;
+            var searchResults = await _tmDbClient
+                .GetMovieSimilarAsync(tmdbId, language, page, cancellationToken)
+                .ConfigureAwait(false);
 
-            do
+            if (searchResults?.Results is null || searchResults.Results.Count == 0)
             {
-                var searchResults = await _tmDbClient
-                    .GetMovieSimilarAsync(tmdbId, language, page, cancellationToken)
-                    .ConfigureAwait(false);
-
-                if (searchResults?.Results is null || searchResults.Results.Count == 0)
-                {
-                    break;
-                }
-
-                allResults.AddRange(searchResults.Results);
-                totalPages = searchResults.TotalPages;
-                page++;
-            }
-            while (allResults.Count < limit && page <= totalPages);
-
-            if (allResults.Count > 0)
-            {
-                _memoryCache.Set(key, allResults, TimeSpan.FromHours(CacheDurationInHours));
+                return ([], 0);
             }
 
-            return allResults;
+            return (searchResults.Results, searchResults.TotalPages);
         }
 
         /// <summary>
-        /// Gets similar TV shows for a series from the TMDb API.
+        /// Gets a single page of similar TV shows for a series from the TMDb API.
         /// </summary>
         /// <param name="tmdbId">The TMDb id of the TV show.</param>
-        /// <param name="limit">The maximum number of similar TV shows to return.</param>
+        /// <param name="page">The page number to fetch (1-based).</param>
         /// <param name="language">The language for results.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A list of similar TV shows (at least 100 or all available).</returns>
-        public async Task<IReadOnlyList<SearchTv>> GetSeriesSimilarAsync(int tmdbId, int limit, string? language, CancellationToken cancellationToken)
+        /// <returns>A tuple containing the list of similar TV shows and the total number of pages available.</returns>
+        public async Task<(IReadOnlyList<SearchTv> Results, int TotalPages)> GetSeriesSimilarPageAsync(int tmdbId, int page, string? language, CancellationToken cancellationToken)
         {
-            var key = $"seriessimilar-{tmdbId.ToString(CultureInfo.InvariantCulture)}-{language}";
-            if (_memoryCache.TryGetValue(key, out List<SearchTv>? cachedSeries) && cachedSeries is not null)
-            {
-                return cachedSeries;
-            }
-
             await EnsureClientConfigAsync().ConfigureAwait(false);
 
-            var allResults = new List<SearchTv>();
-            var page = 1;
-            int totalPages;
+            var searchResults = await _tmDbClient
+                .GetTvShowSimilarAsync(tmdbId, language, page, cancellationToken)
+                .ConfigureAwait(false);
 
-            do
+            if (searchResults?.Results is null || searchResults.Results.Count == 0)
             {
-                var searchResults = await _tmDbClient
-                    .GetTvShowSimilarAsync(tmdbId, language, page, cancellationToken)
-                    .ConfigureAwait(false);
-
-                if (searchResults?.Results is null || searchResults.Results.Count == 0)
-                {
-                    break;
-                }
-
-                allResults.AddRange(searchResults.Results);
-                totalPages = searchResults.TotalPages;
-                page++;
-            }
-            while (allResults.Count < limit && page <= totalPages);
-
-            if (allResults.Count > 0)
-            {
-                _memoryCache.Set(key, allResults, TimeSpan.FromHours(CacheDurationInHours));
+                return ([], 0);
             }
 
-            return allResults;
+            return (searchResults.Results, searchResults.TotalPages);
         }
 
         /// <summary>
