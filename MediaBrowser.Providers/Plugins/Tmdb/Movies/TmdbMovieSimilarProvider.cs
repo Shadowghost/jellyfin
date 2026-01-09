@@ -15,6 +15,7 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Configuration;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
+using MediaBrowser.Model.Querying;
 using Microsoft.Extensions.Logging;
 using Movie = MediaBrowser.Controller.Entities.Movies.Movie;
 
@@ -66,108 +67,160 @@ public class TmdbMovieSimilarProvider : ISimilarItemsProvider<Movie>
     /// <inheritdoc/>
     public IReadOnlyList<BaseItem> GetSimilarItems(Movie item, SimilarItemsQuery query)
     {
-        if (!item.TryGetProviderId(MetadataProvider.Tmdb, out var tmdbIdStr)
-            || !int.TryParse(tmdbIdStr, CultureInfo.InvariantCulture, out var tmdbId))
+        ArgumentNullException.ThrowIfNull(query);
+
+        if (!item.TryGetProviderId(MetadataProvider.Tmdb, out var tmdbIdStr) || !int.TryParse(tmdbIdStr, CultureInfo.InvariantCulture, out var tmdbId))
         {
             return [];
         }
 
-        var requestedLimit = query.Limit ?? 50;
-        var similarTmdbIds = GetSimilarTmdbIdsAsync(tmdbId, requestedLimit, CancellationToken.None)
+        var requestedLimit = query.Limit ?? 10;
+
+        return GetSimilarItemsWithLibraryCheckAsync(tmdbId, requestedLimit, query, CancellationToken.None)
             .ConfigureAwait(false)
             .GetAwaiter()
             .GetResult();
+    }
 
-        if (similarTmdbIds.Count == 0)
-        {
-            return [];
-        }
-
+    private async Task<List<BaseItem>> GetSimilarItemsWithLibraryCheckAsync(
+        int tmdbId,
+        int requestedLimit,
+        SimilarItemsQuery query,
+        CancellationToken cancellationToken)
+    {
+        var cachePath = GetCachePath(tmdbId);
         var results = new List<BaseItem>();
         var seenIds = new HashSet<Guid>(query.ExcludeItemIds);
         var providerName = MetadataProvider.Tmdb.ToString();
+        var allFetchedTmdbIds = new List<int>();
 
-        foreach (var similarId in similarTmdbIds)
+        // Try to use cache first
+        var cachedIds = await TryReadCacheAsync(cachePath, cancellationToken).ConfigureAwait(false);
+        if (cachedIds is not null)
         {
-            if (results.Count >= requestedLimit)
+            var libraryItems = FindItemsInLibrary(cachedIds, providerName, query);
+            foreach (var similarId in cachedIds)
+            {
+                if (results.Count >= requestedLimit)
+                {
+                    break;
+                }
+
+                if (libraryItems.TryGetValue(similarId, out var foundItem) && seenIds.Add(foundItem.Id))
+                {
+                    results.Add(foundItem);
+                }
+            }
+
+            return results;
+        }
+
+        // No valid cache - fetch from TMDB page by page until we have enough library matches
+        var page = 1;
+        var totalPages = int.MaxValue;
+
+        while (results.Count < requestedLimit && page <= totalPages)
+        {
+            var (pageResults, fetchedTotalPages) = await _tmdbClientManager
+                .GetMovieSimilarPageAsync(tmdbId, page, TmdbUtils.GetImageLanguagesParam(string.Empty), cancellationToken)
+                .ConfigureAwait(false);
+
+            if (pageResults.Count == 0)
             {
                 break;
             }
 
-            var tmdbQuery = new InternalItemsQuery(query.User)
-            {
-                IncludeItemTypes = [BaseItemKind.Movie],
-                HasAnyProviderId = new Dictionary<string, string>
-                {
-                    { providerName, similarId.ToString(CultureInfo.InvariantCulture) }
-                },
-                Limit = 1,
-                DtoOptions = query.DtoOptions ?? new DtoOptions()
-            };
+            totalPages = fetchedTotalPages;
+            var pageIds = pageResults.Select(s => s.Id).ToList();
+            allFetchedTmdbIds.AddRange(pageIds);
 
-            var items = _libraryManager.GetItemList(tmdbQuery);
-            foreach (var foundItem in items)
+            var libraryItems = FindItemsInLibrary(pageIds, providerName, query);
+
+            foreach (var similar in pageResults)
             {
-                if (seenIds.Add(foundItem.Id))
+                if (results.Count >= requestedLimit)
+                {
+                    break;
+                }
+
+                if (libraryItems.TryGetValue(similar.Id, out var foundItem) && seenIds.Add(foundItem.Id))
                 {
                     results.Add(foundItem);
-                    if (results.Count >= requestedLimit)
-                    {
-                        break;
-                    }
                 }
             }
+
+            page++;
+        }
+
+        if (allFetchedTmdbIds.Count > 0)
+        {
+            await SaveCacheAsync(cachePath, allFetchedTmdbIds, cancellationToken).ConfigureAwait(false);
         }
 
         return results;
     }
 
-    private async Task<IReadOnlyList<int>> GetSimilarTmdbIdsAsync(int tmdbId, int limit, CancellationToken cancellationToken)
+    private Dictionary<int, BaseItem> FindItemsInLibrary(IReadOnlyList<int> tmdbIds, string providerName, SimilarItemsQuery query)
     {
-        var cachePath = GetCachePath(tmdbId);
-
-        var fileInfo = _fileSystem.GetFileSystemInfo(cachePath);
-        if (fileInfo.Exists
-            && (DateTime.UtcNow - _fileSystem.GetLastWriteTimeUtc(fileInfo)).TotalDays <= CacheDurationInDays)
+        if (tmdbIds.Count == 0)
         {
-            try
+            return [];
+        }
+
+        // Ensure ProviderIds field is included so we can map results back
+        var dtoOptions = new DtoOptions(false) { Fields = [ItemFields.ProviderIds] };
+
+        var tmdbQuery = new InternalItemsQuery(query.User)
+        {
+            IncludeItemTypes = [BaseItemKind.Movie],
+            HasAnyProviderIds = new Dictionary<string, string[]>
             {
-                var stream = File.OpenRead(cachePath);
-                await using (stream.ConfigureAwait(false))
-                {
-                    var cached = await JsonSerializer.DeserializeAsync<TmdbSimilarCache>(stream, _jsonOptions, cancellationToken).ConfigureAwait(false);
-                    if (cached?.SimilarIds is not null)
-                    {
-                        return cached.SimilarIds;
-                    }
-                }
-            }
-            catch (IOException ex)
+                { providerName, tmdbIds.Select(id => id.ToString(CultureInfo.InvariantCulture)).ToArray() }
+            },
+            DtoOptions = dtoOptions
+        };
+
+        var items = _libraryManager.GetItemList(tmdbQuery);
+        var result = new Dictionary<int, BaseItem>(items.Count);
+        foreach (var item in items)
+        {
+            if (item.TryGetProviderId(MetadataProvider.Tmdb, out var itemTmdbIdStr)
+                && int.TryParse(itemTmdbIdStr, CultureInfo.InvariantCulture, out var itemTmdbId))
             {
-                _logger.LogWarning(ex, "Failed to read TMDb movie similar cache for {TmdbId}", tmdbId);
+                result.TryAdd(itemTmdbId, item);
             }
-            catch (JsonException ex)
-            {
-                _logger.LogWarning(ex, "Failed to read TMDb movie similar cache for {TmdbId}", tmdbId);
-            }
+        }
+
+        return result;
+    }
+
+    private async Task<List<int>?> TryReadCacheAsync(string cachePath, CancellationToken cancellationToken)
+    {
+        var fileInfo = _fileSystem.GetFileSystemInfo(cachePath);
+        if (!fileInfo.Exists
+            || (DateTime.UtcNow - _fileSystem.GetLastWriteTimeUtc(fileInfo)).TotalDays > CacheDurationInDays)
+        {
+            return null;
         }
 
         try
         {
-            var similar = await _tmdbClientManager.GetMovieSimilarAsync(tmdbId, limit, TmdbUtils.GetImageLanguagesParam(string.Empty), cancellationToken).ConfigureAwait(false);
-            var similarIds = similar.Select(s => s.Id).ToList();
-
-            if (similarIds.Count > 0)
+            var stream = File.OpenRead(cachePath);
+            await using (stream.ConfigureAwait(false))
             {
-                await SaveCacheAsync(cachePath, similarIds, cancellationToken).ConfigureAwait(false);
+                var cached = await JsonSerializer.DeserializeAsync<TmdbSimilarCache>(stream, _jsonOptions, cancellationToken).ConfigureAwait(false);
+                return cached?.SimilarIds;
             }
-
-            return similarIds;
         }
         catch (IOException ex)
         {
-            _logger.LogWarning(ex, "Failed to fetch TMDb similar movies for {TmdbId}", tmdbId);
-            return [];
+            _logger.LogWarning(ex, "Failed to read TMDb movie similar cache for {CachePath}", cachePath);
+            return null;
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Failed to read TMDb movie similar cache for {CachePath}", cachePath);
+            return null;
         }
     }
 
