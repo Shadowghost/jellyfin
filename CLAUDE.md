@@ -44,6 +44,15 @@ dotnet format                                   # Format code according to .edit
 dotnet build /p:Configuration=Debug             # Enables all analyzers (AnalysisMode=AllEnabledByDefault)
 ```
 
+### Deploying to Local Instance
+```bash
+# Build and publish
+dotnet publish Jellyfin.Server --configuration Debug --output="./out" --self-contained --runtime linux-amd64
+
+# Deploy and restart service
+rm -r /usr/lib/jellyfin/bin && mv /opt/src/jellyfin/out /usr/lib/jellyfin/bin && chown jellyfin:jellyfin /usr/lib/jellyfin/bin -R && systemctl restart jellyfin
+```
+
 ## Architecture Overview
 
 ### Project Structure

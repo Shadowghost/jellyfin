@@ -350,33 +350,28 @@ namespace MediaBrowser.Providers.Manager
                 }
             }
 
-            var groupedByProviderName = providerLookup
+            var allProviderIds = providerLookup
                 .GroupBy(kvp => kvp.Key.ProviderName)
-                .ToList();
+                .ToDictionary(g => g.Key, g => g.Select(x => x.Key.ProviderId).ToArray());
 
-            foreach (var providerGroup in groupedByProviderName)
+            var query = new InternalItemsQuery(user)
             {
-                var providerName = providerGroup.Key;
-                var providerIds = providerGroup.Select(x => x.Key.ProviderId).ToArray();
+                HasAnyProviderIds = allProviderIds,
+                IncludeItemTypes = [itemKind],
+                DtoOptions = dtoOptions
+            };
 
-                var query = new InternalItemsQuery(user)
+            var items = _libraryManager.GetItemList(query);
+
+            foreach (var item in items)
+            {
+                if (excludeIds.Contains(item.Id) || resolvedById.ContainsKey(item.Id))
                 {
-                    HasAnyProviderIds = new Dictionary<string, string[]>
-                    {
-                        { providerName, providerIds }
-                    },
-                    IncludeItemTypes = [itemKind],
-                    DtoOptions = dtoOptions
-                };
+                    continue;
+                }
 
-                var items = _libraryManager.GetItemList(query);
-                foreach (var item in items)
+                foreach (var providerName in allProviderIds.Keys)
                 {
-                    if (excludeIds.Contains(item.Id) || resolvedById.ContainsKey(item.Id))
-                    {
-                        continue;
-                    }
-
                     if (item.TryGetProviderId(providerName, out var itemProviderId) && providerLookup.TryGetValue((providerName, itemProviderId), out var matchInfo))
                     {
                         var score = CalculateScore(matchInfo.Score, providerOrder, matchInfo.Position);
@@ -385,6 +380,8 @@ namespace MediaBrowser.Providers.Manager
                             excludeIds.Add(item.Id);
                             resolvedById[item.Id] = (item, score);
                         }
+
+                        break;
                     }
                 }
             }

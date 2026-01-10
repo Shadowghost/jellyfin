@@ -77,6 +77,10 @@ public sealed class BaseItemRepository
     private static readonly IReadOnlyList<ItemValueType> _getGenreValueTypes = [ItemValueType.Genre];
     private static readonly IReadOnlyList<char> SearchWildcardTerms = ['%', '_', '[', ']', '^'];
 
+    private static readonly string ImdbProviderName = MetadataProvider.Imdb.ToString().ToLowerInvariant();
+    private static readonly string TmdbProviderName = MetadataProvider.Tmdb.ToString().ToLowerInvariant();
+    private static readonly string TvdbProviderName = MetadataProvider.Tvdb.ToString().ToLowerInvariant();
+
     /// <summary>
     /// Initializes a new instance of the <see cref="BaseItemRepository"/> class.
     /// </summary>
@@ -2398,56 +2402,38 @@ public sealed class BaseItemRepository
 
         if (filter.ExcludeProviderIds is not null && filter.ExcludeProviderIds.Count > 0)
         {
-            var exclude = filter.ExcludeProviderIds.Select(e => $"{e.Key}:{e.Value}").ToArray();
-            baseQuery = baseQuery.Where(e => e.Provider!.Select(f => f.ProviderId + ":" + f.ProviderValue)!.All(f => !exclude.Contains(f)));
+            baseQuery = baseQuery.WhereExcludeProviderIds(filter.ExcludeProviderIds);
         }
 
         if (filter.HasAnyProviderId is not null && filter.HasAnyProviderId.Count > 0)
         {
-            // Allow setting a null or empty value to get all items that have the specified provider set.
-            var includeAny = filter.HasAnyProviderId.Where(e => string.IsNullOrEmpty(e.Value)).Select(e => e.Key).ToArray();
-            if (includeAny.Length > 0)
-            {
-                baseQuery = baseQuery.Where(e => e.Provider!.Any(f => includeAny.Contains(f.ProviderId)));
-            }
-
-            var includeSelected = filter.HasAnyProviderId.Where(e => !string.IsNullOrEmpty(e.Value)).Select(e => $"{e.Key}:{e.Value}").ToArray();
-            if (includeSelected.Length > 0)
-            {
-                baseQuery = baseQuery.Where(e => e.Provider!.Select(f => f.ProviderId + ":" + f.ProviderValue)!.Any(f => includeSelected.Contains(f)));
-            }
+            baseQuery = baseQuery.WhereHasAnyProviderId(filter.HasAnyProviderId);
         }
 
         if (filter.HasAnyProviderIds is not null && filter.HasAnyProviderIds.Count > 0)
         {
-            var includeAny = filter.HasAnyProviderIds
-                .SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}:{v}"))
-                .ToArray();
-            if (includeAny.Length > 0)
-            {
-                baseQuery = baseQuery.Where(e => e.Provider!.Select(f => f.ProviderId + ":" + f.ProviderValue)!.Any(f => includeAny.Contains(f)));
-            }
+            baseQuery = baseQuery.WhereHasAnyProviderIds(filter.HasAnyProviderIds);
         }
 
         if (filter.HasImdbId.HasValue)
         {
             baseQuery = filter.HasImdbId.Value
-                ? baseQuery.Where(e => e.Provider!.Any(f => f.ProviderId.ToLower() == MetadataProvider.Imdb.ToString().ToLower()))
-                : baseQuery.Where(e => e.Provider!.All(f => f.ProviderId.ToLower() != MetadataProvider.Imdb.ToString().ToLower()));
+                ? baseQuery.Where(e => e.Provider!.Any(f => f.ProviderId.ToLower() == ImdbProviderName))
+                : baseQuery.Where(e => e.Provider!.All(f => f.ProviderId.ToLower() != ImdbProviderName));
         }
 
         if (filter.HasTmdbId.HasValue)
         {
             baseQuery = filter.HasTmdbId.Value
-                ? baseQuery.Where(e => e.Provider!.Any(f => f.ProviderId.ToLower() == MetadataProvider.Tmdb.ToString().ToLower()))
-                : baseQuery.Where(e => e.Provider!.All(f => f.ProviderId.ToLower() != MetadataProvider.Tmdb.ToString().ToLower()));
+                ? baseQuery.Where(e => e.Provider!.Any(f => f.ProviderId.ToLower() == TmdbProviderName))
+                : baseQuery.Where(e => e.Provider!.All(f => f.ProviderId.ToLower() != TmdbProviderName));
         }
 
         if (filter.HasTvdbId.HasValue)
         {
             baseQuery = filter.HasTvdbId.Value
-                ? baseQuery.Where(e => e.Provider!.Any(f => f.ProviderId.ToLower() == MetadataProvider.Tvdb.ToString().ToLower()))
-                : baseQuery.Where(e => e.Provider!.All(f => f.ProviderId.ToLower() != MetadataProvider.Tvdb.ToString().ToLower()));
+                ? baseQuery.Where(e => e.Provider!.Any(f => f.ProviderId.ToLower() == TvdbProviderName))
+                : baseQuery.Where(e => e.Provider!.All(f => f.ProviderId.ToLower() != TvdbProviderName));
         }
 
         var queryTopParentIds = filter.TopParentIds;
@@ -2468,7 +2454,8 @@ public sealed class BaseItemRepository
 
         if (filter.AncestorIds.Length > 0)
         {
-            baseQuery = baseQuery.Where(e => e.Parents!.Any(f => filter.AncestorIds.Contains(f.ParentItemId)));
+            var ancestorFilter = filter.AncestorIds.OneOrManyExpressionBuilder<AncestorId, Guid>(f => f.ParentItemId);
+            baseQuery = baseQuery.Where(e => e.Parents!.AsQueryable().Any(ancestorFilter));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.AncestorWithPresentationUniqueKey))
@@ -2487,8 +2474,10 @@ public sealed class BaseItemRepository
         {
             var excludedTags = filter.ExcludeInheritedTags;
             baseQuery = baseQuery.Where(e =>
-                !e.ItemValues!.Any(f => f.ItemValue.Type == ItemValueType.Tags && excludedTags.Contains(f.ItemValue.CleanValue))
-                && (!e.SeriesId.HasValue || !context.ItemValuesMap.Any(f => f.ItemId == e.SeriesId.Value && f.ItemValue.Type == ItemValueType.Tags && excludedTags.Contains(f.ItemValue.CleanValue))));
+                !context.ItemValuesMap.Any(f =>
+                    f.ItemValue.Type == ItemValueType.Tags
+                    && excludedTags.Contains(f.ItemValue.CleanValue)
+                    && (f.ItemId == e.Id || (e.SeriesId.HasValue && f.ItemId == e.SeriesId.Value))));
         }
 
         if (filter.IncludeInheritedTags.Length > 0)
@@ -2496,10 +2485,10 @@ public sealed class BaseItemRepository
             var includeTags = filter.IncludeInheritedTags;
             var isPlaylistOnlyQuery = includeTypes.Length == 1 && includeTypes.FirstOrDefault() == BaseItemKind.Playlist;
             baseQuery = baseQuery.Where(e =>
-                e.ItemValues!.Any(f => f.ItemValue.Type == ItemValueType.Tags && includeTags.Contains(f.ItemValue.CleanValue))
-
-                // For seasons and episodes, we also need to check the parent series' tags.
-                || (e.SeriesId.HasValue && context.ItemValuesMap.Any(f => f.ItemId == e.SeriesId.Value && f.ItemValue.Type == ItemValueType.Tags && includeTags.Contains(f.ItemValue.CleanValue)))
+                context.ItemValuesMap.Any(f =>
+                    f.ItemValue.Type == ItemValueType.Tags
+                    && includeTags.Contains(f.ItemValue.CleanValue)
+                    && (f.ItemId == e.Id || (e.SeriesId.HasValue && f.ItemId == e.SeriesId.Value)))
 
                 // A playlist should be accessible to its owner regardless of allowed tags
                 || (isPlaylistOnlyQuery && e.Data!.Contains($"OwnerUserId\":\"{filter.User!.Id:N}\"")));
