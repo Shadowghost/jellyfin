@@ -1334,14 +1334,15 @@ namespace MediaBrowser.Controller.Entities
                 return false;
             }
 
-            if (GetParents().Any(i => !i.IsVisible(user, true)))
+            var parents = GetParents().ToList();
+            if (parents.Any(i => !i.IsVisible(user, true)))
             {
                 return false;
             }
 
             if (checkFolders)
             {
-                var topParent = GetParents().LastOrDefault() ?? this;
+                var topParent = parents.Count > 0 ? parents[^1] : this;
 
                 if (string.IsNullOrEmpty(topParent.Path))
                 {

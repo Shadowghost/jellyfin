@@ -540,15 +540,24 @@ public class TrickplayManager : ITrickplayManager
         var dbContext = await _dbProvider.CreateDbContextAsync().ConfigureAwait(false);
         await using (dbContext.ConfigureAwait(false))
         {
-            var oldInfo = await dbContext.TrickplayInfos.FindAsync(info.ItemId, info.Width).ConfigureAwait(false);
-            if (oldInfo is not null)
+            // Try to update existing record first using ExecuteUpdateAsync
+            var updated = await dbContext.TrickplayInfos
+                .Where(t => t.ItemId.Equals(info.ItemId) && t.Width == info.Width)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(t => t.Height, info.Height)
+                    .SetProperty(t => t.TileWidth, info.TileWidth)
+                    .SetProperty(t => t.TileHeight, info.TileHeight)
+                    .SetProperty(t => t.ThumbnailCount, info.ThumbnailCount)
+                    .SetProperty(t => t.Interval, info.Interval)
+                    .SetProperty(t => t.Bandwidth, info.Bandwidth))
+                .ConfigureAwait(false);
+
+            // If no existing record, insert new one
+            if (updated == 0)
             {
-                dbContext.TrickplayInfos.Remove(oldInfo);
+                dbContext.Add(info);
+                await dbContext.SaveChangesAsync().ConfigureAwait(false);
             }
-
-            dbContext.Add(info);
-
-            await dbContext.SaveChangesAsync().ConfigureAwait(false);
         }
     }
 

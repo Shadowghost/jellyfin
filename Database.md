@@ -4,7 +4,7 @@ This document describes the database setup, architecture, and access patterns us
 
 ## Overview
 
-Jellyfin uses **SQLite** as its primary database, managed through **Entity Framework Core** with a factory-based DbContext pattern. The architecture is designed to be extensible, allowing for future database provider plugins while maintaining clean separation of concerns.
+Jellyfin uses **SQLite** as its primary database, managed through **Entity Framework Core 10** (on .NET 10) with a factory-based DbContext pattern. The architecture is designed to be extensible, allowing for future database provider plugins while maintaining clean separation of concerns.
 
 **Database Location**: `{DataPath}/jellyfin.db`
 
@@ -320,6 +320,154 @@ public sealed class BaseItemRepository : IItemRepository
 3. Contexts are disposed after the operation completes
 4. The pool reuses context objects for better performance
 
+## Query Helper Extensions
+
+Located in: `src/Jellyfin.Database/Jellyfin.Database.Implementations/JellyfinQueryHelperExtensions.cs`
+
+Jellyfin provides optimized query helper methods for common filtering patterns.
+
+### WhereOneOrMany
+
+Builds optimized queries for checking one property against a list of values:
+
+```csharp
+// For 1 value: generates direct equality comparison
+// For 2-3 values: generates IN(const, const, const)
+// For 4+ values: generates parameterized IN clause via EF.Parameter()
+baseQuery.WhereOneOrMany(filter.TopParentIds, e => e.TopParentId!.Value);
+```
+
+### WhereReferencedItem / WhereReferencedItemMultipleTypes
+
+Cross-table lookups for genres, artists, studios, etc.:
+
+```csharp
+// Single type lookup
+baseQuery.WhereReferencedItem(context, ItemValueType.Genre, filter.GenreIds.ToArray());
+
+// Multi-type lookup (e.g., Artist + AlbumArtist)
+baseQuery.WhereReferencedItemMultipleTypes(context,
+    [ItemValueType.Artist, ItemValueType.AlbumArtist],
+    filter.ArtistIds);
+```
+
+### Provider ID Helpers
+
+Optimized methods for filtering by external provider IDs (IMDB, TMDB, TVDB, etc.):
+
+```csharp
+// Filter by multiple providers with multiple values each
+baseQuery.WhereHasAnyProviderIds(filter.HasAnyProviderIds);
+
+// Filter by provider with optional value (empty = existence check)
+baseQuery.WhereHasAnyProviderId(filter.HasAnyProviderId);
+
+// Exclude items by provider IDs
+baseQuery.WhereExcludeProviderIds(filter.ExcludeProviderIds);
+
+// Check for specific provider existence
+baseQuery.WhereHasProvider("Imdb", hasProvider: true);
+```
+
+## EF Core Query Translation Guidelines
+
+When writing LINQ queries for EF Core, certain patterns cannot be translated to SQL and will cause runtime exceptions.
+
+### Patterns That Work ✅
+
+**Simple Contains on primitive collections:**
+```csharp
+var ids = new List<Guid> { id1, id2, id3 };
+baseQuery.Where(e => ids.Contains(e.Id));
+```
+
+**String concatenation with Contains:**
+```csharp
+var providerKeys = new List<string> { "Imdb:tt1234567", "Tmdb:12345" };
+baseQuery.Where(e => e.Provider!
+    .Select(p => p.ProviderId + ":" + p.ProviderValue)
+    .Any(key => providerKeys.Contains(key)));
+```
+
+**Nested Any with single property comparison:**
+```csharp
+var providerNames = new List<string> { "Imdb", "Tmdb" };
+baseQuery.Where(e => e.Provider!.Any(p => providerNames.Contains(p.ProviderId)));
+```
+
+### Patterns That DON'T Work ❌
+
+**Tuple/anonymous type comparisons in nested Any:**
+```csharp
+// ❌ EF Core CANNOT translate this!
+var tuples = new List<(string Name, string Value)> { ("Imdb", "tt1234567") };
+baseQuery.Where(e => e.Provider!.Any(p =>
+    tuples.Any(t => t.Name == p.ProviderId && t.Value == p.ProviderValue)));
+// Error: The LINQ expression could not be translated
+```
+
+**Complex object comparisons:**
+```csharp
+// ❌ EF Core CANNOT translate this!
+var filters = new List<MyFilter> { new("A", "B") };
+baseQuery.Where(e => filters.Any(f => f.Name == e.Name && f.Value == e.Value));
+```
+
+### Solution Patterns
+
+**Use string keys instead of tuples:**
+```csharp
+// ✅ Convert tuples to "Key:Value" strings
+var providerKeys = providerIds
+    .SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}:{v}"))
+    .ToList();
+
+baseQuery.Where(e => e.Provider!
+    .Select(p => p.ProviderId + ":" + p.ProviderValue)
+    .Any(key => providerKeys.Contains(key)));
+```
+
+**Use expression builders for complex filters:**
+```csharp
+// ✅ Build expressions dynamically
+var filter = ids.OneOrManyExpressionBuilder<BaseItemEntity, Guid>(e => e.Id);
+baseQuery.Where(filter);
+```
+
+### Performance Considerations
+
+1. **Avoid N+1 queries**: Use `Include()` for related data or batch lookups
+2. **Use `AsNoTracking()`**: For read-only queries to skip change tracking
+3. **Use `AsSingleQuery()`**: When including multiple collections to avoid cartesian explosion
+4. **Pre-compute collections**: Move `ToList()` outside of query expressions
+5. **Use `GroupBy` for aggregations**: Single grouped query vs multiple COUNT queries
+
+**Example - Bad (7 separate COUNT queries):**
+```csharp
+// ❌ Each Count() is a separate database query!
+itemCount = new ItemCounts()
+{
+    SeriesCount = query.Count(f => f.Type == "Series"),
+    MovieCount = query.Count(f => f.Type == "Movie"),
+    // ... 5 more
+};
+```
+
+**Example - Good (single GroupBy query):**
+```csharp
+// ✅ Single query with in-memory aggregation
+var countsByType = query
+    .GroupBy(f => f.Type)
+    .Select(g => new { Type = g.Key, Count = g.Count() })
+    .ToDictionary(x => x.Type, x => x.Count);
+
+itemCount = new ItemCounts()
+{
+    SeriesCount = countsByType.GetValueOrDefault("Series"),
+    MovieCount = countsByType.GetValueOrDefault("Movie"),
+};
+```
+
 ## Migrations
 
 Jellyfin uses two types of migrations:
@@ -509,9 +657,11 @@ This design allows third-party plugins to register alternative database provider
 ├── src/Jellyfin.Database/
 │   ├── Jellyfin.Database.Implementations/
 │   │   ├── JellyfinDbContext.cs              # Main DbContext
+│   │   ├── JellyfinQueryHelperExtensions.cs  # Query optimization helpers
 │   │   ├── Entities/                          # 30+ entity classes
 │   │   │   ├── User.cs
 │   │   │   ├── BaseItemEntity.cs
+│   │   │   ├── BaseItemProvider.cs           # Provider ID storage
 │   │   │   ├── UserData.cs
 │   │   │   ├── MediaStreamInfo.cs
 │   │   │   └── ...
@@ -562,7 +712,7 @@ This design allows third-party plugins to register alternative database provider
 | Aspect | Technology/Pattern | Location |
 |--------|-------------------|----------|
 | **Database** | SQLite | `{DataPath}/jellyfin.db` |
-| **ORM** | Entity Framework Core 8+ | Microsoft.EntityFrameworkCore |
+| **ORM** | Entity Framework Core 10 (.NET 10) | Microsoft.EntityFrameworkCore |
 | **Connection** | Pooled DbContextFactory | `ServiceCollectionExtensions.AddJellyfinDbContext()` |
 | **Configuration** | JSON-based options | Stored in `database.json` |
 | **Locking** | Configurable (NoLock/Optimistic/Pessimistic) | `IEntityFrameworkCoreLockingBehavior` |
@@ -570,7 +720,8 @@ This design allows third-party plugins to register alternative database provider
 | **Backup** | SQLite file copy | `IJellyfinDatabaseProvider.MigrationBackupFast()` |
 | **Model Mapping** | Configuration classes | `IEntityTypeConfiguration<T>` pattern |
 | **Data Access** | Direct LINQ-to-Entities | Via DbContext factory |
+| **Query Helpers** | Optimized LINQ extensions | `JellyfinQueryHelperExtensions.cs` |
 | **Concurrency** | Row version tokens | `IHasConcurrencyToken` interface |
 | **Extensibility** | Plugin-based providers | `IJellyfinDatabaseProvider` interface |
 
-This architecture provides a clean, type-safe, and extensible database layer with excellent performance through connection pooling, flexible concurrency strategies, and support for future database provider plugins.
+This architecture provides a clean, type-safe, and extensible database layer with excellent performance through connection pooling, flexible concurrency strategies, optimized query helpers, and support for future database provider plugins.
