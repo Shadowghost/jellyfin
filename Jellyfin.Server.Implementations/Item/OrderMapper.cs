@@ -57,10 +57,18 @@ public static class OrderMapper
             (ItemSortBy.SeriesDatePlayed, not null) => e =>
                             jellyfinDbContext.BaseItems
                                 .Where(w => w.SeriesPresentationUniqueKey == e.PresentationUniqueKey)
-                                .Join(jellyfinDbContext.UserData.Where(w => w.UserId == query.User.Id && w.Played), f => f.Id, f => f.ItemId, (item, userData) => userData.LastPlayedDate)
+                                .LeftJoin(
+                                    jellyfinDbContext.UserData.Where(w => w.UserId == query.User.Id && w.Played),
+                                    item => item.Id,
+                                    userData => userData.ItemId,
+                                    (item, userData) => userData == null ? (DateTime?)null : userData.LastPlayedDate)
                                 .Max(f => f),
             (ItemSortBy.SeriesDatePlayed, null) => e => jellyfinDbContext.BaseItems.Where(w => w.SeriesPresentationUniqueKey == e.PresentationUniqueKey)
-                                .Join(jellyfinDbContext.UserData.Where(w => w.Played), f => f.Id, f => f.ItemId, (item, userData) => userData.LastPlayedDate)
+                                .LeftJoin(
+                                    jellyfinDbContext.UserData.Where(w => w.Played),
+                                    item => item.Id,
+                                    userData => userData.ItemId,
+                                    (item, userData) => userData == null ? (DateTime?)null : userData.LastPlayedDate)
                                 .Max(f => f),
             // ItemSortBy.SeriesDatePlayed => e => jellyfinDbContext.UserData
             //     .Where(u => u.Item!.SeriesPresentationUniqueKey == e.PresentationUniqueKey && u.Played)

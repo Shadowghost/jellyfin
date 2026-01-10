@@ -1308,12 +1308,8 @@ public sealed class BaseItemRepository
             }
         }
 
-        IQueryable<BaseItemEntity>? itemCountQuery = null;
-
         if (filter.IncludeItemTypes.Length > 0)
         {
-            // if we are to include more then one type, sub query those items beforehand.
-
             var typeSubQuery = new InternalItemsQuery(filter.User)
             {
                 ExcludeItemTypes = filter.ExcludeItemTypes,
@@ -1327,7 +1323,7 @@ public sealed class BaseItemRepository
                 IsPlayed = filter.IsPlayed
             };
 
-            itemCountQuery = TranslateQuery(context.BaseItems.AsNoTracking().Where(e => e.Id != EF.Constant(PlaceholderId)), context, typeSubQuery)
+            var itemCountQuery = TranslateQuery(context.BaseItems.AsNoTracking().Where(e => e.Id != EF.Constant(PlaceholderId)), context, typeSubQuery)
                 .Where(e => e.ItemValues!.Any(f => itemValueTypes!.Contains(f.ItemValue.Type)));
 
             var seriesTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.Series];
@@ -1338,31 +1334,37 @@ public sealed class BaseItemRepository
             var audioTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.Audio];
             var trailerTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.Trailer];
 
-            var resultQuery = query.Select(e => new
-            {
-                item = e,
-                // TODO: This is bad refactor!
-                itemCount = new ItemCounts()
-                {
-                    SeriesCount = itemCountQuery!.Count(f => f.Type == seriesTypeName),
-                    EpisodeCount = itemCountQuery!.Count(f => f.Type == episodeTypeName),
-                    MovieCount = itemCountQuery!.Count(f => f.Type == movieTypeName),
-                    AlbumCount = itemCountQuery!.Count(f => f.Type == musicAlbumTypeName),
-                    ArtistCount = itemCountQuery!.Count(f => f.Type == musicArtistTypeName),
-                    SongCount = itemCountQuery!.Count(f => f.Type == audioTypeName),
-                    TrailerCount = itemCountQuery!.Count(f => f.Type == trailerTypeName),
-                }
-            });
+            var countsByCleanName = itemCountQuery
+                .SelectMany(e => e.ItemValues!
+                    .Where(v => itemValueTypes.Contains(v.ItemValue.Type))
+                    .Select(v => new { CleanName = v.ItemValue.CleanValue, e.Type }))
+                .GroupBy(x => new { x.CleanName, x.Type })
+                .Select(g => new { g.Key.CleanName, g.Key.Type, Count = g.Count() })
+                .GroupBy(x => x.CleanName)
+                .ToDictionary(
+                    g => g.Key,
+                    g => new ItemCounts
+                    {
+                        SeriesCount = g.Where(x => x.Type == seriesTypeName).Sum(x => x.Count),
+                        EpisodeCount = g.Where(x => x.Type == episodeTypeName).Sum(x => x.Count),
+                        MovieCount = g.Where(x => x.Type == movieTypeName).Sum(x => x.Count),
+                        AlbumCount = g.Where(x => x.Type == musicAlbumTypeName).Sum(x => x.Count),
+                        ArtistCount = g.Where(x => x.Type == musicArtistTypeName).Sum(x => x.Count),
+                        SongCount = g.Where(x => x.Type == audioTypeName).Sum(x => x.Count),
+                        TrailerCount = g.Where(x => x.Type == trailerTypeName).Sum(x => x.Count),
+                    });
 
             result.StartIndex = filter.StartIndex ?? 0;
             result.Items =
             [
-                .. resultQuery
+                .. query
                     .AsEnumerable()
                     .Where(e => e is not null)
                     .Select(e =>
                     {
-                        return (DeserializeBaseItem(e.item, filter.SkipDeserialization), e.itemCount);
+                        var item = DeserializeBaseItem(e, filter.SkipDeserialization);
+                        countsByCleanName.TryGetValue(e.CleanName ?? string.Empty, out var itemCount);
+                        return (item, itemCount);
                     })
             ];
         }
@@ -1741,15 +1743,16 @@ public sealed class BaseItemRepository
         if (!string.IsNullOrEmpty(filter.SearchTerm))
         {
             var cleanedSearchTerm = GetCleanValue(filter.SearchTerm);
-            var originalSearchTerm = filter.SearchTerm.ToLower();
+            var originalSearchTerm = filter.SearchTerm;
             if (SearchWildcardTerms.Any(f => cleanedSearchTerm.Contains(f)))
             {
                 cleanedSearchTerm = $"%{cleanedSearchTerm.Trim('%')}%";
-                baseQuery = baseQuery.Where(e => EF.Functions.Like(e.CleanName!, cleanedSearchTerm) || (e.OriginalTitle != null && EF.Functions.Like(e.OriginalTitle.ToLower(), originalSearchTerm)));
+                var likeSearchTerm = $"%{originalSearchTerm.Trim('%')}%";
+                baseQuery = baseQuery.Where(e => EF.Functions.Like(e.CleanName!, cleanedSearchTerm) || (e.OriginalTitle != null && EF.Functions.Like(e.OriginalTitle, likeSearchTerm)));
             }
             else
             {
-                baseQuery = baseQuery.Where(e => e.CleanName!.Contains(cleanedSearchTerm) || (e.OriginalTitle != null && e.OriginalTitle.ToLower().Contains(originalSearchTerm)));
+                baseQuery = baseQuery.Where(e => e.CleanName!.Contains(cleanedSearchTerm) || (e.OriginalTitle != null && e.OriginalTitle.Contains(originalSearchTerm, StringComparison.OrdinalIgnoreCase)));
             }
         }
 
@@ -1985,14 +1988,13 @@ public sealed class BaseItemRepository
             {
                 baseQuery = baseQuery.Where(e =>
                                     e.CleanName!.Contains(nameContains)
-                                    || e.OriginalTitle!.ToLower().Contains(nameContains!));
+                                    || e.OriginalTitle!.Contains(nameContains!, StringComparison.OrdinalIgnoreCase));
             }
         }
 
         if (!string.IsNullOrWhiteSpace(filter.NameStartsWith))
         {
-            var startsWithLower = filter.NameStartsWith.ToLowerInvariant();
-            baseQuery = baseQuery.Where(e => e.SortName!.StartsWith(startsWithLower));
+            baseQuery = baseQuery.Where(e => e.SortName!.StartsWith(filter.NameStartsWith, StringComparison.OrdinalIgnoreCase));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.NameStartsWithOrGreater))
