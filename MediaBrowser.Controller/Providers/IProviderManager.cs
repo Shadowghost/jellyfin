@@ -130,14 +130,16 @@ namespace MediaBrowser.Controller.Providers
         /// <param name="dtoOptions">The DTO options.</param>
         /// <param name="limit">Maximum number of results.</param>
         /// <param name="libraryOptions">The library options for provider configuration.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>The list of similar items.</returns>
-        IReadOnlyList<BaseItem> GetSimilarItems(
+        Task<IReadOnlyList<BaseItem>> GetSimilarItemsAsync(
             BaseItem item,
             IReadOnlyList<Guid> excludeArtistIds,
             Jellyfin.Database.Implementations.Entities.User user,
             Dto.DtoOptions dtoOptions,
             int? limit,
-            LibraryOptions libraryOptions);
+            LibraryOptions libraryOptions,
+            CancellationToken cancellationToken);
 
         /// <summary>
         /// Gets the available remote images.

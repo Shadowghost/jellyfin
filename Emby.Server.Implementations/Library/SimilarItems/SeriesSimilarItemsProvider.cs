@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Enums;
 using MediaBrowser.Controller.Dto;
@@ -12,7 +14,7 @@ namespace Emby.Server.Implementations.Library.SimilarItems;
 /// <summary>
 /// Provides similar items for TV series.
 /// </summary>
-public class SeriesSimilarItemsProvider : ISimilarItemsProvider<Series>
+public class SeriesSimilarItemsProvider : ILocalSimilarItemsProvider<Series>
 {
     private readonly ILibraryManager _libraryManager;
 
@@ -32,7 +34,7 @@ public class SeriesSimilarItemsProvider : ISimilarItemsProvider<Series>
     public MetadataPluginType Type => MetadataPluginType.LocalSimilarityProvider;
 
     /// <inheritdoc/>
-    public IReadOnlyList<BaseItem> GetSimilarItems(Series item, SimilarItemsQuery query)
+    public Task<IReadOnlyList<BaseItem>> GetSimilarItemsAsync(Series item, SimilarItemsQuery query, CancellationToken cancellationToken)
     {
         var internalQuery = new InternalItemsQuery(query.User)
         {
@@ -47,6 +49,6 @@ public class SeriesSimilarItemsProvider : ISimilarItemsProvider<Series>
             OrderBy = [(ItemSortBy.Random, SortOrder.Ascending)]
         };
 
-        return _libraryManager.GetItemList(internalQuery);
+        return Task.FromResult(_libraryManager.GetItemList(internalQuery));
     }
 }

@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Enums;
 using MediaBrowser.Controller.Dto;
@@ -12,7 +14,7 @@ namespace Emby.Server.Implementations.Library.SimilarItems;
 /// <summary>
 /// Provides similar items for music albums.
 /// </summary>
-public class MusicAlbumSimilarItemsProvider : ISimilarItemsProvider<MusicAlbum>
+public class MusicAlbumSimilarItemsProvider : ILocalSimilarItemsProvider<MusicAlbum>
 {
     private readonly ILibraryManager _libraryManager;
 
@@ -32,7 +34,7 @@ public class MusicAlbumSimilarItemsProvider : ISimilarItemsProvider<MusicAlbum>
     public MetadataPluginType Type => MetadataPluginType.LocalSimilarityProvider;
 
     /// <inheritdoc/>
-    public IReadOnlyList<BaseItem> GetSimilarItems(MusicAlbum item, SimilarItemsQuery query)
+    public Task<IReadOnlyList<BaseItem>> GetSimilarItemsAsync(MusicAlbum item, SimilarItemsQuery query, CancellationToken cancellationToken)
     {
         var internalQuery = new InternalItemsQuery(query.User)
         {
@@ -48,6 +50,6 @@ public class MusicAlbumSimilarItemsProvider : ISimilarItemsProvider<MusicAlbum>
             OrderBy = [(ItemSortBy.Random, SortOrder.Ascending)]
         };
 
-        return _libraryManager.GetItemList(internalQuery);
+        return Task.FromResult(_libraryManager.GetItemList(internalQuery));
     }
 }
