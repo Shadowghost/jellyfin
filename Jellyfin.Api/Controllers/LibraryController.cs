@@ -723,6 +723,7 @@ public class LibraryController : BaseJellyfinApiController
     /// <param name="userId">Optional. Filter by user id, and attach user data.</param>
     /// <param name="limit">Optional. The maximum number of records to return.</param>
     /// <param name="fields">Optional. Specify additional fields of information to return in the output. This allows multiple, comma delimited. Options: Budget, Chapters, DateCreated, Genres, HomePageUrl, IndexOptions, MediaStreams, Overview, ParentId, Path, People, ProviderIds, PrimaryImageAspectRatio, Revenue, SortName, Studios, Taglines, TrailerUrls.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
     /// <response code="200">Similar items returned.</response>
     /// <returns>A <see cref="QueryResult{BaseItemDto}"/> containing the similar items.</returns>
     [HttpGet("Artists/{itemId}/Similar", Name = "GetSimilarArtists")]
@@ -733,12 +734,13 @@ public class LibraryController : BaseJellyfinApiController
     [HttpGet("Trailers/{itemId}/Similar", Name = "GetSimilarTrailers")]
     [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public ActionResult<QueryResult<BaseItemDto>> GetSimilarItems(
+    public async Task<ActionResult<QueryResult<BaseItemDto>>> GetSimilarItems(
         [FromRoute, Required] Guid itemId,
         [FromQuery, ModelBinder(typeof(CommaDelimitedCollectionModelBinder))] Guid[] excludeArtistIds,
         [FromQuery] Guid? userId,
         [FromQuery] int? limit,
-        [FromQuery, ModelBinder(typeof(CommaDelimitedCollectionModelBinder))] ItemFields[] fields)
+        [FromQuery, ModelBinder(typeof(CommaDelimitedCollectionModelBinder))] ItemFields[] fields,
+        CancellationToken cancellationToken)
     {
         userId = RequestHelpers.GetUserId(User, userId);
         var user = userId.IsNullOrEmpty()
@@ -764,13 +766,14 @@ public class LibraryController : BaseJellyfinApiController
         // Get library options for provider configuration
         var libraryOptions = _libraryManager.GetLibraryOptions(item);
 
-        var itemsResult = _providerManager.GetSimilarItems(
+        var itemsResult = await _providerManager.GetSimilarItemsAsync(
             item,
             excludeArtistIds,
             user,
             dtoOptions,
             limit,
-            libraryOptions);
+            libraryOptions,
+            cancellationToken).ConfigureAwait(false);
 
         var returnList = _dtoService.GetBaseItemDtos(itemsResult, dtoOptions, user);
 

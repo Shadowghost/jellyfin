@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Enums;
 using MediaBrowser.Controller.Dto;
@@ -12,7 +14,7 @@ namespace Emby.Server.Implementations.Library.SimilarItems;
 /// <summary>
 /// Provides similar items for audio tracks.
 /// </summary>
-public class AudioSimilarItemsProvider : ISimilarItemsProvider<Audio>
+public class AudioSimilarItemsProvider : ILocalSimilarItemsProvider<Audio>
 {
     private readonly ILibraryManager _libraryManager;
 
@@ -32,7 +34,7 @@ public class AudioSimilarItemsProvider : ISimilarItemsProvider<Audio>
     public MetadataPluginType Type => MetadataPluginType.LocalSimilarityProvider;
 
     /// <inheritdoc/>
-    public IReadOnlyList<BaseItem> GetSimilarItems(Audio item, SimilarItemsQuery query)
+    public Task<IReadOnlyList<BaseItem>> GetSimilarItemsAsync(Audio item, SimilarItemsQuery query, CancellationToken cancellationToken)
     {
         var internalQuery = new InternalItemsQuery(query.User)
         {
@@ -48,6 +50,6 @@ public class AudioSimilarItemsProvider : ISimilarItemsProvider<Audio>
             OrderBy = [(ItemSortBy.Random, SortOrder.Ascending)]
         };
 
-        return _libraryManager.GetItemList(internalQuery);
+        return Task.FromResult(_libraryManager.GetItemList(internalQuery));
     }
 }
