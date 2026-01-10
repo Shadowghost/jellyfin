@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Enums;
 using MediaBrowser.Controller.Configuration;
@@ -13,7 +15,7 @@ namespace Emby.Server.Implementations.Library.SimilarItems;
 /// <summary>
 /// Provides similar items for movies and trailers.
 /// </summary>
-public class MovieSimilarItemsProvider : ISimilarItemsProvider<Movie>, ISimilarItemsProvider<Trailer>
+public class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie>, ILocalSimilarItemsProvider<Trailer>
 {
     private readonly ILibraryManager _libraryManager;
     private readonly IServerConfigurationManager _serverConfigurationManager;
@@ -38,15 +40,15 @@ public class MovieSimilarItemsProvider : ISimilarItemsProvider<Movie>, ISimilarI
     public MetadataPluginType Type => MetadataPluginType.LocalSimilarityProvider;
 
     /// <inheritdoc/>
-    public IReadOnlyList<BaseItem> GetSimilarItems(Movie item, SimilarItemsQuery query)
+    public Task<IReadOnlyList<BaseItem>> GetSimilarItemsAsync(Movie item, SimilarItemsQuery query, CancellationToken cancellationToken)
     {
-        return GetSimilarMovieItems(item, query);
+        return Task.FromResult(GetSimilarMovieItems(item, query));
     }
 
     /// <inheritdoc/>
-    public IReadOnlyList<BaseItem> GetSimilarItems(Trailer item, SimilarItemsQuery query)
+    public Task<IReadOnlyList<BaseItem>> GetSimilarItemsAsync(Trailer item, SimilarItemsQuery query, CancellationToken cancellationToken)
     {
-        return GetSimilarMovieItems(item, query);
+        return Task.FromResult(GetSimilarMovieItems(item, query));
     }
 
     private IReadOnlyList<BaseItem> GetSimilarMovieItems(BaseItem item, SimilarItemsQuery query)

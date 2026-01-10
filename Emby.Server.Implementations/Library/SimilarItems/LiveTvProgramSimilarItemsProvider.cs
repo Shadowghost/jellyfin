@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Enums;
 using MediaBrowser.Controller.Configuration;
@@ -13,7 +15,7 @@ namespace Emby.Server.Implementations.Library.SimilarItems;
 /// <summary>
 /// Provides similar items for Live TV programs.
 /// </summary>
-public class LiveTvProgramSimilarItemsProvider : ISimilarItemsProvider<LiveTvProgram>
+public class LiveTvProgramSimilarItemsProvider : ILocalSimilarItemsProvider<LiveTvProgram>
 {
     private readonly ILibraryManager _libraryManager;
     private readonly IServerConfigurationManager _serverConfigurationManager;
@@ -38,7 +40,7 @@ public class LiveTvProgramSimilarItemsProvider : ISimilarItemsProvider<LiveTvPro
     public MetadataPluginType Type => MetadataPluginType.LocalSimilarityProvider;
 
     /// <inheritdoc/>
-    public IReadOnlyList<BaseItem> GetSimilarItems(LiveTvProgram item, SimilarItemsQuery query)
+    public Task<IReadOnlyList<BaseItem>> GetSimilarItemsAsync(LiveTvProgram item, SimilarItemsQuery query, CancellationToken cancellationToken)
     {
         BaseItemKind[] includeItemTypes;
         bool enableGroupByMetadataKey;
@@ -87,6 +89,6 @@ public class LiveTvProgramSimilarItemsProvider : ISimilarItemsProvider<LiveTvPro
             OrderBy = [(ItemSortBy.Random, SortOrder.Ascending)]
         };
 
-        return _libraryManager.GetItemList(internalQuery);
+        return Task.FromResult(_libraryManager.GetItemList(internalQuery));
     }
 }
