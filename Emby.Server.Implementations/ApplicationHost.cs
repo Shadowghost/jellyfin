@@ -25,6 +25,7 @@ using Emby.Server.Implementations.Dto;
 using Emby.Server.Implementations.HttpServer.Security;
 using Emby.Server.Implementations.IO;
 using Emby.Server.Implementations.Library;
+using Emby.Server.Implementations.Library.Search;
 using Emby.Server.Implementations.Library.SimilarItems;
 using Emby.Server.Implementations.Localization;
 using Emby.Server.Implementations.Playlists;
@@ -541,6 +542,8 @@ namespace Emby.Server.Implementations
 
             serviceCollection.AddSingleton<ILibraryMonitor, LibraryMonitor>();
 
+            serviceCollection.AddSingleton<ISearchManager, SearchManager>();
+            serviceCollection.AddSingleton<ISearchProvider, SqlSearchProvider>();
             serviceCollection.AddSingleton<ISimilarItemsManager, SimilarItemsManager>();
 
             serviceCollection.AddSingleton<IWebSocketManager, WebSocketManager>();
@@ -697,6 +700,8 @@ namespace Emby.Server.Implementations
                 GetExports<IExternalUrlProvider>());
 
             Resolve<IMediaSourceManager>().AddParts(GetExports<IMediaSourceProvider>());
+
+            Resolve<ISearchManager>().AddParts(GetExports<ISearchProvider>());
 
             Resolve<ISimilarItemsManager>().AddParts(GetExports<ISimilarItemsProvider>());
         }
