@@ -44,6 +44,15 @@ dotnet format                                   # Format code according to .edit
 dotnet build /p:Configuration=Debug             # Enables all analyzers (AnalysisMode=AllEnabledByDefault)
 ```
 
+### Deploying to Local Instance
+```bash
+# Build and publish
+dotnet publish Jellyfin.Server --configuration Debug --output="./out" --self-contained --runtime linux-amd64
+
+# Deploy and restart service
+rm -r /usr/lib/jellyfin/bin && mv /opt/src/jellyfin/out /usr/lib/jellyfin/bin && chown jellyfin:jellyfin /usr/lib/jellyfin/bin -R && systemctl restart jellyfin
+```
+
 ## Architecture Overview
 
 ### Project Structure
@@ -107,6 +116,32 @@ All components use constructor injection. Services are registered in `Jellyfin.S
 - Dynamic HLS streaming via `DynamicHlsController`
 - Media source selection through `IMediaSourceManager`
 
+**Search Providers:**
+- `ISearchManager` orchestrates search across registered `ISearchProvider` implementations
+- Providers return ranked results with relevance scores; manager merges and deduplicates
+- Built-in `SqlSearchProvider` queries the database as fallback (priority 100)
+- Plugins (e.g., Meilisearch) can register higher-priority providers for better relevance
+- Flow: `ItemsController`/`SearchController` → `ISearchManager` → `ISearchProvider[]` → scored results
+- Key files:
+  - `MediaBrowser.Controller/Library/ISearchProvider.cs` - Provider interface
+  - `MediaBrowser.Controller/Library/ISearchManager.cs` - Manager interface
+  - `Emby.Server.Implementations/Library/Search/SearchManager.cs` - Orchestration
+  - `Emby.Server.Implementations/Library/Search/SqlSearchProvider.cs` - Database fallback
+- Relevance scoring considers both `Name`/`CleanName` and `OriginalTitle` for foreign content
+
+**Similar Items Providers:**
+- `IProviderManager` orchestrates similar items lookup via `ISimilarItemsProvider` implementations
+- Two provider types:
+  - `ILocalSimilarItemsProvider<T>` - Returns items from local library (e.g., genre/tag matching)
+  - `IRemoteSimilarItemsProvider<T>` - Returns references from external APIs (e.g., TMDb recommendations)
+- Remote providers return lightweight `SimilarItemReference` with ProviderIds; manager resolves to library items
+- Built-in providers: `TmdbMovieSimilarProvider`, `TmdbSeriesSimilarProvider`
+- Key files:
+  - `MediaBrowser.Controller/Library/ISimilarItemsProvider.cs` - Base interface
+  - `MediaBrowser.Controller/Library/ILocalSimilarItemsProvider.cs` - Local provider interface
+  - `MediaBrowser.Controller/Library/IRemoteSimilarItemsProvider.cs` - Remote provider interface
+  - `MediaBrowser.Providers/Plugins/Tmdb/Movies/TmdbMovieSimilarProvider.cs` - TMDb implementation
+
 ## Important Files & Directories
 
 ### Entry Point & Configuration
@@ -144,7 +179,9 @@ Define contracts for all major subsystems:
   - `IUserDataManager.cs` - User playback state and favorites
   - `IUserManager.cs` - User authentication and management
   - `IMediaSourceManager.cs` - Media source selection and transcoding decisions
-  - `ISearchEngine.cs` - Search across all media types
+  - `ISearchManager.cs` - Orchestrates search across providers
+  - `ISearchProvider.cs` - Interface for pluggable search backends
+  - `ISimilarItemsProvider.cs` - Interface for similar items recommendations
 - **`Entities/`** - Base entity classes and media type definitions
   - `BaseItem.cs` - Root class for all media items (movies, episodes, songs, photos, etc.)
   - `Audio/` - Music-specific entities (MusicAlbum, MusicArtist, Audio)
@@ -165,7 +202,8 @@ Define contracts for all major subsystems:
   - `LibraryManager.cs` - Main library manager (item resolution, metadata updates, library scanning)
   - `UserDataManager.cs` - Tracks play state, favorites, ratings
   - `MediaSourceManager.cs` - Selects appropriate media sources for playback
-  - `SearchEngine.cs` - Full-text search implementation
+  - `Search/SearchManager.cs` - Orchestrates search across providers
+  - `Search/SqlSearchProvider.cs` - Database-based search fallback
   - `Resolvers/` - File-to-entity resolvers (identifies movies, TV shows, music from files)
   - `Validators/` - Post-scan validators (people, music genres, etc.)
 - **`ScheduledTasks/`** - Background task execution
@@ -312,6 +350,29 @@ When working with data:
 2. Retrieve by ID: `ILibraryManager.GetItemById()`
 3. Update metadata: modify item, then `ILibraryManager.UpdateItemAsync()`
 4. Type-check using `BaseItemKind` enum, not `is` patterns where possible
+
+### Adding a Search Provider
+1. Implement `ISearchProvider` interface in your plugin or `Emby.Server.Implementations/Library/Search/`
+2. Required members:
+   - `Name` - Display name for the provider
+   - `Type` - Return `MetadataPluginType.SearchProvider`
+   - `Priority` - Lower values execute first (SqlSearchProvider uses 100)
+   - `CanSearch(query)` - Return true if provider can handle this query type
+   - `SearchAsync(query, cancellationToken)` - Return `IReadOnlyList<SearchResult>` with item IDs and scores
+3. Register via DI; `ISearchManager.AddParts()` discovers providers at startup
+4. Scoring: Return float scores (higher = more relevant); 100 = exact match, 80 = prefix, 50 = contains
+
+### Adding a Similar Items Provider
+1. Choose provider type based on data source:
+   - `ILocalSimilarItemsProvider<TItemType>` - For library-based similarity (returns `BaseItem` directly)
+   - `IRemoteSimilarItemsProvider<TItemType>` - For external API similarity (returns `SimilarItemReference`)
+2. Implement in `MediaBrowser.Providers/` or your plugin
+3. Required members:
+   - `Name` - Display name
+   - `Type` - Return `MetadataPluginType.SimilarProvider`
+   - `GetSimilarItemsAsync(item, query, cancellationToken)` - Return similar items/references
+4. For remote providers: Return `SimilarItemProviderResponse` with `SimilarItemReference` containing ProviderIds
+5. Provider auto-discovered via DI and registered with `IProviderManager`
 
 ## Testing Guidelines
 

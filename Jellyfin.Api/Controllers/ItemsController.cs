@@ -580,7 +580,7 @@ public class ItemsController : BaseJellyfinApiController
                     orderedItems = orderedItems.Take(limit.Value).ToArray();
                 }
 
-                var dtos = _dtoService.GetBaseItemDtos(orderedItems, dtoOptions, user, skipVisibilityCheck: true);
+                var dtos = _dtoService.GetBaseItemDtos(orderedItems, dtoOptions, user);
 
                 return new QueryResult<BaseItemDto>(
                     startIndex,
