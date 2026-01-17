@@ -153,24 +153,42 @@ namespace Emby.Server.Implementations.Dto
         private ILiveTvManager LivetvManager => _livetvManagerFactory.Value;
 
         /// <inheritdoc />
-        public IReadOnlyList<BaseItemDto> GetBaseItemDtos(IReadOnlyList<BaseItem> items, DtoOptions options, User? user = null, BaseItem? owner = null)
+        public IReadOnlyList<BaseItemDto> GetBaseItemDtos(IReadOnlyList<BaseItem> items, DtoOptions options, User? user = null, BaseItem? owner = null, bool skipVisibilityCheck = false)
         {
-            var accessibleItems = user is null ? items : items.Where(x => x.IsVisible(user)).ToList();
+            var accessibleItems = skipVisibilityCheck || user is null ? items : items.Where(x => x.IsVisible(user)).ToList();
             var returnItems = new BaseItemDto[accessibleItems.Count];
             List<(BaseItem, BaseItemDto)>? programTuples = null;
             List<(BaseItemDto, LiveTvChannel)>? channelTuples = null;
 
-            // Batch-fetch user data for all items to avoid N+1 queries
+            // Batch-fetch user data for all items
             Dictionary<Guid, UserItemData>? userDataBatch = null;
             if (user is not null && options.EnableUserData)
             {
                 userDataBatch = _userDataRepository.GetUserDataBatch(accessibleItems, user);
             }
 
+            // Pre-compute collection folders once to avoid N+1 queries in CanDelete
+            List<Folder>? allCollectionFolders = null;
+            if (user is not null && options.ContainsField(ItemFields.CanDelete))
+            {
+                allCollectionFolders = _libraryManager.GetUserRootFolder().Children.OfType<Folder>().ToList();
+            }
+
+            // Batch-fetch child counts for all folders to avoid N+1 queries
+            Dictionary<Guid, int>? childCountBatch = null;
+            if (options.ContainsField(ItemFields.ChildCount))
+            {
+                var folderIds = accessibleItems.OfType<Folder>().Select(f => f.Id).ToList();
+                if (folderIds.Count > 0)
+                {
+                    childCountBatch = _libraryManager.GetChildCountBatch(folderIds, user?.Id);
+                }
+            }
+
             for (int index = 0; index < accessibleItems.Count; index++)
             {
                 var item = accessibleItems[index];
-                var dto = GetBaseItemDtoInternal(item, options, user, owner, userDataBatch?.GetValueOrDefault(item.Id));
+                var dto = GetBaseItemDtoInternal(item, options, user, owner, userDataBatch?.GetValueOrDefault(item.Id), allCollectionFolders, childCountBatch);
 
                 if (item is LiveTvChannel tvChannel)
                 {
@@ -222,7 +240,7 @@ namespace Emby.Server.Implementations.Dto
             return dto;
         }
 
-        private BaseItemDto GetBaseItemDtoInternal(BaseItem item, DtoOptions options, User? user = null, BaseItem? owner = null, UserItemData? userData = null)
+        private BaseItemDto GetBaseItemDtoInternal(BaseItem item, DtoOptions options, User? user = null, BaseItem? owner = null, UserItemData? userData = null, List<Folder>? allCollectionFolders = null, Dictionary<Guid, int>? childCountBatch = null)
         {
             var dto = new BaseItemDto
             {
@@ -259,7 +277,7 @@ namespace Emby.Server.Implementations.Dto
 
             if (user is not null)
             {
-                AttachUserSpecificInfo(dto, item, user, options, userData);
+                AttachUserSpecificInfo(dto, item, user, options, userData, childCountBatch);
             }
 
             if (item is IHasMediaSources
@@ -281,7 +299,9 @@ namespace Emby.Server.Implementations.Dto
             {
                 dto.CanDelete = user is null
                     ? item.CanDelete()
-                    : item.CanDelete(user);
+                    : allCollectionFolders is not null
+                        ? item.CanDelete(user, allCollectionFolders)
+                        : item.CanDelete(user);
             }
 
             if (options.ContainsField(ItemFields.CanDownload))
@@ -465,7 +485,7 @@ namespace Emby.Server.Implementations.Dto
         /// <summary>
         /// Attaches the user specific info.
         /// </summary>
-        private void AttachUserSpecificInfo(BaseItemDto dto, BaseItem item, User user, DtoOptions options, UserItemData? userData = null)
+        private void AttachUserSpecificInfo(BaseItemDto dto, BaseItem item, User user, DtoOptions options, UserItemData? userData = null, Dictionary<Guid, int>? childCountBatch = null)
         {
             if (item.IsFolder)
             {
@@ -502,7 +522,7 @@ namespace Emby.Server.Implementations.Dto
 
                     if (options.ContainsField(ItemFields.ChildCount))
                     {
-                        dto.ChildCount ??= GetChildCount(folder, user);
+                        dto.ChildCount ??= GetChildCount(folder, user, childCountBatch);
                     }
                 }
 
@@ -558,7 +578,7 @@ namespace Emby.Server.Implementations.Dto
             };
         }
 
-        private static int GetChildCount(Folder folder, User user)
+        private static int GetChildCount(Folder folder, User user, Dictionary<Guid, int>? childCountBatch)
         {
             // Right now this is too slow to calculate for top level folders on a per-user basis
             // Just return something so that apps that are expecting a value won't think the folders are empty
@@ -567,6 +587,13 @@ namespace Emby.Server.Implementations.Dto
                 return Random.Shared.Next(1, 10);
             }
 
+            // Use pre-fetched batch data if available
+            if (childCountBatch is not null && childCountBatch.TryGetValue(folder.Id, out var count))
+            {
+                return count;
+            }
+
+            // Fall back to individual query for special cases (Series, Season, etc.)
             return folder.GetChildCount(user);
         }
 

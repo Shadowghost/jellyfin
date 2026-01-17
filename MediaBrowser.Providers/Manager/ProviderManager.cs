@@ -1,20 +1,17 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Mime;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AsyncKeyedLock;
 using Jellyfin.Data.Enums;
 using Jellyfin.Data.Events;
 using Jellyfin.Extensions;
-using Jellyfin.Extensions.Json;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.BaseItemManager;
@@ -74,6 +71,13 @@ namespace MediaBrowser.Providers.Manager
             o.PoolInitialFill = 1;
         });
 
+        /// <summary>
+        /// Cache for ordered metadata providers per library/item type combination.
+        /// Key: (LibraryPath, ItemTypeName, IncludeDisabled, ForceEnableInternetMetadata).
+        /// Value: Array of ordered metadata providers (before per-item filtering).
+        /// </summary>
+        private readonly ConcurrentDictionary<MetadataProviderCacheKey, IMetadataProvider[]> _metadataProviderCache = new();
+
         private IImageProvider[] _imageProviders = [];
         private IMetadataService[] _metadataServices = [];
         private IMetadataProvider[] _metadataProviders = [];
@@ -127,6 +131,8 @@ namespace MediaBrowser.Providers.Manager
             _memoryCache = memoryCache;
             _mediaSegmentManager = mediaSegmentManager;
             _similarItemsManager = similarItemsManager;
+
+            CollectionFolder.LibraryOptionsUpdated += OnLibraryOptionsUpdated;
         }
 
         /// <inheritdoc/>
@@ -435,8 +441,9 @@ namespace MediaBrowser.Providers.Manager
             where T : BaseItem
         {
             var globalMetadataOptions = GetMetadataOptions(item);
+            var libraryPath = GetLibraryPathForItem(item);
 
-            return GetMetadataProvidersInternal<T>(item, libraryOptions, globalMetadataOptions, false, false);
+            return GetMetadataProvidersInternal<T>(item, libraryOptions, globalMetadataOptions, false, false, libraryPath);
         }
 
         /// <inheritdoc />
@@ -444,8 +451,20 @@ namespace MediaBrowser.Providers.Manager
             where T : BaseItem
         {
             var globalMetadataOptions = GetMetadataOptions(item);
+            var libraryPath = GetLibraryPathForItem(item);
 
-            return GetMetadataProvidersInternal<T>(item, libraryOptions, globalMetadataOptions, includeDisabled, false);
+            return GetMetadataProvidersInternal<T>(item, libraryOptions, globalMetadataOptions, includeDisabled, false, libraryPath);
+        }
+
+        private static string GetLibraryPathForItem(BaseItem item)
+        {
+            if (item is CollectionFolder collectionFolder)
+            {
+                return collectionFolder.Path ?? string.Empty;
+            }
+
+            var topParent = item.GetTopParent();
+            return topParent?.Path ?? string.Empty;
         }
 
         /// <inheritdoc />
@@ -454,15 +473,37 @@ namespace MediaBrowser.Providers.Manager
             return _savers.Where(i => IsSaverEnabledForItem(i, item, libraryOptions, ItemUpdateType.MetadataEdit, false));
         }
 
-        private IEnumerable<IMetadataProvider<T>> GetMetadataProvidersInternal<T>(BaseItem item, LibraryOptions libraryOptions, MetadataOptions globalMetadataOptions, bool includeDisabled, bool forceEnableInternetMetadata)
+        private IEnumerable<IMetadataProvider<T>> GetMetadataProvidersInternal<T>(BaseItem item, LibraryOptions libraryOptions, MetadataOptions globalMetadataOptions, bool includeDisabled, bool forceEnableInternetMetadata, string libraryPath)
             where T : BaseItem
         {
-            var localMetadataReaderOrder = libraryOptions.LocalMetadataReaderOrder ?? globalMetadataOptions.LocalMetadataReaderOrder;
             var typeOptions = libraryOptions.GetTypeOptions(item.GetType().Name);
+
+            var orderedProviders = GetOrCreateOrderedProviders<T>(item.GetType().Name, libraryOptions, globalMetadataOptions, includeDisabled, forceEnableInternetMetadata, libraryPath);
+
+            return orderedProviders.Where(i => CanRefreshMetadata(i, item, typeOptions, includeDisabled, forceEnableInternetMetadata));
+        }
+
+        private IMetadataProvider<T>[] GetOrCreateOrderedProviders<T>(
+            string itemTypeName,
+            LibraryOptions libraryOptions,
+            MetadataOptions globalMetadataOptions,
+            bool includeDisabled,
+            bool forceEnableInternetMetadata,
+            string libraryPath)
+            where T : BaseItem
+        {
+            var cacheKey = new MetadataProviderCacheKey(libraryPath, itemTypeName, includeDisabled, forceEnableInternetMetadata);
+            if (_metadataProviderCache.TryGetValue(cacheKey, out var cachedProviders))
+            {
+                return cachedProviders.OfType<IMetadataProvider<T>>().ToArray();
+            }
+
+            var localMetadataReaderOrder = libraryOptions.LocalMetadataReaderOrder ?? globalMetadataOptions.LocalMetadataReaderOrder;
+            var typeOptions = libraryOptions.GetTypeOptions(itemTypeName);
             var metadataFetcherOrder = typeOptions?.MetadataFetcherOrder ?? globalMetadataOptions.MetadataFetcherOrder;
 
-            return _metadataProviders.OfType<IMetadataProvider<T>>()
-                .Where(i => CanRefreshMetadata(i, item, typeOptions, includeDisabled, forceEnableInternetMetadata))
+            var orderedProviders = _metadataProviders.OfType<IMetadataProvider<T>>()
+                .Where(i => CanRefreshMetadataForCache(i, typeOptions, includeDisabled, forceEnableInternetMetadata))
                 .OrderBy(i =>
                     // local and remote providers will be interleaved in the final order
                     // only relative order within a type matters: consumers of the list filter to one or the other
@@ -473,7 +514,36 @@ namespace MediaBrowser.Providers.Manager
                         // Default to end
                         _ => int.MaxValue
                     })
-                .ThenBy(GetDefaultOrder);
+                .ThenBy(GetDefaultOrder)
+                .ToArray();
+
+            _metadataProviderCache.TryAdd(cacheKey, orderedProviders.Cast<IMetadataProvider>().ToArray());
+
+            return orderedProviders;
+        }
+
+        private static bool CanRefreshMetadataForCache(
+            IMetadataProvider provider,
+            TypeOptions? libraryTypeOptions,
+            bool includeDisabled,
+            bool forceEnableInternetMetadata)
+        {
+            if (includeDisabled)
+            {
+                return true;
+            }
+
+            if (forceEnableInternetMetadata || provider is not IRemoteMetadataProvider)
+            {
+                return true;
+            }
+
+            if (libraryTypeOptions?.MetadataFetchers is { Length: > 0 } metadataFetchers)
+            {
+                return metadataFetchers.Contains(provider.Name, StringComparer.OrdinalIgnoreCase);
+            }
+
+            return true;
         }
 
         private bool CanRefreshMetadata(
@@ -632,7 +702,8 @@ namespace MediaBrowser.Providers.Manager
         private void AddMetadataPlugins<T>(List<MetadataPlugin> list, T item, LibraryOptions libraryOptions, MetadataOptions options)
             where T : BaseItem
         {
-            var providers = GetMetadataProvidersInternal<T>(item, libraryOptions, options, true, true).ToList();
+            var libraryPath = GetLibraryPathForItem(item);
+            var providers = GetMetadataProvidersInternal<T>(item, libraryOptions, options, true, true, libraryPath).ToList();
 
             // Locals
             list.AddRange(providers.Where(i => i is ILocalMetadataProvider).Select(i => new MetadataPlugin
@@ -849,8 +920,8 @@ namespace MediaBrowser.Providers.Manager
             }
 
             var options = GetMetadataOptions(referenceItem);
-
-            var providers = GetMetadataProvidersInternal<TItemType>(referenceItem, libraryOptions, options, searchInfo.IncludeDisabledProviders, false)
+            var libraryPath = GetLibraryPathForItem(referenceItem);
+            var providers = GetMetadataProvidersInternal<TItemType>(referenceItem, libraryOptions, options, searchInfo.IncludeDisabledProviders, false, libraryPath)
                 .OfType<IRemoteSearchProvider<TLookupType>>();
 
             if (!string.IsNullOrEmpty(searchInfo.SearchProviderName))
@@ -1182,6 +1253,8 @@ namespace MediaBrowser.Providers.Manager
 
             if (disposing)
             {
+                CollectionFolder.LibraryOptionsUpdated -= OnLibraryOptionsUpdated;
+
                 if (!_disposeCancellationTokenSource.IsCancellationRequested)
                 {
                     _disposeCancellationTokenSource.Cancel();
@@ -1193,5 +1266,38 @@ namespace MediaBrowser.Providers.Manager
 
             _disposed = true;
         }
+
+        private void OnLibraryOptionsUpdated(object? sender, LibraryOptionsUpdatedEventArgs e)
+        {
+            var keysToRemove = _metadataProviderCache.Keys
+                .Where(k => string.Equals(k.LibraryPath, e.LibraryPath, StringComparison.Ordinal))
+                .ToList();
+
+            foreach (var key in keysToRemove)
+            {
+                _metadataProviderCache.TryRemove(key, out _);
+            }
+
+            _logger.LogDebug("Invalidated metadata provider cache for library: {LibraryPath}", e.LibraryPath);
+        }
+
+        internal void ClearMetadataProviderCache()
+        {
+            _metadataProviderCache.Clear();
+            _logger.LogDebug("Cleared entire metadata provider cache");
+        }
+
+        /// <summary>
+        /// Cache key for metadata provider lookups.
+        /// </summary>
+        /// <param name="LibraryPath">The library path for the collection folder.</param>
+        /// <param name="ItemTypeName">The item type name.</param>
+        /// <param name="IncludeDisabled">Whether to include disabled providers.</param>
+        /// <param name="ForceEnableInternetMetadata">Whether internet metadata is force-enabled.</param>
+        private readonly record struct MetadataProviderCacheKey(
+            string LibraryPath,
+            string ItemTypeName,
+            bool IncludeDisabled,
+            bool ForceEnableInternetMetadata);
     }
 }
