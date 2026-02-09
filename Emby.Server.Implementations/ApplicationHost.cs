@@ -14,6 +14,7 @@ using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using Emby.Naming.Common;
+using Emby.Naming.Video;
 using Emby.Photos;
 using Emby.Server.Implementations.Chapters;
 using Emby.Server.Implementations.Collections;
@@ -526,6 +527,7 @@ namespace Emby.Server.Implementations
             serviceCollection.AddTransient(provider => new Lazy<IUserViewManager>(provider.GetRequiredService<IUserViewManager>));
             serviceCollection.AddSingleton<ILibraryManager, LibraryManager>();
             serviceCollection.AddSingleton<NamingOptions>();
+            serviceCollection.AddSingleton<VideoListResolver>();
 
             serviceCollection.AddSingleton<IMusicManager, MusicManager>();
 
