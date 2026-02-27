@@ -73,7 +73,7 @@ namespace MediaBrowser.MediaEncoding.Subtitles
 
             if (subtitle.Paragraphs.Count == 0)
             {
-                throw new ArgumentException("Unsupported format: " + fileExtension);
+                throw new ArgumentException("No subtitle paragraphs found when parsing as format: " + fileExtension);
             }
 
             var trackInfo = new SubtitleTrackInfo();

@@ -172,26 +172,36 @@ namespace MediaBrowser.MediaEncoding.Subtitles
 
         private async Task<Stream> GetSubtitleStream(SubtitleInfo fileInfo, CancellationToken cancellationToken)
         {
-            if (fileInfo.Protocol == MediaProtocol.Http)
+            var result = await DetectCharset(fileInfo.Path, fileInfo.Protocol, cancellationToken).ConfigureAwait(false);
+            var detected = result.Detected;
+
+            if (detected is not null)
             {
-                var result = await DetectCharset(fileInfo.Path, fileInfo.Protocol, cancellationToken).ConfigureAwait(false);
-                var detected = result.Detected;
+                _logger.LogDebug("charset {CharSet} detected for {Path}", detected.EncodingName, fileInfo.Path);
 
-                if (detected is not null)
+                if (fileInfo.Protocol == MediaProtocol.Http)
                 {
-                    _logger.LogDebug("charset {CharSet} detected for {Path}", detected.EncodingName, fileInfo.Path);
-
                     using var stream = await _httpClientFactory.CreateClient(NamedClient.Default)
                         .GetStreamAsync(new Uri(fileInfo.Path), cancellationToken)
                         .ConfigureAwait(false);
 
                     await using (stream.ConfigureAwait(false))
                     {
-                      using var reader = new StreamReader(stream, detected.Encoding);
-                      var text = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+                        using var reader = new StreamReader(stream, detected.Encoding);
+                        var text = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
 
-                      return new MemoryStream(Encoding.UTF8.GetBytes(text));
+                        return new MemoryStream(Encoding.UTF8.GetBytes(text));
                     }
+                }
+
+                if (fileInfo.Protocol == MediaProtocol.File
+                    && !Equals(detected.Encoding, Encoding.UTF8))
+                {
+                    using var stream = AsyncFile.OpenRead(fileInfo.Path);
+                    using var reader = new StreamReader(stream, detected.Encoding);
+                    var text = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+
+                    return new MemoryStream(Encoding.UTF8.GetBytes(text));
                 }
             }
 
