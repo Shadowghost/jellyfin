@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Jellyfin.Api.Extensions;
 using Jellyfin.Api.Helpers;
 using Jellyfin.Api.ModelBinders;
@@ -165,7 +166,7 @@ public class ItemsController : BaseJellyfinApiController
     /// <returns>A <see cref="QueryResult{BaseItemDto}"/> with the items.</returns>
     [HttpGet("Items")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public ActionResult<QueryResult<BaseItemDto>> GetItems(
+    public async Task<ActionResult<QueryResult<BaseItemDto>>> GetItems(
         [FromQuery] Guid? userId,
         [FromQuery] string? maxOfficialRating,
         [FromQuery] bool? hasThemeSong,
@@ -328,11 +329,13 @@ public class ItemsController : BaseJellyfinApiController
                     IncludeItemTypes = includeItemTypes,
                     ExcludeItemTypes = excludeItemTypes,
                     MediaTypes = mediaTypes,
-                    Limit = limit.HasValue ? limit.Value * 3 : null,
-                    ParentId = parentId
+                    Limit = limit.HasValue ? Math.Min(limit.Value * 3, 500) : null,
+                    ParentId = parentId,
+                    IncludeItemData = true,
+                    DtoOptions = dtoOptions
                 };
 
-                searchResults = _searchManager.GetSearchResultsWithItemsAsync(searchProviderQuery, CancellationToken.None).GetAwaiter().GetResult();
+                searchResults = await _searchManager.GetSearchResultsWithItemsAsync(searchProviderQuery, HttpContext.RequestAborted).ConfigureAwait(false);
                 if (searchResults.Count > 0)
                 {
                     searchResultScores = searchResults.ToDictionary(r => r.ItemId, r => r.Score);
@@ -351,7 +354,7 @@ public class ItemsController : BaseJellyfinApiController
                 Recursive = recursive ?? false,
                 OrderBy = RequestHelpers.GetOrderBy(sortBy, sortOrder),
                 IsFavorite = isFavorite,
-                Limit = searchResultScores is not null ? null : limit,
+                Limit = limit,
                 StartIndex = searchResultScores is not null ? null : startIndex,
                 IsMissing = isMissing,
                 IsUnaired = isUnaired,
@@ -717,7 +720,7 @@ public class ItemsController : BaseJellyfinApiController
     [Obsolete("Kept for backwards compatibility")]
     [ApiExplorerSettings(IgnoreApi = true)]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public ActionResult<QueryResult<BaseItemDto>> GetItemsByUserIdLegacy(
+    public async Task<ActionResult<QueryResult<BaseItemDto>>> GetItemsByUserIdLegacy(
         [FromRoute] Guid userId,
         [FromQuery] string? maxOfficialRating,
         [FromQuery] bool? hasThemeSong,
@@ -803,7 +806,7 @@ public class ItemsController : BaseJellyfinApiController
         [FromQuery, ModelBinder(typeof(CommaDelimitedCollectionModelBinder))] Guid[] genreIds,
         [FromQuery] bool enableTotalRecordCount = true,
         [FromQuery] bool? enableImages = true)
-        => GetItems(
+        => await GetItems(
             userId,
             maxOfficialRating,
             hasThemeSong,
@@ -889,7 +892,7 @@ public class ItemsController : BaseJellyfinApiController
             studioIds,
             genreIds,
             enableTotalRecordCount,
-            enableImages);
+            enableImages).ConfigureAwait(false);
 
     /// <summary>
     /// Gets items based on a query.
