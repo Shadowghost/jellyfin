@@ -16,6 +16,7 @@ namespace MediaBrowser.Model.Configuration
         SubtitleFetcher,
         LyricFetcher,
         MediaSegmentProvider,
+        SearchProvider,
         LocalSimilarityProvider,
         SimilarityProvider
     }
