@@ -47,4 +47,15 @@ public interface ISimilarItemsManager
         int? limit,
         LibraryOptions? libraryOptions,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets similar items for multiple source items in a single batch, sharing access
+    /// filtering and entity loading across all sources for better performance.
+    /// </summary>
+    /// <param name="sourceItems">The source items to find similar items for.</param>
+    /// <param name="query">The query options.</param>
+    /// <returns>Per-source-item results keyed by source item ID.</returns>
+    Task<Dictionary<Guid, IReadOnlyList<BaseItem>>> GetBatchSimilarItemsAsync(
+        IReadOnlyList<BaseItem> sourceItems,
+        SimilarItemsQuery query);
 }

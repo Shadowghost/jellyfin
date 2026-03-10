@@ -94,6 +94,23 @@ public class SimilarItemsManager : ISimilarItemsManager
         return await task.ConfigureAwait(false);
     }
 
+    /// <inheritdoc/>
+    public Task<Dictionary<Guid, IReadOnlyList<BaseItem>>> GetBatchSimilarItemsAsync(
+        IReadOnlyList<BaseItem> sourceItems,
+        SimilarItemsQuery query)
+    {
+        var batchProvider = _similarItemsProviders
+            .OfType<IBatchLocalSimilarItemsProvider>()
+            .FirstOrDefault();
+
+        if (batchProvider is null)
+        {
+            return Task.FromResult(new Dictionary<Guid, IReadOnlyList<BaseItem>>());
+        }
+
+        return batchProvider.GetBatchSimilarItemsAsync(sourceItems, query);
+    }
+
     private async Task<IReadOnlyList<BaseItem>> GetSimilarItemsInternalAsync<T>(
         T item,
         IReadOnlyList<Guid> excludeArtistIds,

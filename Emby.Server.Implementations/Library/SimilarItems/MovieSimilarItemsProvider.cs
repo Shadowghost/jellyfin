@@ -1,35 +1,65 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
-using Jellyfin.Database.Implementations.Enums;
+using Jellyfin.Database.Implementations;
+using Jellyfin.Database.Implementations.Entities;
+using Jellyfin.Extensions;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Model.Configuration;
+using Microsoft.EntityFrameworkCore;
+using BaseItemDto = MediaBrowser.Controller.Entities.BaseItem;
 
 namespace Emby.Server.Implementations.Library.SimilarItems;
 
 /// <summary>
-/// Provides similar items for movies and trailers.
+/// Provides similar items for movies and trailers using weighted scoring.
 /// </summary>
-public class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie>, ILocalSimilarItemsProvider<Trailer>
+public class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie>, ILocalSimilarItemsProvider<Trailer>, IBatchLocalSimilarItemsProvider
 {
-    private readonly ILibraryManager _libraryManager;
+    private const int GenreWeight = 10;
+    private const int TagWeight = 5;
+    private const int StudioWeight = 5;
+    private const int DirectorWeight = 50;
+    private const int ActorWeight = 15;
+
+    private static readonly (ItemValueType Type, int Weight)[] _itemValueDimensions =
+    [
+        (ItemValueType.Genre, GenreWeight),
+        (ItemValueType.Tags, TagWeight),
+        (ItemValueType.Studios, StudioWeight)
+    ];
+
+    private static readonly (string[] PersonTypes, int Weight)[] _peopleDimensions =
+    [
+        ([nameof(PersonKind.Director)], DirectorWeight),
+        ([nameof(PersonKind.Actor), nameof(PersonKind.GuestStar)], ActorWeight)
+    ];
+
+    private readonly IDbContextFactory<JellyfinDbContext> _dbProvider;
+    private readonly IItemQueryHelpers _queryHelpers;
     private readonly IServerConfigurationManager _serverConfigurationManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="MovieSimilarItemsProvider"/> class.
     /// </summary>
-    /// <param name="libraryManager">The library manager.</param>
+    /// <param name="dbProvider">The database context factory.</param>
+    /// <param name="queryHelpers">The shared query helpers.</param>
     /// <param name="serverConfigurationManager">The server configuration manager.</param>
     public MovieSimilarItemsProvider(
-        ILibraryManager libraryManager,
+        IDbContextFactory<JellyfinDbContext> dbProvider,
+        IItemQueryHelpers queryHelpers,
         IServerConfigurationManager serverConfigurationManager)
     {
-        _libraryManager = libraryManager;
+        _dbProvider = dbProvider;
+        _queryHelpers = queryHelpers;
         _serverConfigurationManager = serverConfigurationManager;
     }
 
@@ -40,40 +70,243 @@ public class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie>, ILoc
     public MetadataPluginType Type => MetadataPluginType.LocalSimilarityProvider;
 
     /// <inheritdoc/>
-    public Task<IReadOnlyList<BaseItem>> GetSimilarItemsAsync(Movie item, SimilarItemsQuery query, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<BaseItemDto>> GetSimilarItemsAsync(Movie item, SimilarItemsQuery query, CancellationToken cancellationToken)
     {
-        return Task.FromResult(GetSimilarMovieItems(item, query));
+        var results = await GetBatchSimilarItemsAsync([item], query).ConfigureAwait(false);
+        return results.TryGetValue(item.Id, out var items) ? items : [];
     }
 
     /// <inheritdoc/>
-    public Task<IReadOnlyList<BaseItem>> GetSimilarItemsAsync(Trailer item, SimilarItemsQuery query, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<BaseItemDto>> GetSimilarItemsAsync(Trailer item, SimilarItemsQuery query, CancellationToken cancellationToken)
     {
-        return Task.FromResult(GetSimilarMovieItems(item, query));
+        var results = await GetBatchSimilarItemsAsync([item], query).ConfigureAwait(false);
+        return results.TryGetValue(item.Id, out var items) ? items : [];
     }
 
-    private IReadOnlyList<BaseItem> GetSimilarMovieItems(BaseItem item, SimilarItemsQuery query)
+    /// <inheritdoc/>
+    public Task<Dictionary<Guid, IReadOnlyList<BaseItemDto>>> GetBatchSimilarItemsAsync(
+        IReadOnlyList<BaseItemDto> sourceItems,
+        SimilarItemsQuery query)
     {
         var includeItemTypes = new List<BaseItemKind> { BaseItemKind.Movie };
-
         if (_serverConfigurationManager.Configuration.EnableExternalContentInSuggestions)
         {
             includeItemTypes.Add(BaseItemKind.Trailer);
             includeItemTypes.Add(BaseItemKind.LiveTvProgram);
         }
 
-        var internalQuery = new InternalItemsQuery(query.User)
+        var limit = query.Limit ?? 50;
+        var dtoOptions = query.DtoOptions ?? new DtoOptions();
+
+        using var context = _dbProvider.CreateDbContext();
+
+        // Phase 1: Score all candidates per source item
+        var sourceIds = sourceItems.Select(i => i.Id).ToList();
+        var perSourceScores = ComputeBatchScores(sourceIds, context);
+
+        var allCandidateIds = new HashSet<Guid>();
+        foreach (var (_, scores) in perSourceScores)
         {
-            Genres = item.Genres,
-            Tags = item.Tags,
-            Limit = query.Limit,
-            DtoOptions = query.DtoOptions ?? new DtoOptions(),
-            ExcludeItemIds = [.. query.ExcludeItemIds],
+            allCandidateIds.UnionWith(
+                scores.OrderByDescending(kvp => kvp.Value)
+                    .Take(limit * 3)
+                    .Select(kvp => kvp.Key));
+        }
+
+        var result = new Dictionary<Guid, IReadOnlyList<BaseItemDto>>();
+        if (allCandidateIds.Count == 0)
+        {
+            return Task.FromResult(result);
+        }
+
+        // Phase 2: One access filter for all candidates
+        var filter = new InternalItemsQuery(query.User)
+        {
             IncludeItemTypes = [.. includeItemTypes],
+            ExcludeItemIds = [.. query.ExcludeItemIds],
+            DtoOptions = dtoOptions,
             EnableGroupByMetadataKey = true,
             EnableTotalRecordCount = false,
-            OrderBy = [(ItemSortBy.Random, SortOrder.Ascending)]
+            IsMovie = true,
+            IsPlayed = false
         };
 
-        return _libraryManager.GetItemList(internalQuery);
+        _queryHelpers.PrepareFilterQuery(filter);
+        var baseQuery = _queryHelpers.PrepareItemQuery(context, filter);
+        baseQuery = _queryHelpers.TranslateQuery(baseQuery, context, filter);
+
+        var allCandidateIdsList = allCandidateIds.ToList();
+        var accessibleItems = baseQuery
+            .Where(e => allCandidateIdsList.Contains(e.Id))
+            .Select(e => new { e.Id, e.PresentationUniqueKey })
+            .ToList();
+
+        // Phase 3: Pick top IDs per source, dedup by PresentationUniqueKey
+        var allOrderedIds = new HashSet<Guid>();
+        var perSourceOrderedIds = new Dictionary<Guid, List<Guid>>();
+
+        foreach (var item in sourceItems)
+        {
+            if (!perSourceScores.TryGetValue(item.Id, out var scores))
+            {
+                continue;
+            }
+
+            var orderedIds = accessibleItems
+                .Where(x => scores.ContainsKey(x.Id))
+                .OrderByDescending(x => scores.GetValueOrDefault(x.Id))
+                .DistinctBy(x => x.PresentationUniqueKey)
+                .Take(limit)
+                .Select(x => x.Id)
+                .ToList();
+
+            if (orderedIds.Count > 0)
+            {
+                perSourceOrderedIds[item.Id] = orderedIds;
+                allOrderedIds.UnionWith(orderedIds);
+            }
+        }
+
+        if (allOrderedIds.Count == 0)
+        {
+            return Task.FromResult(result);
+        }
+
+        // Phase 4: One entity load for all results
+        var allOrderedIdsList = allOrderedIds.ToList();
+        var entitiesById = _queryHelpers.ApplyNavigations(
+                context.BaseItems.AsNoTracking().Where(e => allOrderedIdsList.Contains(e.Id)),
+                filter)
+            .AsSplitQuery()
+            .AsEnumerable()
+            .Select(e => _queryHelpers.DeserializeBaseItem(e, filter.SkipDeserialization))
+            .Where(dto => dto is not null)
+            .ToDictionary(i => i!.Id);
+
+        // Phase 5: Split by source, preserving score order
+        foreach (var (sourceId, orderedIds) in perSourceOrderedIds)
+        {
+            var items = orderedIds
+                .Where(entitiesById.ContainsKey)
+                .Select(id => entitiesById[id]!)
+                .ToList();
+
+            if (items.Count > 0)
+            {
+                result[sourceId] = items;
+            }
+        }
+
+        return Task.FromResult(result);
+    }
+
+    private Dictionary<Guid, Dictionary<Guid, int>> ComputeBatchScores(List<Guid> sourceIds, JellyfinDbContext context)
+    {
+        var result = new Dictionary<Guid, Dictionary<Guid, int>>();
+        foreach (var id in sourceIds)
+        {
+            result[id] = [];
+        }
+
+        // Score item-value dimensions (genre, tags, studios)
+        foreach (var (valueType, weight) in _itemValueDimensions)
+        {
+            var sourceMap = context.ItemValuesMap.AsNoTracking()
+                .Where(m => sourceIds.Contains(m.ItemId) && m.ItemValue.Type == valueType)
+                .Select(m => new { m.ItemId, m.ItemValue.CleanValue })
+                .ToList()
+                .GroupBy(m => m.ItemId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.CleanValue).ToHashSet());
+
+            var allValues = sourceMap.Values.SelectMany(v => v).Distinct().ToList();
+            if (allValues.Count == 0)
+            {
+                continue;
+            }
+
+            var valueToCandidates = context.ItemValuesMap.AsNoTracking()
+                .Where(m => m.ItemValue.Type == valueType && allValues.Contains(m.ItemValue.CleanValue))
+                .Select(m => new { m.ItemId, m.ItemValue.CleanValue })
+                .ToList()
+                .GroupBy(m => m.CleanValue)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ItemId).ToList());
+
+            foreach (var sourceId in sourceIds)
+            {
+                if (!sourceMap.TryGetValue(sourceId, out var sourceValues))
+                {
+                    continue;
+                }
+
+                var scoreMap = result[sourceId];
+                foreach (var value in sourceValues)
+                {
+                    if (valueToCandidates.TryGetValue(value, out var candidates))
+                    {
+                        foreach (var candidateId in candidates)
+                        {
+                            scoreMap[candidateId] = scoreMap.GetValueOrDefault(candidateId) + weight;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Score people dimensions (directors, actors)
+        foreach (var (personTypes, weight) in _peopleDimensions)
+        {
+            var sourceMap = context.PeopleBaseItemMap.AsNoTracking()
+                .Where(m => sourceIds.Contains(m.ItemId) && personTypes.Contains(m.People.PersonType))
+                .Select(m => new { m.ItemId, m.PeopleId })
+                .ToList()
+                .GroupBy(m => m.ItemId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.PeopleId).ToHashSet());
+
+            var allPeopleIds = sourceMap.Values.SelectMany(v => v).Distinct().ToList();
+            if (allPeopleIds.Count == 0)
+            {
+                continue;
+            }
+
+            var personToCandidates = context.PeopleBaseItemMap.AsNoTracking()
+                .Where(m => allPeopleIds.Contains(m.PeopleId))
+                .Select(m => new { m.ItemId, m.PeopleId })
+                .ToList()
+                .GroupBy(m => m.PeopleId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ItemId).ToList());
+
+            foreach (var sourceId in sourceIds)
+            {
+                if (!sourceMap.TryGetValue(sourceId, out var sourcePeopleIds))
+                {
+                    continue;
+                }
+
+                var scoreMap = result[sourceId];
+                foreach (var peopleId in sourcePeopleIds)
+                {
+                    if (personToCandidates.TryGetValue(peopleId, out var candidates))
+                    {
+                        foreach (var candidateId in candidates)
+                        {
+                            scoreMap[candidateId] = scoreMap.GetValueOrDefault(candidateId) + weight;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Remove self-references and empty entries
+        foreach (var sourceId in sourceIds)
+        {
+            var scoreMap = result[sourceId];
+            scoreMap.Remove(sourceId);
+            if (scoreMap.Count == 0)
+            {
+                result.Remove(sourceId);
+            }
+        }
+
+        return result;
     }
 }

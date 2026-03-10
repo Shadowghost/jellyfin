@@ -147,6 +147,52 @@ public class PeopleRepository(IDbContextFactory<JellyfinDbContext> dbProvider, I
         transaction.Commit();
     }
 
+    /// <inheritdoc/>
+    public IReadOnlyList<string> GetPeopleNamesByItems(IReadOnlyList<Guid> itemIds, IReadOnlyList<string> personTypes, int? maxListOrder, int limit)
+    {
+        using var context = _dbProvider.CreateDbContext();
+        var query = context.PeopleBaseItemMap
+            .AsNoTracking()
+            .Where(m => itemIds.Contains(m.ItemId));
+
+        if (personTypes.Count > 0)
+        {
+            query = query.Where(m => personTypes.Contains(m.People.PersonType));
+        }
+
+        if (maxListOrder.HasValue)
+        {
+            var maxOrder = maxListOrder.Value;
+            query = query.Where(m => m.ListOrder != null && m.ListOrder <= maxOrder);
+        }
+
+        // Fetch raw rows and sort in-memory so we can use itemIds position as recency rank.
+        var rows = query
+            .Select(m => new { m.ItemId, Name = m.People.Name, m.ListOrder })
+            .ToList();
+
+        // Build recency rank: lower index in itemIds = more recently played.
+        var recencyRank = new Dictionary<Guid, int>(itemIds.Count);
+        for (var i = 0; i < itemIds.Count; i++)
+        {
+            recencyRank.TryAdd(itemIds[i], i);
+        }
+
+        var orderedNames = rows
+            .GroupBy(r => r.Name)
+            .OrderByDescending(g => g.Count())
+            .ThenBy(g => g.Min(r => recencyRank.GetValueOrDefault(r.ItemId, int.MaxValue)))
+            .ThenBy(g => g.Min(r => r.ListOrder ?? int.MaxValue))
+            .Select(g => g.Key);
+
+        if (limit > 0)
+        {
+            orderedNames = orderedNames.Take(limit);
+        }
+
+        return orderedNames.ToArray();
+    }
+
     private PersonInfo Map(People people)
     {
         var mapping = people.BaseItems?.FirstOrDefault();
@@ -211,12 +257,12 @@ public class PeopleRepository(IDbContextFactory<JellyfinDbContext> dbProvider, I
 
         if (queryExcludePersonTypes.Count > 0)
         {
-            query = query.Where(e => !queryPersonTypes.Contains(e.PersonType));
+            query = query.Where(e => !queryExcludePersonTypes.Contains(e.PersonType));
         }
 
         if (filter.MaxListOrder.HasValue && !filter.ItemId.IsEmpty())
         {
-            query = query.Where(e => e.BaseItems!.Where(w => w.ItemId == filter.ItemId).OrderBy(w => w.ListOrder).First().ListOrder <= filter.MaxListOrder.Value);
+            query = query.Where(e => e.BaseItems!.Any(w => w.ItemId == filter.ItemId && w.ListOrder <= filter.MaxListOrder.Value));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.NameContains))

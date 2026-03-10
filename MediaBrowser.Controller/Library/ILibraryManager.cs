@@ -597,6 +597,16 @@ namespace MediaBrowser.Controller.Library
         IReadOnlyList<string> GetPeopleNames(InternalPeopleQuery query);
 
         /// <summary>
+        /// Gets distinct people names for multiple items efficiently.
+        /// </summary>
+        /// <param name="itemIds">The item IDs.</param>
+        /// <param name="personTypes">The person types to include.</param>
+        /// <param name="maxListOrder">When set, only include people whose ListOrder for a given item is at most this value (i.e. top-billed).</param>
+        /// <param name="limit">Maximum number of names.</param>
+        /// <returns>The distinct people names ordered by frequency then billing prominence.</returns>
+        IReadOnlyList<string> GetPeopleNamesByItems(IReadOnlyList<Guid> itemIds, IReadOnlyList<string> personTypes, int? maxListOrder, int limit);
+
+        /// <summary>
         /// Queries the items.
         /// </summary>
         /// <param name="query">The query.</param>
