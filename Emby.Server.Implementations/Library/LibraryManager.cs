@@ -346,6 +346,11 @@ namespace Emby.Server.Implementations.Library
 
         public void DeleteItemsUnsafeFast(IReadOnlyCollection<BaseItem> items, bool deleteSourceFiles = false)
         {
+            if (items.Count == 0)
+            {
+                return;
+            }
+
             var pathMaps = items.Select(e =>
                 (Item: e,
                 InternalPath: GetInternalMetadataPaths(e),
