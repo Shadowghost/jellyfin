@@ -116,7 +116,12 @@ internal class MigrateLibraryDb : IDatabaseMigrationRoutine
                 foreach (SqliteDataReader dto in connection.Query(typedBaseItemsQuery))
                 {
                     var baseItem = GetItem(dto);
-                    allItemsLookup.Add(baseItem.BaseItem.Id, baseItem);
+                    if (!allItemsLookup.TryAdd(baseItem.BaseItem.Id, baseItem))
+                    {
+                        _logger.LogWarning(
+                            "Duplicate BaseItem GUID {Id} found in legacy database, skipping duplicate entry",
+                            baseItem.BaseItem.Id);
+                    }
                 }
             }
 
@@ -233,6 +238,7 @@ internal class MigrateLibraryDb : IDatabaseMigrationRoutine
             {
                 var users = operation.JellyfinDbContext.Users.AsNoTracking().ToArray();
                 var userIdBlacklist = new HashSet<int>();
+                var seenUserData = new HashSet<(Guid, Guid, string)>();
 
                 foreach (var entity in queryResult)
                 {
@@ -263,6 +269,15 @@ internal class MigrateLibraryDb : IDatabaseMigrationRoutine
                     }
 
                     userData.ItemId = refItem.Id;
+                    if (!seenUserData.Add((userData.ItemId, userData.UserId, userData.CustomDataKey!)))
+                    {
+                        _logger.LogWarning(
+                            "Duplicate UserData entry for item {ItemId}, user {UserId}, skipping duplicate",
+                            userData.ItemId,
+                            userData.UserId);
+                        continue;
+                    }
+
                     operation.JellyfinDbContext.UserData.Add(userData);
                 }
             }
@@ -290,11 +305,21 @@ internal class MigrateLibraryDb : IDatabaseMigrationRoutine
 
             using (new TrackedMigrationStep("Loading MediaStreamInfos", _logger))
             {
+                var seenMediaStreams = new HashSet<(Guid, int)>();
                 foreach (SqliteDataReader dto in connection.Query(mediaStreamQuery))
                 {
                     var entity = GetMediaStream(dto);
                     if (!baseItemIds.Contains(entity.ItemId))
                     {
+                        continue;
+                    }
+
+                    if (!seenMediaStreams.Add((entity.ItemId, entity.StreamIndex)))
+                    {
+                        _logger.LogWarning(
+                            "Duplicate MediaStream entry for item {ItemId}, stream index {StreamIndex}, skipping duplicate",
+                            entity.ItemId,
+                            entity.StreamIndex);
                         continue;
                     }
 
@@ -319,11 +344,21 @@ internal class MigrateLibraryDb : IDatabaseMigrationRoutine
 
             using (new TrackedMigrationStep("Loading AttachmentStreamInfos", _logger))
             {
+                var seenAttachments = new HashSet<(Guid, int)>();
                 foreach (SqliteDataReader dto in connection.Query(mediaAttachmentQuery))
                 {
                     var entity = GetMediaAttachment(dto);
                     if (!baseItemIds.Contains(entity.ItemId))
                     {
+                        continue;
+                    }
+
+                    if (!seenAttachments.Add((entity.ItemId, entity.Index)))
+                    {
+                        _logger.LogWarning(
+                            "Duplicate AttachmentStream entry for item {ItemId}, index {Index}, skipping duplicate",
+                            entity.ItemId,
+                            entity.Index);
                         continue;
                     }
 
@@ -408,11 +443,21 @@ internal class MigrateLibraryDb : IDatabaseMigrationRoutine
 
             using (new TrackedMigrationStep("Loading Chapters", _logger))
             {
+                var seenChapters = new HashSet<(Guid, int)>();
                 foreach (SqliteDataReader dto in connection.Query(chapterQuery))
                 {
                     var chapter = GetChapter(dto);
                     if (!baseItemIds.Contains(chapter.ItemId))
                     {
+                        continue;
+                    }
+
+                    if (!seenChapters.Add((chapter.ItemId, chapter.ChapterIndex)))
+                    {
+                        _logger.LogWarning(
+                            "Duplicate Chapter entry for item {ItemId}, chapter index {ChapterIndex}, skipping duplicate",
+                            chapter.ItemId,
+                            chapter.ChapterIndex);
                         continue;
                     }
 
@@ -439,11 +484,21 @@ internal class MigrateLibraryDb : IDatabaseMigrationRoutine
 
             using (new TrackedMigrationStep("Loading AncestorIds", _logger))
             {
+                var seenAncestors = new HashSet<(Guid, Guid)>();
                 foreach (SqliteDataReader dto in connection.Query(ancestorIdsQuery))
                 {
                     var ancestorId = GetAncestorId(dto);
                     if (!baseItemIds.Contains(ancestorId.ItemId) || !baseItemIds.Contains(ancestorId.ParentItemId))
                     {
+                        continue;
+                    }
+
+                    if (!seenAncestors.Add((ancestorId.ItemId, ancestorId.ParentItemId)))
+                    {
+                        _logger.LogWarning(
+                            "Duplicate AncestorId entry for item {ItemId}, parent {ParentItemId}, skipping duplicate",
+                            ancestorId.ItemId,
+                            ancestorId.ParentItemId);
                         continue;
                     }
 
