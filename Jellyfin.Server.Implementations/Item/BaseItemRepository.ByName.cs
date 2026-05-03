@@ -133,21 +133,15 @@ public sealed partial class BaseItemRepository
             IsSeries = filter.IsSeries
         });
 
-        // Keep this as an IQueryable sub-select. Materializing to a list would inline one
-        // bound parameter per CleanValue and hit SQLite's variable cap on libraries with
-        // high-cardinality value types (e.g. tens of thousands of artists).
-        var matchingCleanValues = context.ItemValuesMap
-            .Where(ivm => itemValueTypes.Contains(ivm.ItemValue.Type))
-            .Join(
-                innerQueryFilter,
-                ivm => ivm.ItemId,
-                g => g.Id,
-                (ivm, g) => ivm.ItemValue.CleanValue)
-            .Distinct();
-
+        // Use a correlated EXISTS rather than `IN (SELECT DISTINCT CleanValue ...)`. The
+        // IN-form would force materialization of the full set of artist CleanValues across the
+        // entire library before filtering.
         var innerQuery = PrepareItemQuery(context, filter)
             .Where(e => e.Type == returnType)
-            .Where(e => matchingCleanValues.Contains(e.CleanName!));
+            .Where(e => context.ItemValuesMap.Any(ivm =>
+                itemValueTypes.Contains(ivm.ItemValue.Type)
+                && ivm.ItemValue.CleanValue == e.CleanName
+                && innerQueryFilter.Any(g => g.Id == ivm.ItemId)));
 
         var outerQueryFilter = new InternalItemsQuery(filter.User)
         {
@@ -174,9 +168,42 @@ public sealed partial class BaseItemRepository
         // (e.g. alternate versions) by picking the lowest Id per group.
         var masterQuery = TranslateQuery(innerQuery, context, outerQueryFilter);
 
-        var orderedMasterQuery = ApplyOrder(masterQuery, filter, context)
-            .GroupBy(e => e.PresentationUniqueKey)
-            .Select(g => g.Min(e => e.Id));
+        IQueryable<Guid> orderedMasterQuery;
+        if (!string.IsNullOrEmpty(filter.SearchTerm))
+        {
+            var cleanSearchTerm = filter.SearchTerm.GetCleanValue();
+            var cleanSearchPrefix = cleanSearchTerm + " ";
+
+            orderedMasterQuery = masterQuery
+                .Select(e => new
+                {
+                    e.Id,
+                    e.PresentationUniqueKey,
+                    e.SortName,
+                    Score = (e.CleanName == cleanSearchTerm) ? 0
+                        : e.CleanName!.StartsWith(cleanSearchTerm) ? 1
+                        : e.CleanName!.Contains(cleanSearchPrefix) ? 2
+                        : 3
+                })
+                .GroupBy(x => x.PresentationUniqueKey)
+                .Select(g => new
+                {
+                    Id = g.Min(x => x.Id),
+                    Score = g.Min(x => x.Score),
+                    SortName = g.Min(x => x.SortName)
+                })
+                .OrderBy(x => x.Score)
+                .ThenBy(x => x.SortName)
+                .Select(x => x.Id);
+        }
+        else
+        {
+            orderedMasterQuery = masterQuery
+                .GroupBy(e => e.PresentationUniqueKey)
+                .Select(g => new { Id = g.Min(e => e.Id), SortName = g.Min(e => e.SortName) })
+                .OrderBy(x => x.SortName)
+                .Select(x => x.Id);
+        }
 
         var result = new QueryResult<(BaseItemDto, ItemCounts?)>();
         if (filter.EnableTotalRecordCount)

@@ -1,0 +1,443 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Jellyfin.Data.Enums;
+using Jellyfin.Database.Implementations;
+using Jellyfin.Database.Implementations.Entities;
+using Jellyfin.Extensions;
+using MediaBrowser.Controller.Dto;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Persistence;
+using MediaBrowser.Model.Querying;
+using MediaBrowser.Model.Search;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+namespace Emby.Server.Implementations.Library.Search;
+
+/// <summary>
+/// Manages search providers and orchestrates search operations.
+/// </summary>
+public class SearchManager : ISearchManager
+{
+    private readonly ILibraryManager _libraryManager;
+    private readonly IUserManager _userManager;
+    private readonly IDbContextFactory<JellyfinDbContext> _dbProvider;
+    private readonly IItemQueryHelpers _queryHelpers;
+    private readonly ILogger<SearchManager> _logger;
+    private IExternalSearchProvider[] _externalProviders = [];
+    private IInternalSearchProvider[] _internalProviders = [];
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SearchManager"/> class.
+    /// </summary>
+    /// <param name="libraryManager">The library manager.</param>
+    /// <param name="userManager">The user manager.</param>
+    /// <param name="dbProvider">The database context factory.</param>
+    /// <param name="queryHelpers">The shared item query helpers.</param>
+    /// <param name="logger">The logger.</param>
+    public SearchManager(
+        ILibraryManager libraryManager,
+        IUserManager userManager,
+        IDbContextFactory<JellyfinDbContext> dbProvider,
+        IItemQueryHelpers queryHelpers,
+        ILogger<SearchManager> logger)
+    {
+        _libraryManager = libraryManager;
+        _userManager = userManager;
+        _dbProvider = dbProvider;
+        _queryHelpers = queryHelpers;
+        _logger = logger;
+    }
+
+    /// <inheritdoc/>
+    public void AddParts(IEnumerable<ISearchProvider> providers)
+    {
+        var allProviders = providers.OrderBy(p => p.Priority).ToArray();
+
+        _externalProviders = allProviders.OfType<IExternalSearchProvider>().ToArray();
+        _internalProviders = allProviders.OfType<IInternalSearchProvider>().ToArray();
+
+        _logger.LogInformation(
+            "Registered {ExternalCount} external search providers: {ExternalProviders}. Fallback providers: {FallbackProviders}",
+            _externalProviders.Length,
+            string.Join(", ", _externalProviders.Select(p => $"{p.Name} (priority {p.Priority})")),
+            string.Join(", ", _internalProviders.Select(p => $"{p.Name} (priority {p.Priority})")));
+    }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<ISearchProvider> GetProviders()
+    {
+        return [.. _externalProviders, .. _internalProviders];
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<SearchResult>> GetSearchResultsAsync(
+        SearchProviderQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query.SearchTerm);
+
+        var searchTerm = query.SearchTerm.Trim().RemoveDiacritics();
+
+        var results = await CollectFromProvidersAsync(_externalProviders, query, searchTerm, cancellationToken).ConfigureAwait(false);
+        if (results.Count == 0 && _internalProviders.Length > 0)
+        {
+            _logger.LogDebug("No results from external providers, falling back to internal providers");
+            results = await CollectFromProvidersAsync(_internalProviders, query, searchTerm, cancellationToken).ConfigureAwait(false);
+        }
+
+        // External providers don't know about user permissions, so they may return IDs from
+        // hidden libraries or items the user is otherwise blocked from. Filter the candidate
+        // set to only items this user can access (top-parent libraries, parental rating,
+        // blocked/allowed tags, owned-item rules) before returning. The Items controller's
+        // second roundtrip via folder.GetItems applies most of these again, but it does not
+        // restrict by TopParentIds when ItemIds is set, leaving a gap that this closes.
+        if (results.Count > 0 && query.UserId.HasValue && !query.UserId.Value.IsEmpty())
+        {
+            var user = _userManager.GetUserById(query.UserId.Value);
+            if (user is not null)
+            {
+                results = await FilterByUserAccessAsync(results, user, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return results;
+    }
+
+    private async Task<IReadOnlyList<SearchResult>> FilterByUserAccessAsync(
+        IReadOnlyList<SearchResult> candidates,
+        User user,
+        CancellationToken cancellationToken)
+    {
+        // SetUser populates parental rating + blocked/allowed tags. ConfigureUserAccess populates
+        // TopParentIds for the user's accessible libraries — we call it before assigning ItemIds
+        // because LibraryManager.AddUserToQuery skips TopParentIds when ItemIds is non-empty.
+        var accessFilter = new InternalItemsQuery(user);
+        _libraryManager.ConfigureUserAccess(accessFilter, user);
+
+        var candidateIds = new Guid[candidates.Count];
+        for (var i = 0; i < candidates.Count; i++)
+        {
+            candidateIds[i] = candidates[i].ItemId;
+        }
+
+        var dbContext = await _dbProvider.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var baseQuery = dbContext.BaseItems
+                .AsNoTracking()
+                .Where(e => candidateIds.Contains(e.Id));
+
+            baseQuery = _queryHelpers.ApplyAccessFiltering(dbContext, baseQuery, accessFilter);
+
+            var allowedIds = await baseQuery
+                .Select(e => e.Id)
+                .ToHashSetAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            if (allowedIds.Count == candidates.Count)
+            {
+                return candidates;
+            }
+
+            var filtered = new List<SearchResult>(allowedIds.Count);
+            foreach (var c in candidates)
+            {
+                if (allowedIds.Contains(c.ItemId))
+                {
+                    filtered.Add(c);
+                }
+            }
+
+            if (filtered.Count < candidates.Count)
+            {
+                _logger.LogDebug(
+                    "Dropped {Dropped} of {Total} search candidates due to user access filtering",
+                    candidates.Count - filtered.Count,
+                    candidates.Count);
+            }
+
+            return filtered;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<QueryResult<SearchHintInfo>> GetSearchHintsAsync(SearchQuery query, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query.SearchTerm);
+
+        var providerQuery = BuildProviderQuery(query);
+        var candidates = await GetSearchResultsAsync(providerQuery, cancellationToken).ConfigureAwait(false);
+        if (candidates.Count == 0)
+        {
+            return new QueryResult<SearchHintInfo>();
+        }
+
+        var candidateScores = BuildScoreLookup(candidates);
+        var user = !query.UserId.IsEmpty() ? _userManager.GetUserById(query.UserId) : null;
+
+        var excludeItemTypes = BuildExcludeItemTypes(query);
+        var includeItemTypes = BuildIncludeItemTypes(query);
+
+        var internalQuery = new InternalItemsQuery(user)
+        {
+            ItemIds = candidateScores.Keys.ToArray(),
+            ExcludeItemTypes = excludeItemTypes.ToArray(),
+            IncludeItemTypes = includeItemTypes.Count > 0 ? includeItemTypes.ToArray() : [],
+            MediaTypes = query.MediaTypes.ToArray(),
+            IncludeItemsByName = !query.ParentId.HasValue,
+            ParentId = query.ParentId ?? Guid.Empty,
+            Recursive = true,
+            IsKids = query.IsKids,
+            IsMovie = query.IsMovie,
+            IsNews = query.IsNews,
+            IsSeries = query.IsSeries,
+            IsSports = query.IsSports,
+            DtoOptions = new DtoOptions
+            {
+                Fields =
+                [
+                    ItemFields.AirTime,
+                    ItemFields.DateCreated,
+                    ItemFields.ChannelInfo,
+                    ItemFields.ParentId
+                ]
+            }
+        };
+
+        // MusicArtist items are "ItemsByName" entities - virtual items that aggregate content by artist name
+        // rather than being stored as regular library items. They require special handling:
+        // 1. Convert ParentId to AncestorIds (to filter by library folder)
+        // 2. Set IncludeItemsByName = true (to include these virtual items in results)
+        // 3. Clear IncludeItemTypes (GetAllArtists handles type filtering internally)
+        // 4. Use GetAllArtists() instead of GetItemList() to query the artist index
+        IReadOnlyList<BaseItem> items;
+        if (internalQuery.IncludeItemTypes.Length == 1 && internalQuery.IncludeItemTypes[0] == BaseItemKind.MusicArtist)
+        {
+            if (!internalQuery.ParentId.IsEmpty())
+            {
+                internalQuery.AncestorIds = [internalQuery.ParentId];
+                internalQuery.ParentId = Guid.Empty;
+            }
+
+            internalQuery.IncludeItemsByName = true;
+            internalQuery.IncludeItemTypes = [];
+            items = _libraryManager.GetAllArtists(internalQuery).Items.Select(i => i.Item).ToList();
+        }
+        else
+        {
+            items = _libraryManager.GetItemList(internalQuery);
+        }
+
+        var orderedResults = items
+            .Select(item => new SearchHintInfo { Item = item })
+            .OrderByDescending(hint => candidateScores.GetValueOrDefault(hint.Item.Id, 0f))
+            .ToList();
+
+        var totalCount = orderedResults.Count;
+
+        if (query.StartIndex.HasValue)
+        {
+            orderedResults = orderedResults.Skip(query.StartIndex.Value).ToList();
+        }
+
+        if (query.Limit.HasValue)
+        {
+            orderedResults = orderedResults.Take(query.Limit.Value).ToList();
+        }
+
+        return new QueryResult<SearchHintInfo>(query.StartIndex, totalCount, orderedResults);
+    }
+
+    private async Task<IReadOnlyList<SearchResult>> CollectFromProvidersAsync(
+        IEnumerable<ISearchProvider> providers,
+        SearchProviderQuery providerQuery,
+        string searchTerm,
+        CancellationToken cancellationToken)
+    {
+        var bestScores = new Dictionary<Guid, float>();
+        var requestedLimit = providerQuery.Limit ?? 100;
+
+        foreach (var provider in providers.Where(p => p.CanSearch(providerQuery)))
+        {
+            if (bestScores.Count >= requestedLimit || cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+
+            try
+            {
+                if (provider is IExternalSearchProvider externalProvider)
+                {
+                    var count = 0;
+                    await foreach (var result in externalProvider.SearchAsync(providerQuery, cancellationToken).ConfigureAwait(false))
+                    {
+                        UpdateBestScore(bestScores, result);
+                        count++;
+                        if (bestScores.Count >= requestedLimit)
+                        {
+                            break;
+                        }
+                    }
+
+                    _logger.LogDebug(
+                        "External provider {Provider} returned {Count} candidates for search term '{SearchTerm}'",
+                        provider.Name,
+                        count,
+                        searchTerm);
+                }
+                else
+                {
+                    var candidates = await provider.SearchAsync(providerQuery, cancellationToken).ConfigureAwait(false);
+                    foreach (var result in candidates)
+                    {
+                        UpdateBestScore(bestScores, result);
+                    }
+
+                    _logger.LogDebug(
+                        "Provider {Provider} returned {Count} candidates for search term '{SearchTerm}'",
+                        provider.Name,
+                        candidates.Count,
+                        searchTerm);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Search provider {Provider} failed for term '{SearchTerm}'", provider.Name, searchTerm);
+            }
+        }
+
+        return bestScores
+            .Select(kvp => new SearchResult(kvp.Key, kvp.Value))
+            .OrderByDescending(r => r.Score)
+            .Take(requestedLimit)
+            .ToList();
+    }
+
+    private static void UpdateBestScore(Dictionary<Guid, float> bestScores, SearchResult result)
+    {
+        if (!bestScores.TryGetValue(result.ItemId, out var existingScore) || result.Score > existingScore)
+        {
+            bestScores[result.ItemId] = result.Score;
+        }
+    }
+
+    private static Dictionary<Guid, float> BuildScoreLookup(IReadOnlyList<SearchResult> results)
+    {
+        var lookup = new Dictionary<Guid, float>(results.Count);
+        foreach (var result in results)
+        {
+            lookup[result.ItemId] = result.Score;
+        }
+
+        return lookup;
+    }
+
+    private static SearchProviderQuery BuildProviderQuery(SearchQuery query)
+    {
+        var excludeItemTypes = BuildExcludeItemTypes(query);
+        var includeItemTypes = BuildIncludeItemTypes(query);
+
+        // Remove any excluded types from includes
+        if (includeItemTypes.Count > 0 && excludeItemTypes.Count > 0)
+        {
+            includeItemTypes.RemoveAll(excludeItemTypes.Contains);
+        }
+
+        return new SearchProviderQuery
+        {
+            SearchTerm = query.SearchTerm,
+            UserId = query.UserId.IsEmpty() ? null : query.UserId,
+            IncludeItemTypes = includeItemTypes.ToArray(),
+            ExcludeItemTypes = excludeItemTypes.ToArray(),
+            MediaTypes = query.MediaTypes.ToArray(),
+            Limit = query.Limit,
+            ParentId = query.ParentId
+        };
+    }
+
+    private static List<BaseItemKind> BuildExcludeItemTypes(SearchQuery query)
+    {
+        var excludeItemTypes = query.ExcludeItemTypes.ToList();
+
+        excludeItemTypes.Add(BaseItemKind.Year);
+        excludeItemTypes.Add(BaseItemKind.Folder);
+        excludeItemTypes.Add(BaseItemKind.CollectionFolder);
+
+        if (!query.IncludeGenres)
+        {
+            AddIfMissing(excludeItemTypes, BaseItemKind.Genre);
+            AddIfMissing(excludeItemTypes, BaseItemKind.MusicGenre);
+        }
+
+        if (!query.IncludePeople)
+        {
+            AddIfMissing(excludeItemTypes, BaseItemKind.Person);
+        }
+
+        if (!query.IncludeStudios)
+        {
+            AddIfMissing(excludeItemTypes, BaseItemKind.Studio);
+        }
+
+        if (!query.IncludeArtists)
+        {
+            AddIfMissing(excludeItemTypes, BaseItemKind.MusicArtist);
+        }
+
+        return excludeItemTypes;
+    }
+
+    private static List<BaseItemKind> BuildIncludeItemTypes(SearchQuery query)
+    {
+        var includeItemTypes = query.IncludeItemTypes.ToList();
+        if (query.IncludeGenres && (includeItemTypes.Count == 0 || includeItemTypes.Contains(BaseItemKind.Genre)))
+        {
+            if (!query.IncludeMedia)
+            {
+                AddIfMissing(includeItemTypes, BaseItemKind.Genre);
+                AddIfMissing(includeItemTypes, BaseItemKind.MusicGenre);
+            }
+        }
+
+        if (query.IncludePeople && (includeItemTypes.Count == 0 || includeItemTypes.Contains(BaseItemKind.Person)))
+        {
+            if (!query.IncludeMedia)
+            {
+                AddIfMissing(includeItemTypes, BaseItemKind.Person);
+            }
+        }
+
+        if (query.IncludeStudios && (includeItemTypes.Count == 0 || includeItemTypes.Contains(BaseItemKind.Studio)))
+        {
+            if (!query.IncludeMedia)
+            {
+                AddIfMissing(includeItemTypes, BaseItemKind.Studio);
+            }
+        }
+
+        if (query.IncludeArtists && (includeItemTypes.Count == 0 || includeItemTypes.Contains(BaseItemKind.MusicArtist)))
+        {
+            if (!query.IncludeMedia)
+            {
+                AddIfMissing(includeItemTypes, BaseItemKind.MusicArtist);
+            }
+        }
+
+        return includeItemTypes;
+    }
+
+    private static void AddIfMissing(List<BaseItemKind> list, BaseItemKind value)
+    {
+        if (!list.Contains(value))
+        {
+            list.Add(value);
+        }
+    }
+}
