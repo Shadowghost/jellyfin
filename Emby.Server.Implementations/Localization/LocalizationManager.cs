@@ -8,7 +8,6 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Extensions;
 using Jellyfin.Extensions.Json;
@@ -32,10 +31,9 @@ namespace Emby.Server.Implementations.Localization
         private static readonly Assembly _assembly = typeof(LocalizationManager).Assembly;
         private static readonly string[] _unratedValues = ["n/a", "unrated", "not rated", "nr"];
 
-        /// <summary>
-        /// Gets the mapping from BCP-47 hyphenated culture codes to Jellyfin's underscore-based codes.
-        /// </summary>
-        public static readonly FrozenDictionary<string, string> Bcp47ToJellyfinMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        // Maps BCP-47 hyphenated culture codes (set by ASP.NET Core's RequestLocalizationMiddleware
+        // and used as CurrentUICulture.Name) to Jellyfin's underscore-based resource file codes.
+        private static readonly FrozenDictionary<string, string> _bcp47ToJellyfinMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["es-419"] = "es_419",
             ["es-DO"] = "es_DO",
@@ -46,8 +44,6 @@ namespace Emby.Server.Implementations.Localization
         private readonly ILogger<LocalizationManager> _logger;
 
         private readonly Dictionary<string, Dictionary<string, ParentalRatingScore?>> _allParentalRatings = new(StringComparer.OrdinalIgnoreCase);
-
-        private static readonly AsyncLocal<IReadOnlyList<string>?> _requestCultureFallback = new();
 
         private readonly ConcurrentDictionary<string, Dictionary<string, string>> _cultureOnlyDictionaries = new(StringComparer.OrdinalIgnoreCase);
 
@@ -76,24 +72,28 @@ namespace Emby.Server.Implementations.Localization
         }
 
         /// <summary>
-        /// Gets or sets the per-request culture fallback chain resolved from Accept-Language.
-        /// Each entry is a Jellyfin culture code (e.g. "de", "nl", "en-US") in priority order.
+        /// Gets the supported UI cultures.
         /// </summary>
-        public static IReadOnlyList<string>? RequestCultureFallback
+        /// <returns>A list of <see cref="CultureInfo"/> objects covering every embedded translation.</returns>
+        public static IList<CultureInfo> GetSupportedUICultures()
         {
-            get => _requestCultureFallback.Value;
-            set => _requestCultureFallback.Value = value;
-        }
+            var cultures = new List<CultureInfo>();
+            foreach (var option in _localizationOptions)
+            {
+                // Resource files use underscores for some variants (e.g. es_419);
+                // CultureInfo only accepts hyphenated BCP-47 codes.
+                var code = option.Value.Replace('_', '-');
+                try
+                {
+                    cultures.Add(CultureInfo.GetCultureInfo(code));
+                }
+                catch (CultureNotFoundException)
+                {
+                    // Skip novelty codes (e.g. "pr" Pirate, "jbo" Lojban) that .NET cannot resolve.
+                }
+            }
 
-        /// <summary>
-        /// Checks whether a translation resource file exists for the given culture code.
-        /// </summary>
-        /// <param name="culture">The culture code to check (e.g. "de", "pt-BR", "es_419").</param>
-        /// <returns><c>true</c> if an embedded translation resource exists for the culture.</returns>
-        public static bool HasTranslation(string culture)
-        {
-            var resourceName = CoreResourcePrefix + GetResourceFilename(culture);
-            return _assembly.GetManifestResourceInfo(resourceName) is not null;
+            return cultures;
         }
 
         private static void OnConfigurationUpdated(object? sender, EventArgs e)
@@ -472,21 +472,6 @@ namespace Emby.Server.Implementations.Localization
         /// <inheritdoc />
         public string GetLocalizedString(string phrase)
         {
-            var fallback = _requestCultureFallback.Value;
-            if (fallback is not null)
-            {
-                foreach (var culture in fallback)
-                {
-                    var dict = GetLocalizationDictionary(culture);
-                    if (dict.TryGetValue(phrase, out var value))
-                    {
-                        return value;
-                    }
-                }
-
-                return phrase;
-            }
-
             return GetLocalizedString(phrase, CultureInfo.CurrentUICulture.Name);
         }
 
@@ -510,7 +495,7 @@ namespace Emby.Server.Implementations.Localization
             }
 
             // Normalize BCP-47 hyphenated codes to Jellyfin's underscore-based codes
-            if (Bcp47ToJellyfinMap.TryGetValue(culture, out var mapped))
+            if (_bcp47ToJellyfinMap.TryGetValue(culture, out var mapped))
             {
                 culture = mapped;
             }
@@ -626,7 +611,7 @@ namespace Emby.Server.Implementations.Localization
         private static string GetDisplayName(string cultureCode)
         {
             // Handle Jellyfin-specific codes that aren't valid CultureInfo names
-            if (Bcp47ToJellyfinMap.Values.Contains(cultureCode))
+            if (_bcp47ToJellyfinMap.Values.Contains(cultureCode))
             {
                 // Convert underscore to hyphen for CultureInfo lookup
                 var normalized = cultureCode.Replace('_', '-');

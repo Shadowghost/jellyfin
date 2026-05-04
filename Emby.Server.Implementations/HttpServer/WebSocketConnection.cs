@@ -1,6 +1,5 @@
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Globalization;
 using System.IO.Pipelines;
 using System.Net;
@@ -9,7 +8,6 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Emby.Server.Implementations.Localization;
 using Jellyfin.Extensions.Json;
 using MediaBrowser.Controller.Net;
 using MediaBrowser.Controller.Net.WebSocketMessages;
@@ -73,12 +71,6 @@ namespace Emby.Server.Implementations.HttpServer
         public IPAddress? RemoteEndPoint { get; }
 
         /// <summary>
-        /// Gets or initializes the culture fallback chain captured from the
-        /// <c>Accept-Language</c> header of the upgrade request.
-        /// </summary>
-        public IReadOnlyList<string>? RequestCultureFallback { get; init; }
-
-        /// <summary>
         /// Gets or initializes the UI culture name captured from the upgrade request.
         /// </summary>
         public string? RequestUICulture { get; init; }
@@ -98,22 +90,18 @@ namespace Emby.Server.Implementations.HttpServer
         /// <inheritdoc />
         public void ApplyRequestCulture()
         {
-            if (RequestCultureFallback is not null)
+            if (string.IsNullOrEmpty(RequestUICulture))
             {
-                LocalizationManager.RequestCultureFallback = RequestCultureFallback;
+                return;
             }
 
-            if (!string.IsNullOrEmpty(RequestUICulture))
+            try
             {
-                try
-                {
-                    CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(RequestUICulture);
-                }
-                catch (CultureNotFoundException)
-                {
-                    // Jellyfin culture codes (e.g. "es_419") aren't always valid .NET cultures —
-                    // skip setting CurrentUICulture; RequestCultureFallback above carries the chain.
-                }
+                CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(RequestUICulture);
+            }
+            catch (CultureNotFoundException)
+            {
+                // Codes that aren't valid .NET cultures are ignored.
             }
         }
 

@@ -8,7 +8,6 @@ using System.Globalization;
 using System.Linq;
 using System.Net.WebSockets;
 using System.Threading.Tasks;
-using Emby.Server.Implementations.Localization;
 using MediaBrowser.Common.Extensions;
 using MediaBrowser.Controller.Net;
 using Microsoft.AspNetCore.Http;
@@ -50,7 +49,7 @@ namespace Emby.Server.Implementations.HttpServer
 
                 WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
 
-                // Capture the culture context set by AcceptLanguageMiddleware so it can be
+                // Capture the culture set by RequestLocalizationMiddleware so it can be
                 // restored both when processing incoming messages and when periodic
                 // listeners produce server-initiated payloads on background tasks.
                 var connection = new WebSocketConnection(
@@ -59,7 +58,6 @@ namespace Emby.Server.Implementations.HttpServer
                     authorizationInfo,
                     context.GetNormalizedRemoteIP())
                 {
-                    RequestCultureFallback = LocalizationManager.RequestCultureFallback,
                     RequestUICulture = CultureInfo.CurrentUICulture.Name
                 };
                 connection.OnReceive = result =>

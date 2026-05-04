@@ -367,72 +367,7 @@ namespace Jellyfin.Server.Implementations.Tests.Localization
         }
 
         [Fact]
-        public void GetLocalizedString_FallbackChain_UsesFirstAvailableCulture()
-        {
-            var localizationManager = Setup(new ServerConfiguration
-            {
-                UICulture = "en-US"
-            });
-
-            // Set fallback chain: de -> fr -> en-US
-            // "Artists" exists in de as "Interpreten", should use de (first in chain)
-            LocalizationManager.RequestCultureFallback = new[] { "de", "fr", "en-US" };
-            try
-            {
-                var translated = localizationManager.GetLocalizedString("Artists");
-                Assert.Equal("Interpreten", translated);
-            }
-            finally
-            {
-                LocalizationManager.RequestCultureFallback = null;
-            }
-        }
-
-        [Fact]
-        public void GetLocalizedString_FallbackChain_SkipsMissingAndUsesNext()
-        {
-            var localizationManager = Setup(new ServerConfiguration
-            {
-                UICulture = "en-US"
-            });
-
-            // "zz" has no translation file so the key won't be found there,
-            // should fall through to de which has "Artists" as "Interpreten"
-            LocalizationManager.RequestCultureFallback = new[] { "zz", "de", "en-US" };
-            try
-            {
-                var translated = localizationManager.GetLocalizedString("Artists");
-                Assert.Equal("Interpreten", translated);
-            }
-            finally
-            {
-                LocalizationManager.RequestCultureFallback = null;
-            }
-        }
-
-        [Fact]
-        public void GetLocalizedString_FallbackChain_ReturnsKeyWhenNoTranslation()
-        {
-            var localizationManager = Setup(new ServerConfiguration
-            {
-                UICulture = "en-US"
-            });
-
-            var key = "CompletelyNonExistentKey";
-            LocalizationManager.RequestCultureFallback = new[] { "de", "en-US" };
-            try
-            {
-                var translated = localizationManager.GetLocalizedString(key);
-                Assert.Equal(key, translated);
-            }
-            finally
-            {
-                LocalizationManager.RequestCultureFallback = null;
-            }
-        }
-
-        [Fact]
-        public void GetLocalizedString_NoFallbackChain_UsesCurrentUICulture()
+        public void GetLocalizedString_UsesCurrentUICulture()
         {
             var localizationManager = Setup(new ServerConfiguration
             {
@@ -443,8 +378,6 @@ namespace Jellyfin.Server.Implementations.Tests.Localization
             try
             {
                 CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("de");
-                LocalizationManager.RequestCultureFallback = null;
-
                 var translated = localizationManager.GetLocalizedString("Artists");
                 Assert.Equal("Interpreten", translated);
             }
@@ -454,16 +387,15 @@ namespace Jellyfin.Server.Implementations.Tests.Localization
             }
         }
 
-        [Theory]
-        [InlineData("de", true)]
-        [InlineData("en-US", true)]
-        [InlineData("fr", true)]
-        [InlineData("es_419", true)]
-        [InlineData("nonexistent", false)]
-        [InlineData("zz-ZZ", false)]
-        public void HasTranslation_ReturnsExpected(string culture, bool expected)
+        [Fact]
+        public void GetSupportedUICultures_IncludesCommonCultures()
         {
-            Assert.Equal(expected, LocalizationManager.HasTranslation(culture));
+            var supported = LocalizationManager.GetSupportedUICultures();
+            Assert.Contains(supported, c => c.Name.Equals("de", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(supported, c => c.Name.Equals("en-US", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(supported, c => c.Name.Equals("fr", StringComparison.OrdinalIgnoreCase));
+            // Underscore variants get normalized to BCP-47 hyphen form for CultureInfo compatibility.
+            Assert.Contains(supported, c => c.Name.Equals("es-419", StringComparison.OrdinalIgnoreCase));
         }
 
         private LocalizationManager Setup(ServerConfiguration config)

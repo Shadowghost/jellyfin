@@ -7,6 +7,7 @@ using System.Net.Http.Headers;
 using System.Net.Mime;
 using System.Text;
 using Emby.Server.Implementations.EntryPoints;
+using Emby.Server.Implementations.Localization;
 using Jellyfin.Api.Middleware;
 using Jellyfin.Database.Implementations;
 using Jellyfin.LiveTv.Extensions;
@@ -17,13 +18,13 @@ using Jellyfin.Networking.HappyEyeballs;
 using Jellyfin.Server.Extensions;
 using Jellyfin.Server.HealthChecks;
 using Jellyfin.Server.Implementations.Extensions;
-using Jellyfin.Server.Middleware;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Extensions;
 using MediaBrowser.XbmcMetadata;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -137,6 +138,15 @@ namespace Jellyfin.Server
 
             CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo(serverUICulture);
 
+            services.Configure<RequestLocalizationOptions>(options =>
+            {
+                var supportedUICultures = LocalizationManager.GetSupportedUICultures();
+                options.SupportedCultures = supportedUICultures;
+                options.SupportedUICultures = supportedUICultures;
+                options.DefaultRequestCulture = new RequestCulture(serverUICulture);
+                options.ApplyCurrentCultureToResponseHeaders = true;
+            });
+
             services.AddHostedService<RecordingsHost>();
             services.AddHostedService<AutoDiscoveryHost>();
             services.AddHostedService<NfoUserDataSaver>();
@@ -178,7 +188,7 @@ namespace Jellyfin.Server
 
                 mainApp.UseCors();
 
-                mainApp.UseMiddleware<AcceptLanguageMiddleware>();
+                mainApp.UseRequestLocalization();
 
                 if (config.RequireHttps && _serverApplicationHost.ListenWithHttps)
                 {
