@@ -85,19 +85,20 @@ public class SearchManager : ISearchManager
         var searchTerm = query.SearchTerm.Trim().RemoveDiacritics();
 
         var results = await CollectFromProvidersAsync(_externalProviders, query, searchTerm, cancellationToken).ConfigureAwait(false);
+        var fromExternal = results.Count > 0;
         if (results.Count == 0 && _internalProviders.Length > 0)
         {
             _logger.LogDebug("No results from external providers, falling back to internal providers");
             results = await CollectFromProvidersAsync(_internalProviders, query, searchTerm, cancellationToken).ConfigureAwait(false);
         }
 
-        // External providers don't know about user permissions, so they may return IDs from
-        // hidden libraries or items the user is otherwise blocked from. Filter the candidate
-        // set to only items this user can access (top-parent libraries, parental rating,
-        // blocked/allowed tags, owned-item rules) before returning. The Items controller's
-        // second roundtrip via folder.GetItems applies most of these again, but it does not
-        // restrict by TopParentIds when ItemIds is set, leaving a gap that this closes.
-        if (results.Count > 0 && query.UserId.HasValue && !query.UserId.Value.IsEmpty())
+        // Internal providers apply user-access filtering inline in their queries. External
+        // providers don't know about user permissions, so they may return IDs from hidden
+        // libraries or items the user is otherwise blocked from. Run the post-filter only
+        // when results came from externals to close that gap. The Items controller's second
+        // roundtrip via folder.GetItems applies most of these again, but it does not restrict
+        // by TopParentIds when ItemIds is set.
+        if (fromExternal && results.Count > 0 && query.UserId.HasValue && !query.UserId.Value.IsEmpty())
         {
             var user = _userManager.GetUserById(query.UserId.Value);
             if (user is not null)
@@ -120,30 +121,27 @@ public class SearchManager : ISearchManager
         var accessFilter = new InternalItemsQuery(user);
         _libraryManager.ConfigureUserAccess(accessFilter, user);
 
-        var candidateIds = new Guid[candidates.Count];
-        for (var i = 0; i < candidates.Count; i++)
-        {
-            candidateIds[i] = candidates[i].ItemId;
-        }
+        Guid[] candidateIds = [.. candidates.Select(c => c.ItemId)];
 
         var dbContext = await _dbProvider.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using (dbContext.ConfigureAwait(false))
         {
             var baseQuery = dbContext.BaseItems
                 .AsNoTracking()
-                .Where(e => candidateIds.Contains(e.Id));
+                .WhereOneOrMany(candidateIds, e => e.Id);
 
             baseQuery = _queryHelpers.ApplyAccessFiltering(dbContext, baseQuery, accessFilter);
+
+            var allowedCount = await baseQuery.CountAsync(cancellationToken).ConfigureAwait(false);
+            if (allowedCount == candidates.Count)
+            {
+                return candidates;
+            }
 
             var allowedIds = await baseQuery
                 .Select(e => e.Id)
                 .ToHashSetAsync(cancellationToken)
                 .ConfigureAwait(false);
-
-            if (allowedIds.Count == candidates.Count)
-            {
-                return candidates;
-            }
 
             var filtered = candidates.Where(c => allowedIds.Contains(c.ItemId)).ToList();
             if (filtered.Count < candidates.Count)
@@ -253,17 +251,24 @@ public class SearchManager : ISearchManager
         string searchTerm,
         CancellationToken cancellationToken)
     {
-        var bestScores = new Dictionary<Guid, float>();
         var requestedLimit = providerQuery.Limit ?? 100;
-
-        foreach (var provider in providers.Where(p => p.CanSearch(providerQuery)))
+        var applicable = providers.Where(p => p.CanSearch(providerQuery)).ToArray();
+        if (applicable.Length == 0)
         {
-            if (bestScores.Count >= requestedLimit || cancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
+            return [];
+        }
 
-            await CollectFromProviderAsync(provider, providerQuery, searchTerm, bestScores, requestedLimit, cancellationToken).ConfigureAwait(false);
+        var perProvider = await Task.WhenAll(
+            applicable.Select(p => CollectFromProviderAsync(p, providerQuery, searchTerm, requestedLimit, cancellationToken)))
+            .ConfigureAwait(false);
+
+        var bestScores = new Dictionary<Guid, float>();
+        foreach (var providerResults in perProvider)
+        {
+            foreach (var result in providerResults)
+            {
+                UpdateBestScore(bestScores, result);
+            }
         }
 
         return bestScores
@@ -273,66 +278,50 @@ public class SearchManager : ISearchManager
             .ToList();
     }
 
-    private async Task CollectFromProviderAsync(
+    private async Task<IReadOnlyList<SearchResult>> CollectFromProviderAsync(
         ISearchProvider provider,
         SearchProviderQuery providerQuery,
         string searchTerm,
-        Dictionary<Guid, float> bestScores,
         int requestedLimit,
         CancellationToken cancellationToken)
     {
         try
         {
-            var count = provider is IExternalSearchProvider externalProvider
-                ? await CollectFromExternalProviderAsync(externalProvider, providerQuery, bestScores, requestedLimit, cancellationToken).ConfigureAwait(false)
-                : await CollectFromInternalProviderAsync(provider, providerQuery, bestScores, cancellationToken).ConfigureAwait(false);
+            var results = provider is IExternalSearchProvider externalProvider
+                ? await CollectFromExternalProviderAsync(externalProvider, providerQuery, requestedLimit, cancellationToken).ConfigureAwait(false)
+                : await provider.SearchAsync(providerQuery, cancellationToken).ConfigureAwait(false);
 
             _logger.LogDebug(
                 "Provider {Provider} returned {Count} candidates for search term '{SearchTerm}'",
                 provider.Name,
-                count,
+                results.Count,
                 searchTerm);
+            return results;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Search provider {Provider} failed for term '{SearchTerm}'", provider.Name, searchTerm);
+            return [];
         }
     }
 
-    private static async Task<int> CollectFromExternalProviderAsync(
+    private static async Task<IReadOnlyList<SearchResult>> CollectFromExternalProviderAsync(
         IExternalSearchProvider provider,
         SearchProviderQuery providerQuery,
-        Dictionary<Guid, float> bestScores,
         int requestedLimit,
         CancellationToken cancellationToken)
     {
-        var count = 0;
+        var results = new List<SearchResult>();
         await foreach (var result in provider.SearchAsync(providerQuery, cancellationToken).ConfigureAwait(false))
         {
-            UpdateBestScore(bestScores, result);
-            count++;
-            if (bestScores.Count >= requestedLimit)
+            results.Add(result);
+            if (results.Count >= requestedLimit)
             {
                 break;
             }
         }
 
-        return count;
-    }
-
-    private static async Task<int> CollectFromInternalProviderAsync(
-        ISearchProvider provider,
-        SearchProviderQuery providerQuery,
-        Dictionary<Guid, float> bestScores,
-        CancellationToken cancellationToken)
-    {
-        var candidates = await provider.SearchAsync(providerQuery, cancellationToken).ConfigureAwait(false);
-        foreach (var result in candidates)
-        {
-            UpdateBestScore(bestScores, result);
-        }
-
-        return candidates.Count;
+        return results;
     }
 
     private static void UpdateBestScore(Dictionary<Guid, float> bestScores, SearchResult result)
