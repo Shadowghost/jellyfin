@@ -1,5 +1,7 @@
 using System;
 using System.Buffers;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO.Pipelines;
 using System.Net;
 using System.Net.WebSockets;
@@ -7,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Emby.Server.Implementations.Localization;
 using Jellyfin.Extensions.Json;
 using MediaBrowser.Controller.Net;
 using MediaBrowser.Controller.Net.WebSocketMessages;
@@ -69,6 +72,17 @@ namespace Emby.Server.Implementations.HttpServer
         /// <inheritdoc />
         public IPAddress? RemoteEndPoint { get; }
 
+        /// <summary>
+        /// Gets or initializes the culture fallback chain captured from the
+        /// <c>Accept-Language</c> header of the upgrade request.
+        /// </summary>
+        public IReadOnlyList<string>? RequestCultureFallback { get; init; }
+
+        /// <summary>
+        /// Gets or initializes the UI culture name captured from the upgrade request.
+        /// </summary>
+        public string? RequestUICulture { get; init; }
+
         /// <inheritdoc />
         public Func<WebSocketMessageInfo, Task>? OnReceive { get; set; }
 
@@ -80,6 +94,28 @@ namespace Emby.Server.Implementations.HttpServer
 
         /// <inheritdoc />
         public WebSocketState State => _socket.State;
+
+        /// <inheritdoc />
+        public void ApplyRequestCulture()
+        {
+            if (RequestCultureFallback is not null)
+            {
+                LocalizationManager.RequestCultureFallback = RequestCultureFallback;
+            }
+
+            if (!string.IsNullOrEmpty(RequestUICulture))
+            {
+                try
+                {
+                    CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(RequestUICulture);
+                }
+                catch (CultureNotFoundException)
+                {
+                    // Jellyfin culture codes (e.g. "es_419") aren't always valid .NET cultures —
+                    // skip setting CurrentUICulture; RequestCultureFallback above carries the chain.
+                }
+            }
+        }
 
         /// <inheritdoc />
         public async Task SendAsync(OutboundWebSocketMessage message, CancellationToken cancellationToken)
