@@ -48,17 +48,13 @@ namespace Emby.Server.Implementations.HttpServer
                 _logger.LogInformation("WS {IP} request", context.Connection.RemoteIpAddress);
 
                 WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
-
-                // Capture the culture set by RequestLocalizationMiddleware so it can be
-                // restored both when processing incoming messages and when periodic
-                // listeners produce server-initiated payloads on background tasks.
                 var connection = new WebSocketConnection(
                     _loggerFactory.CreateLogger<WebSocketConnection>(),
                     webSocket,
                     authorizationInfo,
                     context.GetNormalizedRemoteIP())
                 {
-                    RequestUICulture = CultureInfo.CurrentUICulture.Name
+                    RequestUICulture = CultureInfo.CurrentUICulture
                 };
                 connection.OnReceive = result =>
                 {

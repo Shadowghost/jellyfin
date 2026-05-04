@@ -71,9 +71,9 @@ namespace Emby.Server.Implementations.HttpServer
         public IPAddress? RemoteEndPoint { get; }
 
         /// <summary>
-        /// Gets or initializes the UI culture name captured from the upgrade request.
+        /// Gets or initializes the UI culture captured from the upgrade request.
         /// </summary>
-        public string? RequestUICulture { get; init; }
+        public CultureInfo? RequestUICulture { get; init; }
 
         /// <inheritdoc />
         public Func<WebSocketMessageInfo, Task>? OnReceive { get; set; }
@@ -90,19 +90,12 @@ namespace Emby.Server.Implementations.HttpServer
         /// <inheritdoc />
         public void ApplyRequestCulture()
         {
-            if (string.IsNullOrEmpty(RequestUICulture))
+            if (RequestUICulture is null)
             {
                 return;
             }
 
-            try
-            {
-                CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(RequestUICulture);
-            }
-            catch (CultureNotFoundException)
-            {
-                // Codes that aren't valid .NET cultures are ignored.
-            }
+            CultureInfo.CurrentUICulture = RequestUICulture;
         }
 
         /// <inheritdoc />
