@@ -145,15 +145,7 @@ public class SearchManager : ISearchManager
                 return candidates;
             }
 
-            var filtered = new List<SearchResult>(allowedIds.Count);
-            foreach (var c in candidates)
-            {
-                if (allowedIds.Contains(c.ItemId))
-                {
-                    filtered.Add(c);
-                }
-            }
-
+            var filtered = candidates.Where(c => allowedIds.Contains(c.ItemId)).ToList();
             if (filtered.Count < candidates.Count)
             {
                 _logger.LogDebug(
@@ -271,46 +263,7 @@ public class SearchManager : ISearchManager
                 break;
             }
 
-            try
-            {
-                if (provider is IExternalSearchProvider externalProvider)
-                {
-                    var count = 0;
-                    await foreach (var result in externalProvider.SearchAsync(providerQuery, cancellationToken).ConfigureAwait(false))
-                    {
-                        UpdateBestScore(bestScores, result);
-                        count++;
-                        if (bestScores.Count >= requestedLimit)
-                        {
-                            break;
-                        }
-                    }
-
-                    _logger.LogDebug(
-                        "External provider {Provider} returned {Count} candidates for search term '{SearchTerm}'",
-                        provider.Name,
-                        count,
-                        searchTerm);
-                }
-                else
-                {
-                    var candidates = await provider.SearchAsync(providerQuery, cancellationToken).ConfigureAwait(false);
-                    foreach (var result in candidates)
-                    {
-                        UpdateBestScore(bestScores, result);
-                    }
-
-                    _logger.LogDebug(
-                        "Provider {Provider} returned {Count} candidates for search term '{SearchTerm}'",
-                        provider.Name,
-                        candidates.Count,
-                        searchTerm);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Search provider {Provider} failed for term '{SearchTerm}'", provider.Name, searchTerm);
-            }
+            await CollectFromProviderAsync(provider, providerQuery, searchTerm, bestScores, requestedLimit, cancellationToken).ConfigureAwait(false);
         }
 
         return bestScores
@@ -318,6 +271,68 @@ public class SearchManager : ISearchManager
             .OrderByDescending(r => r.Score)
             .Take(requestedLimit)
             .ToList();
+    }
+
+    private async Task CollectFromProviderAsync(
+        ISearchProvider provider,
+        SearchProviderQuery providerQuery,
+        string searchTerm,
+        Dictionary<Guid, float> bestScores,
+        int requestedLimit,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var count = provider is IExternalSearchProvider externalProvider
+                ? await CollectFromExternalProviderAsync(externalProvider, providerQuery, bestScores, requestedLimit, cancellationToken).ConfigureAwait(false)
+                : await CollectFromInternalProviderAsync(provider, providerQuery, bestScores, cancellationToken).ConfigureAwait(false);
+
+            _logger.LogDebug(
+                "Provider {Provider} returned {Count} candidates for search term '{SearchTerm}'",
+                provider.Name,
+                count,
+                searchTerm);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Search provider {Provider} failed for term '{SearchTerm}'", provider.Name, searchTerm);
+        }
+    }
+
+    private static async Task<int> CollectFromExternalProviderAsync(
+        IExternalSearchProvider provider,
+        SearchProviderQuery providerQuery,
+        Dictionary<Guid, float> bestScores,
+        int requestedLimit,
+        CancellationToken cancellationToken)
+    {
+        var count = 0;
+        await foreach (var result in provider.SearchAsync(providerQuery, cancellationToken).ConfigureAwait(false))
+        {
+            UpdateBestScore(bestScores, result);
+            count++;
+            if (bestScores.Count >= requestedLimit)
+            {
+                break;
+            }
+        }
+
+        return count;
+    }
+
+    private static async Task<int> CollectFromInternalProviderAsync(
+        ISearchProvider provider,
+        SearchProviderQuery providerQuery,
+        Dictionary<Guid, float> bestScores,
+        CancellationToken cancellationToken)
+    {
+        var candidates = await provider.SearchAsync(providerQuery, cancellationToken).ConfigureAwait(false);
+        foreach (var result in candidates)
+        {
+            UpdateBestScore(bestScores, result);
+        }
+
+        return candidates.Count;
     }
 
     private static void UpdateBestScore(Dictionary<Guid, float> bestScores, SearchResult result)
@@ -397,41 +412,37 @@ public class SearchManager : ISearchManager
     private static List<BaseItemKind> BuildIncludeItemTypes(SearchQuery query)
     {
         var includeItemTypes = query.IncludeItemTypes.ToList();
-        if (query.IncludeGenres && (includeItemTypes.Count == 0 || includeItemTypes.Contains(BaseItemKind.Genre)))
+        if (query.IncludeMedia)
         {
-            if (!query.IncludeMedia)
-            {
-                AddIfMissing(includeItemTypes, BaseItemKind.Genre);
-                AddIfMissing(includeItemTypes, BaseItemKind.MusicGenre);
-            }
+            return includeItemTypes;
         }
 
-        if (query.IncludePeople && (includeItemTypes.Count == 0 || includeItemTypes.Contains(BaseItemKind.Person)))
+        if (query.IncludeGenres && IsEmptyOrContains(includeItemTypes, BaseItemKind.Genre))
         {
-            if (!query.IncludeMedia)
-            {
-                AddIfMissing(includeItemTypes, BaseItemKind.Person);
-            }
+            AddIfMissing(includeItemTypes, BaseItemKind.Genre);
+            AddIfMissing(includeItemTypes, BaseItemKind.MusicGenre);
         }
 
-        if (query.IncludeStudios && (includeItemTypes.Count == 0 || includeItemTypes.Contains(BaseItemKind.Studio)))
+        if (query.IncludePeople && IsEmptyOrContains(includeItemTypes, BaseItemKind.Person))
         {
-            if (!query.IncludeMedia)
-            {
-                AddIfMissing(includeItemTypes, BaseItemKind.Studio);
-            }
+            AddIfMissing(includeItemTypes, BaseItemKind.Person);
         }
 
-        if (query.IncludeArtists && (includeItemTypes.Count == 0 || includeItemTypes.Contains(BaseItemKind.MusicArtist)))
+        if (query.IncludeStudios && IsEmptyOrContains(includeItemTypes, BaseItemKind.Studio))
         {
-            if (!query.IncludeMedia)
-            {
-                AddIfMissing(includeItemTypes, BaseItemKind.MusicArtist);
-            }
+            AddIfMissing(includeItemTypes, BaseItemKind.Studio);
+        }
+
+        if (query.IncludeArtists && IsEmptyOrContains(includeItemTypes, BaseItemKind.MusicArtist))
+        {
+            AddIfMissing(includeItemTypes, BaseItemKind.MusicArtist);
         }
 
         return includeItemTypes;
     }
+
+    private static bool IsEmptyOrContains(List<BaseItemKind> list, BaseItemKind value)
+        => list.Count == 0 || list.Contains(value);
 
     private static void AddIfMissing(List<BaseItemKind> list, BaseItemKind value)
     {
