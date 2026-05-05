@@ -145,6 +145,8 @@ namespace Jellyfin.Server
                 options.SupportedUICultures = supportedUICultures;
                 options.DefaultRequestCulture = new RequestCulture(serverUICulture);
                 options.ApplyCurrentCultureToResponseHeaders = true;
+                options.FallBackToParentCultures = true;
+                options.FallBackToParentUICultures = true;
             });
 
             services.AddHostedService<RecordingsHost>();
