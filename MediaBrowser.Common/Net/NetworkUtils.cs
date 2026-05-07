@@ -217,10 +217,23 @@ public static partial class NetworkUtils
         var index = value.IndexOf('/');
         if (index != -1)
         {
-            if (IPAddress.TryParse(value[..index], out var address) && IPNetwork.TryParse(value, out var subnet))
+            var addressPart = value[..index];
+            if (IPAddress.TryParse(addressPart, out var address) && IPNetwork.TryParse(value, out var subnet))
             {
                 result = new IPData(address, subnet);
                 return true;
+            }
+
+            // Accept IPv6 prefix-only notation that omits the `::`, e.g. "2001:db8:1234:5600/56".
+            if (addressPart.Contains(':') && addressPart.IndexOf("::", StringComparison.Ordinal) == -1)
+            {
+                var expandedAddress = string.Concat(addressPart, "::");
+                if (IPAddress.TryParse(expandedAddress, out var address2)
+                    && IPNetwork.TryParse(string.Concat(expandedAddress, value[index..]), out var subnet2))
+                {
+                    result = new IPData(address2, subnet2);
+                    return true;
+                }
             }
         }
         else if (IPAddress.TryParse(value, out var address))

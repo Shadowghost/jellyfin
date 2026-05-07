@@ -20,6 +20,8 @@ namespace Jellyfin.Networking.Tests
         [InlineData("192.168.2.1/24, !192.168.2.122/32", "192.168.2.123")]
         [InlineData("fd23:184f:2029:0::/56", "fd23:184f:2029:0:3139:7386:67d7:d517")]
         [InlineData("fd23:184f:2029:0::/56, !fd23:184f:2029:0:3139:7386:67d7:d518/128", "fd23:184f:2029:0:3139:7386:67d7:d517")]
+        [InlineData("fd23:184f:2029:0100/56", "fd23:184f:2029:0101:d51:2102:e6f0:722c")]
+        [InlineData("10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, fd23:184f:2029:0100/56", "fd23:184f:2029:0101:d51:2102:e6f0:722c")]
         public void InNetwork_True_Success(string network, string value)
         {
             var ip = IPAddress.Parse(value);
