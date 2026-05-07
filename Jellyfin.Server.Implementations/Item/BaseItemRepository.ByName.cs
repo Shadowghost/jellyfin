@@ -133,21 +133,15 @@ public sealed partial class BaseItemRepository
             IsSeries = filter.IsSeries
         });
 
-        // Keep this as an IQueryable sub-select. Materializing to a list would inline one
-        // bound parameter per CleanValue and hit SQLite's variable cap on libraries with
-        // high-cardinality value types (e.g. tens of thousands of artists).
-        var matchingCleanValues = context.ItemValuesMap
-            .Where(ivm => itemValueTypes.Contains(ivm.ItemValue.Type))
-            .Join(
-                innerQueryFilter,
-                ivm => ivm.ItemId,
-                g => g.Id,
-                (ivm, g) => ivm.ItemValue.CleanValue)
-            .Distinct();
-
+        // Use a correlated EXISTS rather than `IN (SELECT DISTINCT CleanValue ...)`. The
+        // IN-form would force materialization of the full set of artist CleanValues across the
+        // entire library before filtering.
         var innerQuery = PrepareItemQuery(context, filter)
             .Where(e => e.Type == returnType)
-            .Where(e => matchingCleanValues.Contains(e.CleanName!));
+            .Where(e => context.ItemValuesMap.Any(ivm =>
+                itemValueTypes.Contains(ivm.ItemValue.Type)
+                && ivm.ItemValue.CleanValue == e.CleanName
+                && innerQueryFilter.Any(g => g.Id == ivm.ItemId)));
 
         var outerQueryFilter = new InternalItemsQuery(filter.User)
         {
@@ -173,10 +167,7 @@ public sealed partial class BaseItemRepository
         // Build the master query and collapse rows that share a PresentationUniqueKey
         // (e.g. alternate versions) by picking the lowest Id per group.
         var masterQuery = TranslateQuery(innerQuery, context, outerQueryFilter);
-
-        var orderedMasterQuery = ApplyOrder(masterQuery, filter, context)
-            .GroupBy(e => e.PresentationUniqueKey)
-            .Select(g => g.Min(e => e.Id));
+        var orderedMasterQuery = BuildOrderedMasterQuery(masterQuery, filter.SearchTerm);
 
         var result = new QueryResult<(BaseItemDto, ItemCounts?)>();
         if (filter.EnableTotalRecordCount)
@@ -202,60 +193,10 @@ public sealed partial class BaseItemRepository
 
         query = ApplyOrder(query, filter, context);
 
+        result.StartIndex = filter.StartIndex ?? 0;
         if (filter.IncludeItemTypes.Length > 0)
         {
-            var typeSubQuery = new InternalItemsQuery(filter.User)
-            {
-                ExcludeItemTypes = filter.ExcludeItemTypes,
-                IncludeItemTypes = filter.IncludeItemTypes,
-                MediaTypes = filter.MediaTypes,
-                AncestorIds = filter.AncestorIds,
-                ExcludeItemIds = filter.ExcludeItemIds,
-                ItemIds = filter.ItemIds,
-                TopParentIds = filter.TopParentIds,
-                ParentId = filter.ParentId,
-                IsPlayed = filter.IsPlayed
-            };
-
-            var itemCountQuery = TranslateQuery(context.BaseItems.AsNoTracking().Where(e => e.Id != EF.Constant(PlaceholderId)), context, typeSubQuery)
-                .Where(e => e.ItemValues!.Any(f => itemValueTypes!.Contains(f.ItemValue.Type)));
-
-            var seriesTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.Series];
-            var movieTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.Movie];
-            var episodeTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.Episode];
-            var musicAlbumTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.MusicAlbum];
-            var musicArtistTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.MusicArtist];
-            var audioTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.Audio];
-            var trailerTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.Trailer];
-            var itemIds = itemCountQuery.Select(e => e.Id);
-
-            // Rewrite query to avoid SelectMany on navigation properties (which requires SQL APPLY, not supported on SQLite)
-            // Instead, start from ItemValueMaps and join with BaseItems
-            var countsByCleanName = context.ItemValuesMap
-                .Where(ivm => itemValueTypes.Contains(ivm.ItemValue.Type))
-                .Where(ivm => itemIds.Contains(ivm.ItemId))
-                .Join(
-                    context.BaseItems,
-                    ivm => ivm.ItemId,
-                    e => e.Id,
-                    (ivm, e) => new { CleanName = ivm.ItemValue.CleanValue, e.Type })
-                .GroupBy(x => new { x.CleanName, x.Type })
-                .Select(g => new { g.Key.CleanName, g.Key.Type, Count = g.Count() })
-                .GroupBy(x => x.CleanName)
-                .ToDictionary(
-                    g => g.Key,
-                    g => new ItemCounts
-                    {
-                        SeriesCount = g.Where(x => x.Type == seriesTypeName).Sum(x => x.Count),
-                        EpisodeCount = g.Where(x => x.Type == episodeTypeName).Sum(x => x.Count),
-                        MovieCount = g.Where(x => x.Type == movieTypeName).Sum(x => x.Count),
-                        AlbumCount = g.Where(x => x.Type == musicAlbumTypeName).Sum(x => x.Count),
-                        ArtistCount = g.Where(x => x.Type == musicArtistTypeName).Sum(x => x.Count),
-                        SongCount = g.Where(x => x.Type == audioTypeName).Sum(x => x.Count),
-                        TrailerCount = g.Where(x => x.Type == trailerTypeName).Sum(x => x.Count),
-                    });
-
-            result.StartIndex = filter.StartIndex ?? 0;
+            var countsByCleanName = BuildItemCountsByCleanName(context, filter, itemValueTypes);
             result.Items =
             [
                 .. query
@@ -273,7 +214,6 @@ public sealed partial class BaseItemRepository
         }
         else
         {
-            result.StartIndex = filter.StartIndex ?? 0;
             result.Items =
             [
                 .. query
@@ -286,5 +226,99 @@ public sealed partial class BaseItemRepository
         }
 
         return result;
+    }
+
+    private static IQueryable<Guid> BuildOrderedMasterQuery(IQueryable<BaseItemEntity> masterQuery, string? searchTerm)
+    {
+        if (string.IsNullOrEmpty(searchTerm))
+        {
+            return masterQuery
+                .GroupBy(e => e.PresentationUniqueKey)
+                .Select(g => new { Id = g.Min(e => e.Id), SortName = g.Min(e => e.SortName) })
+                .OrderBy(x => x.SortName)
+                .Select(x => x.Id);
+        }
+
+        var cleanSearchTerm = searchTerm.GetCleanValue();
+        var cleanSearchPrefix = cleanSearchTerm + " ";
+
+        return masterQuery
+            .Select(e => new
+            {
+                e.Id,
+                e.PresentationUniqueKey,
+                e.SortName,
+                Score = (e.CleanName == cleanSearchTerm) ? 0
+                    : e.CleanName!.StartsWith(cleanSearchTerm) ? 1
+                    : e.CleanName!.Contains(cleanSearchPrefix) ? 2
+                    : 3
+            })
+            .GroupBy(x => x.PresentationUniqueKey)
+            .Select(g => new
+            {
+                Id = g.Min(x => x.Id),
+                Score = g.Min(x => x.Score),
+                SortName = g.Min(x => x.SortName)
+            })
+            .OrderBy(x => x.Score)
+            .ThenBy(x => x.SortName)
+            .Select(x => x.Id);
+    }
+
+    private Dictionary<string, ItemCounts> BuildItemCountsByCleanName(
+        Database.Implementations.JellyfinDbContext context,
+        InternalItemsQuery filter,
+        IReadOnlyList<ItemValueType> itemValueTypes)
+    {
+        var typeSubQuery = new InternalItemsQuery(filter.User)
+        {
+            ExcludeItemTypes = filter.ExcludeItemTypes,
+            IncludeItemTypes = filter.IncludeItemTypes,
+            MediaTypes = filter.MediaTypes,
+            AncestorIds = filter.AncestorIds,
+            ExcludeItemIds = filter.ExcludeItemIds,
+            ItemIds = filter.ItemIds,
+            TopParentIds = filter.TopParentIds,
+            ParentId = filter.ParentId,
+            IsPlayed = filter.IsPlayed
+        };
+
+        var itemCountQuery = TranslateQuery(context.BaseItems.AsNoTracking().Where(e => e.Id != EF.Constant(PlaceholderId)), context, typeSubQuery)
+            .Where(e => e.ItemValues!.Any(f => itemValueTypes!.Contains(f.ItemValue.Type)));
+
+        var seriesTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.Series];
+        var movieTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.Movie];
+        var episodeTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.Episode];
+        var musicAlbumTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.MusicAlbum];
+        var musicArtistTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.MusicArtist];
+        var audioTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.Audio];
+        var trailerTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.Trailer];
+        var itemIds = itemCountQuery.Select(e => e.Id);
+
+        // Rewrite query to avoid SelectMany on navigation properties (which requires SQL APPLY, not supported on SQLite)
+        // Instead, start from ItemValueMaps and join with BaseItems
+        return context.ItemValuesMap
+            .Where(ivm => itemValueTypes.Contains(ivm.ItemValue.Type))
+            .Where(ivm => itemIds.Contains(ivm.ItemId))
+            .Join(
+                context.BaseItems,
+                ivm => ivm.ItemId,
+                e => e.Id,
+                (ivm, e) => new { CleanName = ivm.ItemValue.CleanValue, e.Type })
+            .GroupBy(x => new { x.CleanName, x.Type })
+            .Select(g => new { g.Key.CleanName, g.Key.Type, Count = g.Count() })
+            .GroupBy(x => x.CleanName)
+            .ToDictionary(
+                g => g.Key,
+                g => new ItemCounts
+                {
+                    SeriesCount = g.Where(x => x.Type == seriesTypeName).Sum(x => x.Count),
+                    EpisodeCount = g.Where(x => x.Type == episodeTypeName).Sum(x => x.Count),
+                    MovieCount = g.Where(x => x.Type == movieTypeName).Sum(x => x.Count),
+                    AlbumCount = g.Where(x => x.Type == musicAlbumTypeName).Sum(x => x.Count),
+                    ArtistCount = g.Where(x => x.Type == musicArtistTypeName).Sum(x => x.Count),
+                    SongCount = g.Where(x => x.Type == audioTypeName).Sum(x => x.Count),
+                    TrailerCount = g.Where(x => x.Type == trailerTypeName).Sum(x => x.Count),
+                });
     }
 }
