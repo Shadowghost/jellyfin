@@ -184,7 +184,7 @@ public static partial class NetworkUtils
             {
                 (tmpResult ??= new()).Add(innerResult);
             }
-            else if (logger is not null)
+            else
             {
                 LogInvalidSubnet(logger, values[a]);
             }
@@ -194,8 +194,13 @@ public static partial class NetworkUtils
         return result is not null;
     }
 
-    private static void LogInvalidSubnet(ILogger logger, string value)
+    private static void LogInvalidSubnet(ILogger? logger, string value)
     {
+        if (logger is null)
+        {
+            return;
+        }
+
         var trimmed = value.AsSpan().Trim();
         if (trimmed.StartsWith('!'))
         {
