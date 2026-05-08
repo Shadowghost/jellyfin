@@ -7,6 +7,7 @@ using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using Jellyfin.Extensions;
 using MediaBrowser.Model.Net;
+using Microsoft.Extensions.Logging;
 
 namespace MediaBrowser.Common.Net;
 
@@ -166,8 +167,9 @@ public static partial class NetworkUtils
     /// <param name="values">Input string array to be parsed.</param>
     /// <param name="result">Collection of <see cref="IPNetwork"/>.</param>
     /// <param name="negated">Boolean signaling if negated or not negated values should be parsed.</param>
+    /// <param name="logger">Optional logger used to warn about entries that fail to parse.</param>
     /// <returns><c>True</c> if parsing was successful.</returns>
-    public static bool TryParseToSubnets(string[] values, [NotNullWhen(true)] out IReadOnlyList<IPData>? result, bool negated = false)
+    public static bool TryParseToSubnets(string[] values, [NotNullWhen(true)] out IReadOnlyList<IPData>? result, bool negated = false, ILogger? logger = null)
     {
         if (values is null || values.Length == 0)
         {
@@ -182,10 +184,38 @@ public static partial class NetworkUtils
             {
                 (tmpResult ??= new()).Add(innerResult);
             }
+            else if (logger is not null)
+            {
+                LogInvalidSubnet(logger, values[a]);
+            }
         }
 
         result = tmpResult;
         return result is not null;
+    }
+
+    private static void LogInvalidSubnet(ILogger logger, string value)
+    {
+        var trimmed = value.AsSpan().Trim();
+        if (trimmed.StartsWith('!'))
+        {
+            trimmed = trimmed[1..];
+        }
+
+        var slash = trimmed.IndexOf('/');
+        if (slash != -1
+            && trimmed.Contains(':')
+            && trimmed.IndexOf("::", StringComparison.Ordinal) == -1)
+        {
+            logger.LogWarning(
+                "Invalid IPv6 subnet '{Subnet}': IPv6 prefix-only notation is not supported. Use the full notation including '::' (e.g. '{Example}::/{Prefix}').",
+                value,
+                trimmed[..slash].ToString(),
+                trimmed[(slash + 1)..].ToString());
+            return;
+        }
+
+        logger.LogWarning("Invalid subnet '{Subnet}' will be ignored.", value);
     }
 
     /// <summary>
@@ -217,23 +247,10 @@ public static partial class NetworkUtils
         var index = value.IndexOf('/');
         if (index != -1)
         {
-            var addressPart = value[..index];
-            if (IPAddress.TryParse(addressPart, out var address) && IPNetwork.TryParse(value, out var subnet))
+            if (IPAddress.TryParse(value[..index], out var address) && IPNetwork.TryParse(value, out var subnet))
             {
                 result = new IPData(address, subnet);
                 return true;
-            }
-
-            // Accept IPv6 prefix-only notation that omits the `::`, e.g. "2001:db8:1234:5600/56".
-            if (addressPart.Contains(':') && addressPart.IndexOf("::", StringComparison.Ordinal) == -1)
-            {
-                var expandedAddress = string.Concat(addressPart, "::");
-                if (IPAddress.TryParse(expandedAddress, out var address2)
-                    && IPNetwork.TryParse(string.Concat(expandedAddress, value[index..]), out var subnet2))
-                {
-                    result = new IPData(address2, subnet2);
-                    return true;
-                }
             }
         }
         else if (IPAddress.TryParse(value, out var address))
