@@ -1880,10 +1880,12 @@ namespace MediaBrowser.Controller.MediaEncoding
             var sub2videoParam = enableSub2video ? ":sub2video=1" : string.Empty;
 
             var fontPath = _pathManager.GetAttachmentFolderPath(state.MediaSource.Id);
-            var fontParam = string.Format(
-                CultureInfo.InvariantCulture,
-                ":fontsdir='{0}'",
-                _mediaEncoder.EscapeSubtitleFilterPath(fontPath));
+            var fontParam = fontPath is null
+                ? string.Empty
+                : string.Format(
+                    CultureInfo.InvariantCulture,
+                    ":fontsdir='{0}'",
+                    _mediaEncoder.EscapeSubtitleFilterPath(fontPath));
 
             if (state.SubtitleStream.IsExternal)
             {

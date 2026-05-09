@@ -283,9 +283,9 @@ internal class MigrateLinkedChildren : IDatabaseMigrationRoutine
             .Select(id => _libraryManager.GetItemById(id))
             .Where(item => item is not null)
             .ToList();
-        _libraryManager.DeleteItemsUnsafeFast(itemsToDelete!);
+        var deleted = SafeDeleteItems(itemsToDelete!);
 
-        _logger.LogInformation("Removed {Count} wrong-type alternate version items. They will be recreated with the correct type on next library scan.", itemsToDelete.Count);
+        _logger.LogInformation("Removed {Count} wrong-type alternate version items. They will be recreated with the correct type on next library scan.", deleted);
     }
 
     private void CleanupOrphanedAlternateVersionBaseItems(JellyfinDbContext context)
@@ -314,9 +314,9 @@ internal class MigrateLinkedChildren : IDatabaseMigrationRoutine
             .Select(id => _libraryManager.GetItemById(id))
             .Where(item => item is not null)
             .ToList();
-        _libraryManager.DeleteItemsUnsafeFast(itemsToDelete!);
+        var deleted = SafeDeleteItems(itemsToDelete!);
 
-        _logger.LogInformation("Removed {Count} orphaned alternate version BaseItems.", itemsToDelete.Count);
+        _logger.LogInformation("Removed {Count} orphaned alternate version BaseItems.", deleted);
     }
 
     private void CleanupItemsFromDeletedLibraries(JellyfinDbContext context)
@@ -343,9 +343,9 @@ internal class MigrateLinkedChildren : IDatabaseMigrationRoutine
             .Select(id => _libraryManager.GetItemById(id))
             .Where(item => item is not null)
             .ToList();
-        _libraryManager.DeleteItemsUnsafeFast(itemsToDelete!);
+        var deleted = SafeDeleteItems(itemsToDelete!);
 
-        _logger.LogInformation("Removed {Count} items from deleted libraries.", itemsToDelete.Count);
+        _logger.LogInformation("Removed {Count} items from deleted libraries.", deleted);
     }
 
     private void CleanupStaleFileEntries(JellyfinDbContext context)
@@ -431,9 +431,43 @@ internal class MigrateLinkedChildren : IDatabaseMigrationRoutine
             .Select(id => _libraryManager.GetItemById(id))
             .Where(item => item is not null)
             .ToList();
-        _libraryManager.DeleteItemsUnsafeFast(itemsToDelete!);
+        var deleted = SafeDeleteItems(itemsToDelete!);
 
-        _logger.LogInformation("Removed {Count} stale items.", itemsToDelete.Count);
+        _logger.LogInformation("Removed {Count} stale items.", deleted);
+    }
+
+    private int SafeDeleteItems(IReadOnlyCollection<MediaBrowser.Controller.Entities.BaseItem> items)
+    {
+        if (items.Count == 0)
+        {
+            return 0;
+        }
+
+        try
+        {
+            _libraryManager.DeleteItemsUnsafeFast(items);
+            return items.Count;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Bulk delete of {Count} items failed; falling back to per-item delete.", items.Count);
+        }
+
+        var deleted = 0;
+        foreach (var item in items)
+        {
+            try
+            {
+                _libraryManager.DeleteItemsUnsafeFast([item]);
+                deleted++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Skipping item {ItemId} ({ItemName}): delete failed.", item.Id, item.Name ?? "Unknown");
+            }
+        }
+
+        return deleted;
     }
 
     private void CleanupOrphanedLinkedChildren(JellyfinDbContext context)
