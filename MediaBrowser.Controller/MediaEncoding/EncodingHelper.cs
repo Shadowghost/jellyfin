@@ -2466,6 +2466,17 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
             }
 
+            var requestedRotations = state.GetRequestedRotations(videoStream.Codec);
+            if (requestedRotations.Length > 0)
+            {
+                var rotation = state.VideoStream?.Rotation ?? 0;
+                if (rotation != 0
+                    && !requestedRotations.Contains(rotation.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
             // Video width must fall within requested value
             if (request.MaxWidth.HasValue
                 && (!videoStream.Width.HasValue || videoStream.Width.Value > request.MaxWidth.Value))
