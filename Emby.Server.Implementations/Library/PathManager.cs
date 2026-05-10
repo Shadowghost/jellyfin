@@ -51,7 +51,7 @@ public class PathManager : IPathManager
     {
         if (!Guid.TryParse(mediaSourceId, out var parsed))
         {
-            _logger.LogWarning("Invalid MediaSource Id (not a GUID): '{MediaSourceId}'. Skipping attachment folder lookup.", mediaSourceId);
+            _logger.LogDebug("MediaSource Id '{MediaSourceId}' is not a GUID; no on-disk attachment folder.", mediaSourceId);
             return null;
         }
 
@@ -64,7 +64,7 @@ public class PathManager : IPathManager
     {
         if (!Guid.TryParse(mediaSourceId, out var parsed))
         {
-            _logger.LogWarning("Invalid MediaSource Id (not a GUID): '{MediaSourceId}'. Skipping subtitle folder lookup.", mediaSourceId);
+            _logger.LogDebug("MediaSource Id '{MediaSourceId}' is not a GUID; no on-disk subtitle folder.", mediaSourceId);
             return null;
         }
 

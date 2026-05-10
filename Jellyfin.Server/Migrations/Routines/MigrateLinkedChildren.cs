@@ -7,6 +7,7 @@ using Jellyfin.Database.Implementations;
 using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Extensions;
 using MediaBrowser.Controller;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -283,7 +284,7 @@ internal class MigrateLinkedChildren : IDatabaseMigrationRoutine
             .Select(id => _libraryManager.GetItemById(id))
             .Where(item => item is not null)
             .ToList();
-        var deleted = SafeDeleteItems(itemsToDelete!);
+        var deleted = DeleteItems(itemsToDelete!);
 
         _logger.LogInformation("Removed {Count} wrong-type alternate version items. They will be recreated with the correct type on next library scan.", deleted);
     }
@@ -314,7 +315,7 @@ internal class MigrateLinkedChildren : IDatabaseMigrationRoutine
             .Select(id => _libraryManager.GetItemById(id))
             .Where(item => item is not null)
             .ToList();
-        var deleted = SafeDeleteItems(itemsToDelete!);
+        var deleted = DeleteItems(itemsToDelete!);
 
         _logger.LogInformation("Removed {Count} orphaned alternate version BaseItems.", deleted);
     }
@@ -343,7 +344,7 @@ internal class MigrateLinkedChildren : IDatabaseMigrationRoutine
             .Select(id => _libraryManager.GetItemById(id))
             .Where(item => item is not null)
             .ToList();
-        var deleted = SafeDeleteItems(itemsToDelete!);
+        var deleted = DeleteItems(itemsToDelete!);
 
         _logger.LogInformation("Removed {Count} items from deleted libraries.", deleted);
     }
@@ -431,34 +432,25 @@ internal class MigrateLinkedChildren : IDatabaseMigrationRoutine
             .Select(id => _libraryManager.GetItemById(id))
             .Where(item => item is not null)
             .ToList();
-        var deleted = SafeDeleteItems(itemsToDelete!);
+        var deleted = DeleteItems(itemsToDelete!);
 
         _logger.LogInformation("Removed {Count} stale items.", deleted);
     }
 
-    private int SafeDeleteItems(IReadOnlyCollection<MediaBrowser.Controller.Entities.BaseItem> items)
+    private int DeleteItems(IReadOnlyCollection<BaseItem> items)
     {
         if (items.Count == 0)
         {
             return 0;
         }
 
-        try
-        {
-            _libraryManager.DeleteItemsUnsafeFast(items);
-            return items.Count;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Bulk delete of {Count} items failed; falling back to per-item delete.", items.Count);
-        }
-
+        var options = new DeleteOptions { DeleteFileLocation = false, DeleteFromExternalProvider = false };
         var deleted = 0;
         foreach (var item in items)
         {
             try
             {
-                _libraryManager.DeleteItemsUnsafeFast([item]);
+                _libraryManager.DeleteItem(item, options);
                 deleted++;
             }
             catch (Exception ex)

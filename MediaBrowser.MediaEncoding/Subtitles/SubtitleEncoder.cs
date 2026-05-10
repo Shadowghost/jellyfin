@@ -213,7 +213,7 @@ namespace MediaBrowser.MediaEncoding.Subtitles
                 var outputFileExtension = GetExtractableSubtitleFileExtension(subtitleStream);
                 var outputFormat = GetExtractableSubtitleFormat(subtitleStream);
                 var outputPath = GetSubtitleCachePath(mediaSource, subtitleStream.Index, "." + outputFileExtension)
-                    ?? throw new ResourceNotFoundException($"MediaSource {mediaSource.Id} has an invalid Id; subtitle cache path cannot be resolved.");
+                    ?? throw new ResourceNotFoundException($"MediaSource {mediaSource.Id} has no subtitle cache (non-GUID Id, e.g. Live TV stream).");
 
                 return new SubtitleInfo()
                 {
@@ -244,7 +244,7 @@ namespace MediaBrowser.MediaEncoding.Subtitles
             {
                 // Convert
                 var outputPath = GetSubtitleCachePath(mediaSource, subtitleStream.Index, ".srt")
-                    ?? throw new ResourceNotFoundException($"MediaSource {mediaSource.Id} has an invalid Id; subtitle cache path cannot be resolved.");
+                    ?? throw new ResourceNotFoundException($"MediaSource {mediaSource.Id} has no subtitle cache (non-GUID Id, e.g. Live TV stream).");
 
                 await ConvertTextSubtitleToSrt(subtitleStream, mediaSource, outputPath, cancellationToken).ConfigureAwait(false);
 
