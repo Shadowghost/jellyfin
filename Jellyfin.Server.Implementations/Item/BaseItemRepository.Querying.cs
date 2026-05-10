@@ -517,20 +517,6 @@ public sealed partial class BaseItemRepository
             .OrderBy(r => r)
             .ToArray();
 
-        var subtitleLanguages = context.MediaStreamInfos
-            .Where(s => s.StreamType == MediaStreamTypeEntity.Subtitle)
-            .Select(s => string.IsNullOrEmpty(s.Language) ? "und" : s.Language) // und = undetermined
-            .Distinct()
-            .OrderBy(l => l)
-            .ToArray();
-
-        var audioLanguages = context.MediaStreamInfos
-            .Where(s => s.StreamType == MediaStreamTypeEntity.Audio)
-            .Select(s => string.IsNullOrEmpty(s.Language) ? "und" : s.Language) // und = undetermined
-            .Distinct()
-            .OrderBy(l => l)
-            .ToArray();
-
         var tags = context.ItemValuesMap
             .Where(ivm => ivm.ItemValue.Type == ItemValueType.Tags)
             .Where(ivm => matchingItemIds.Contains(ivm.ItemId))
@@ -549,6 +535,28 @@ public sealed partial class BaseItemRepository
             .OrderBy(g => g)
             .ToArray();
 
+        // At the moment language filters are only available for video types (Movie and Series libraries).
+        // They are fetched directly from the MediaStreamInfos table and only filtered by StreamType.
+        // This is the fastest and most perfomant way to get the list of available languages,
+        // but the filter values can include language tags that are not linked to any item in the current library.
+        var subtitleLanguages = IncludesVideoTypes(filter)
+            ? context.MediaStreamInfos
+                .Where(s => s.StreamType == MediaStreamTypeEntity.Subtitle)
+                .Select(s => string.IsNullOrEmpty(s.Language) ? "und" : s.Language) // und = undetermined
+                .Distinct()
+                .OrderBy(l => l)
+                .ToArray()
+            : [];
+
+        var audioLanguages = IncludesVideoTypes(filter)
+            ? context.MediaStreamInfos
+                .Where(s => s.StreamType == MediaStreamTypeEntity.Audio)
+                .Select(s => string.IsNullOrEmpty(s.Language) ? "und" : s.Language) // und = undetermined
+                .Distinct()
+                .OrderBy(l => l)
+                .ToArray()
+            : [];
+
         return new QueryFiltersLegacy
         {
             Years = years,
@@ -558,5 +566,15 @@ public sealed partial class BaseItemRepository
             SubtitleLanguages = subtitleLanguages,
             AudioLanguages = audioLanguages
         };
+    }
+
+    private bool IncludesVideoTypes(InternalItemsQuery filter)
+    {
+        return filter.IncludeItemTypes.Contains(BaseItemKind.Movie)
+            || filter.IncludeItemTypes.Contains(BaseItemKind.Video)
+            || filter.IncludeItemTypes.Contains(BaseItemKind.Series)
+            || filter.IncludeItemTypes.Contains(BaseItemKind.Season)
+            || filter.IncludeItemTypes.Contains(BaseItemKind.Episode)
+            || filter.IncludeItemTypes.Contains(BaseItemKind.Trailer);
     }
 }
