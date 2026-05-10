@@ -58,6 +58,8 @@ namespace MediaBrowser.Controller.Entities
             VideoTypes = [];
             Years = [];
             SkipDeserialization = false;
+            AudioLanguages = [];
+            SubtitleLanguages = [];
         }
 
         public InternalItemsQuery(User? user)
@@ -384,6 +386,10 @@ namespace MediaBrowser.Controller.Entities
         public bool SkipDeserialization { get; set; }
 
         public bool IncludeExtras { get; set; }
+
+        public IReadOnlyList<string> AudioLanguages { get; set; }
+
+        public IReadOnlyList<string> SubtitleLanguages { get; set; }
 
         public void SetUser(User user)
         {

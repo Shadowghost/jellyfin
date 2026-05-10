@@ -823,6 +823,26 @@ public sealed partial class BaseItemRepository
             }
         }
 
+        if (filter.SubtitleLanguages.Count > 0)
+        {
+            var foldersWithSubtitles = DescendantQueryHelper.GetFolderIdsMatching(context, new HasMediaStreamType(MediaStreamTypeEntity.Subtitle, filter.SubtitleLanguages));
+            baseQuery = baseQuery
+                .Where(e =>
+                    (!e.IsFolder && e.MediaStreams!.Any(f => f.StreamType == MediaStreamTypeEntity.Subtitle
+                     && (filter.SubtitleLanguages.Contains(f.Language) || (filter.SubtitleLanguages.Contains("und") && string.IsNullOrEmpty(f.Language)))))
+                    || (e.IsFolder && foldersWithSubtitles.Contains(e.Id)));
+        }
+
+        if (filter.AudioLanguages.Count > 0)
+        {
+            var foldersWithAudio = DescendantQueryHelper.GetFolderIdsMatching(context, new HasMediaStreamType(MediaStreamTypeEntity.Audio, filter.AudioLanguages));
+            baseQuery = baseQuery
+                .Where(e =>
+                    (!e.IsFolder && e.MediaStreams!.Any(f => f.StreamType == MediaStreamTypeEntity.Audio
+                     && (filter.AudioLanguages.Contains(f.Language) || (filter.AudioLanguages.Contains("und") && string.IsNullOrEmpty(f.Language)))))
+                    || (e.IsFolder && foldersWithAudio.Contains(e.Id)));
+        }
+
         if (filter.HasChapterImages.HasValue)
         {
             var hasChapterImages = filter.HasChapterImages.Value;

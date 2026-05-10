@@ -517,6 +517,20 @@ public sealed partial class BaseItemRepository
             .OrderBy(r => r)
             .ToArray();
 
+        var subtitleLanguages = context.MediaStreamInfos
+            .Where(s => s.StreamType == MediaStreamTypeEntity.Subtitle)
+            .Select(s => string.IsNullOrEmpty(s.Language) ? "und" : s.Language) // und = undetermined
+            .Distinct()
+            .OrderBy(l => l)
+            .ToArray();
+
+        var audioLanguages = context.MediaStreamInfos
+            .Where(s => s.StreamType == MediaStreamTypeEntity.Audio)
+            .Select(s => string.IsNullOrEmpty(s.Language) ? "und" : s.Language) // und = undetermined
+            .Distinct()
+            .OrderBy(l => l)
+            .ToArray();
+
         var tags = context.ItemValuesMap
             .Where(ivm => ivm.ItemValue.Type == ItemValueType.Tags)
             .Where(ivm => matchingItemIds.Contains(ivm.ItemId))
@@ -540,7 +554,9 @@ public sealed partial class BaseItemRepository
             Years = years,
             OfficialRatings = officialRatings,
             Tags = tags,
-            Genres = genres
+            Genres = genres,
+            SubtitleLanguages = subtitleLanguages,
+            AudioLanguages = audioLanguages
         };
     }
 }
