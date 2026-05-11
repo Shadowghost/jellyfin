@@ -1078,6 +1078,7 @@ public sealed partial class BaseItemRepository
         {
             // Dvds and Blu-rays can either be stored in a folder structure or as an iso file
             // => to find all matches we need to check both: VideoType and IsoType
+            // alternatively, we could provide specific IsoType filters
             var videoTypeBs = filter.VideoTypes.Select(vt => $"\"VideoType\":\"{vt}\"").ToArray();
             var isoTypeBs = filter.VideoTypes.Select(vt => $"\"IsoType\":\"{vt}\"").ToArray();
             Expression<Func<BaseItemEntity, bool>> hasVideoType = e => videoTypeBs.Any(f => e.Data!.Contains(f)) || isoTypeBs.Any(f => e.Data!.Contains(f));

@@ -421,7 +421,7 @@ public class ItemsController : BaseJellyfinApiController
                 }
                 else
                 {
-                    // if we want to know if an item has no subtitles we don't need to check for subtitles of a specific language
+                    // if we search for items without subtitles, we don't need to check for subtitles of a specific language
                     query.SubtitleLanguages = [];
                 }
             }
