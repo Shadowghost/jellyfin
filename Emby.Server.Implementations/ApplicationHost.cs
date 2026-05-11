@@ -166,8 +166,6 @@ namespace Emby.Server.Implementations
                 ConfigurationManager.Configuration,
                 ApplicationPaths.PluginsPath,
                 ApplicationVersion);
-
-            _disposableParts.Add(_pluginManager);
         }
 
         /// <summary>
@@ -1014,6 +1012,8 @@ namespace Emby.Server.Implementations
                 }
 
                 _disposableParts.Clear();
+
+                _pluginManager?.Dispose();
             }
 
             _disposed = true;
