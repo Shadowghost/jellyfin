@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,7 +16,7 @@ namespace Emby.Server.Implementations.Library.SimilarItems;
 /// <summary>
 /// Provides similar items for movies and trailers.
 /// </summary>
-public class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie>, ILocalSimilarItemsProvider<Trailer>
+public sealed class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie>, ILocalSimilarItemsProvider<Trailer>
 {
     private readonly ILibraryManager _libraryManager;
     private readonly IServerConfigurationManager _serverConfigurationManager;
@@ -50,6 +51,17 @@ public class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie>, ILoc
     {
         return Task.FromResult(GetSimilarMovieItems(item, query));
     }
+
+    bool ILocalSimilarItemsProvider.Supports(Type itemType)
+        => typeof(Movie).IsAssignableFrom(itemType) || typeof(Trailer).IsAssignableFrom(itemType);
+
+    Task<IReadOnlyList<BaseItem>> ILocalSimilarItemsProvider.GetSimilarItemsAsync(BaseItem item, SimilarItemsQuery query, CancellationToken cancellationToken)
+        => item switch
+        {
+            Movie movie => GetSimilarItemsAsync(movie, query, cancellationToken),
+            Trailer trailer => GetSimilarItemsAsync(trailer, query, cancellationToken),
+            _ => throw new ArgumentException($"Unsupported item type {item.GetType()}", nameof(item))
+        };
 
     private IReadOnlyList<BaseItem> GetSimilarMovieItems(BaseItem item, SimilarItemsQuery query)
     {

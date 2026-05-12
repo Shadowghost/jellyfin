@@ -15,11 +15,11 @@ namespace MediaBrowser.Providers.Plugins.ListenBrainz.Api;
 /// <summary>
 /// Client for the ListenBrainz Labs API.
 /// </summary>
-public class ListenBrainzLabsClient
+public class ListenBrainzLabsClient : IDisposable
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<ListenBrainzLabsClient> _logger;
-    private readonly Lock _rateLimitLock = new();
+    private readonly SemaphoreSlim _rateLimitLock = new(1, 1);
 
     private DateTime _lastRequestTime = DateTime.MinValue;
 
@@ -52,7 +52,7 @@ public class ListenBrainzLabsClient
         var rateLimit = config?.RateLimit ?? PluginConfiguration.DefaultRateLimit;
 
         // Enforce rate limit
-        EnforceRateLimit(rateLimit);
+        await EnforceRateLimitAsync(rateLimit, cancellationToken).ConfigureAwait(false);
 
         var url = $"{baseUrl}/similar-artists/json?artist_mbids={artistMbid}&algorithm={algorithm}";
 
@@ -86,19 +86,43 @@ public class ListenBrainzLabsClient
         }
     }
 
-    private void EnforceRateLimit(double rateLimitSeconds)
+    /// <inheritdoc />
+    public void Dispose()
     {
-        lock (_rateLimitLock)
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Releases unmanaged and - optionally - managed resources.
+    /// </summary>
+    /// <param name="disposing"><c>true</c> to release both managed and unmanaged resources; <c>false</c> to release only unmanaged resources.</param>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _rateLimitLock.Dispose();
+        }
+    }
+
+    private async Task EnforceRateLimitAsync(double rateLimitSeconds, CancellationToken cancellationToken)
+    {
+        await _rateLimitLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
             var timeSinceLastRequest = DateTime.UtcNow - _lastRequestTime;
             var requiredDelay = TimeSpan.FromSeconds(rateLimitSeconds) - timeSinceLastRequest;
 
             if (requiredDelay > TimeSpan.Zero)
             {
-                Thread.Sleep(requiredDelay);
+                await Task.Delay(requiredDelay, cancellationToken).ConfigureAwait(false);
             }
 
             _lastRequestTime = DateTime.UtcNow;
+        }
+        finally
+        {
+            _rateLimitLock.Release();
         }
     }
 }

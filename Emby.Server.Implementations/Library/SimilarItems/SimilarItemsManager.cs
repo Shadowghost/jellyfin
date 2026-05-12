@@ -1,10 +1,8 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,10 +26,6 @@ namespace Emby.Server.Implementations.Library.SimilarItems;
 /// </summary>
 public class SimilarItemsManager : ISimilarItemsManager
 {
-    private static readonly ConcurrentDictionary<Type, MethodInfo> _genericMethodCache = new();
-    private static readonly MethodInfo _getSimilarItemsInternalMethod = typeof(SimilarItemsManager)
-        .GetMethod(nameof(GetSimilarItemsInternalAsync), BindingFlags.NonPublic | BindingFlags.Instance)!;
-
     private readonly ILogger<SimilarItemsManager> _logger;
     private readonly IServerApplicationPaths _appPaths;
     private readonly ILibraryManager _libraryManager;
@@ -67,10 +61,10 @@ public class SimilarItemsManager : ISimilarItemsManager
     public IReadOnlyList<ISimilarItemsProvider> GetSimilarItemsProviders<T>()
         where T : BaseItem
     {
+        var itemType = typeof(T);
         return _similarItemsProviders
-            .OfType<ILocalSimilarItemsProvider<T>>()
-            .Cast<ISimilarItemsProvider>()
-            .Concat(_similarItemsProviders.OfType<IRemoteSimilarItemsProvider<T>>())
+            .Where(p => (p is ILocalSimilarItemsProvider local && local.Supports(itemType))
+                || (p is IRemoteSimilarItemsProvider remote && remote.Supports(itemType)))
             .ToList();
     }
 
@@ -88,22 +82,6 @@ public class SimilarItemsManager : ISimilarItemsManager
         ArgumentNullException.ThrowIfNull(excludeArtistIds);
 
         var itemType = item.GetType();
-        var method = _genericMethodCache.GetOrAdd(itemType, static type => _getSimilarItemsInternalMethod.MakeGenericMethod(type));
-
-        var task = (Task<IReadOnlyList<BaseItem>>)method.Invoke(this, [item, excludeArtistIds, user, dtoOptions, limit, libraryOptions, cancellationToken])!;
-        return await task.ConfigureAwait(false);
-    }
-
-    private async Task<IReadOnlyList<BaseItem>> GetSimilarItemsInternalAsync<T>(
-        T item,
-        IReadOnlyList<Guid> excludeArtistIds,
-        User? user,
-        DtoOptions dtoOptions,
-        int? limit,
-        LibraryOptions? libraryOptions,
-        CancellationToken cancellationToken)
-        where T : BaseItem
-    {
         var requestedLimit = limit ?? 50;
         var itemKind = item.GetBaseItemKind();
 
@@ -114,11 +92,16 @@ public class SimilarItemsManager : ISimilarItemsManager
         }
 
         // Local providers are always enabled. Remote providers must be explicitly enabled.
-        var localProviders = _similarItemsProviders.OfType<ILocalSimilarItemsProvider<T>>().Cast<ISimilarItemsProvider>().ToList();
-        var remoteProviders = _similarItemsProviders.OfType<IRemoteSimilarItemsProvider<T>>().Cast<ISimilarItemsProvider>();
+        var localProviders = _similarItemsProviders
+            .OfType<ILocalSimilarItemsProvider>()
+            .Where(p => p.Supports(itemType))
+            .ToList();
+        var remoteProviders = _similarItemsProviders
+            .OfType<IRemoteSimilarItemsProvider>()
+            .Where(p => p.Supports(itemType));
         var matchingProviders = new List<ISimilarItemsProvider>(localProviders);
 
-        var typeOptions = libraryOptions?.GetTypeOptions(typeof(T).Name);
+        var typeOptions = libraryOptions?.GetTypeOptions(itemType.Name);
         if (typeOptions?.SimilarItemProviders?.Length > 0)
         {
             matchingProviders.AddRange(remoteProviders
@@ -143,7 +126,7 @@ public class SimilarItemsManager : ISimilarItemsManager
 
             try
             {
-                if (provider is ILocalSimilarItemsProvider<T> localProvider)
+                if (provider is ILocalSimilarItemsProvider localProvider)
                 {
                     var query = new SimilarItemsQuery
                     {
@@ -165,9 +148,9 @@ public class SimilarItemsManager : ISimilarItemsManager
                         }
                     }
                 }
-                else if (provider is IRemoteSimilarItemsProvider<T> remoteProvider)
+                else if (provider is IRemoteSimilarItemsProvider remoteProvider)
                 {
-                    var cachePath = GetSimilarItemsCachePath(provider.Name, typeof(T).Name, item.Id);
+                    var cachePath = GetSimilarItemsCachePath(provider.Name, itemType.Name, item.Id);
 
                     var cachedReferences = await TryReadSimilarItemsCacheAsync(cachePath, cancellationToken).ConfigureAwait(false);
                     if (cachedReferences is not null)
