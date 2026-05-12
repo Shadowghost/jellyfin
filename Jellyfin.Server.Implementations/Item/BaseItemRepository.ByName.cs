@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Entities;
+using Jellyfin.Extensions;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Querying;
@@ -163,35 +164,34 @@ public sealed partial class BaseItemRepository
             ExcludeItemIds = filter.ExcludeItemIds
         };
 
-        // Collapse rows that share a PresentationUniqueKey (e.g. alternate versions) by picking
-        // the lowest Id per group. Keep as an IQueryable sub-select so paging is applied AFTER
-        // ApplyOrder runs the caller's actual sort.
+        // Build the master query and collapse rows that share a PresentationUniqueKey
+        // (e.g. alternate versions) by picking the lowest Id per group.
         var masterQuery = TranslateQuery(innerQuery, context, outerQueryFilter);
-        var representativeIds = masterQuery
-            .GroupBy(e => e.PresentationUniqueKey)
-            .Select(g => g.Min(e => e.Id));
+        var orderedMasterQuery = BuildOrderedMasterQuery(masterQuery, filter.SearchTerm);
 
         var result = new QueryResult<(BaseItemDto, ItemCounts?)>();
         if (filter.EnableTotalRecordCount)
         {
-            result.TotalRecordCount = representativeIds.Count();
+            result.TotalRecordCount = orderedMasterQuery.Count();
         }
-
-        var query = ApplyNavigations(
-                context.BaseItems.AsNoTracking().AsSingleQuery().Where(e => representativeIds.Contains(e.Id)),
-                filter);
-
-        query = ApplyOrder(query, filter, context);
 
         if (filter.StartIndex.HasValue && filter.StartIndex.Value > 0)
         {
-            query = query.Skip(filter.StartIndex.Value);
+            orderedMasterQuery = orderedMasterQuery.Skip(filter.StartIndex.Value);
         }
 
         if (filter.Limit.HasValue)
         {
-            query = query.Take(filter.Limit.Value);
+            orderedMasterQuery = orderedMasterQuery.Take(filter.Limit.Value);
         }
+
+        var masterIds = orderedMasterQuery.ToList();
+
+        var query = ApplyNavigations(
+                context.BaseItems.AsNoTracking().AsSingleQuery().Where(e => masterIds.Contains(e.Id)),
+                filter);
+
+        query = ApplyOrder(query, filter, context);
 
         result.StartIndex = filter.StartIndex ?? 0;
         if (filter.IncludeItemTypes.Length > 0)
@@ -226,6 +226,43 @@ public sealed partial class BaseItemRepository
         }
 
         return result;
+    }
+
+    private static IQueryable<Guid> BuildOrderedMasterQuery(IQueryable<BaseItemEntity> masterQuery, string? searchTerm)
+    {
+        if (string.IsNullOrEmpty(searchTerm))
+        {
+            return masterQuery
+                .GroupBy(e => e.PresentationUniqueKey)
+                .Select(g => new { Id = g.Min(e => e.Id), SortName = g.Min(e => e.SortName) })
+                .OrderBy(x => x.SortName)
+                .Select(x => x.Id);
+        }
+
+        var cleanSearchTerm = searchTerm.GetCleanValue();
+        var cleanSearchPrefix = cleanSearchTerm + " ";
+
+        return masterQuery
+            .Select(e => new
+            {
+                e.Id,
+                e.PresentationUniqueKey,
+                e.SortName,
+                Score = (e.CleanName == cleanSearchTerm) ? 0
+                    : e.CleanName!.StartsWith(cleanSearchTerm) ? 1
+                    : e.CleanName!.Contains(cleanSearchPrefix) ? 2
+                    : 3
+            })
+            .GroupBy(x => x.PresentationUniqueKey)
+            .Select(g => new
+            {
+                Id = g.Min(x => x.Id),
+                Score = g.Min(x => x.Score),
+                SortName = g.Min(x => x.SortName)
+            })
+            .OrderBy(x => x.Score)
+            .ThenBy(x => x.SortName)
+            .Select(x => x.Id);
     }
 
     private Dictionary<string, ItemCounts> BuildItemCountsByCleanName(
