@@ -167,8 +167,6 @@ namespace Emby.Server.Implementations
                 ConfigurationManager.Configuration,
                 ApplicationPaths.PluginsPath,
                 ApplicationVersion);
-
-            _disposableParts.Add(_pluginManager);
         }
 
         /// <summary>
@@ -537,6 +535,7 @@ namespace Emby.Server.Implementations
             serviceCollection.AddSingleton<IMusicManager, MusicManager>();
 
             serviceCollection.AddSingleton<ILibraryMonitor, LibraryMonitor>();
+            serviceCollection.AddSingleton<DotIgnoreIgnoreRule>();
 
             serviceCollection.AddSingleton<ISearchManager, SearchManager>();
             serviceCollection.AddSingleton<ISearchProvider, SqlSearchProvider>();
@@ -1016,6 +1015,8 @@ namespace Emby.Server.Implementations
                 }
 
                 _disposableParts.Clear();
+
+                _pluginManager?.Dispose();
             }
 
             _disposed = true;
