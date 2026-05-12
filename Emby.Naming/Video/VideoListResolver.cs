@@ -16,6 +16,8 @@ namespace Emby.Naming.Video
     /// </summary>
     public partial class VideoListResolver
     {
+        private static readonly StringComparer _numericOrdinalComparer = StringComparer.Create(CultureInfo.InvariantCulture, CompareOptions.NumericOrdering);
+
         private readonly NamingOptions _namingOptions;
         private readonly EpisodePathParser _episodePathParser;
 
@@ -215,12 +217,6 @@ namespace Emby.Naming.Video
             for (var i = 0; i < videos.Count; i++)
             {
                 var video = videos[i];
-                if (video.ExtraType is not null)
-                {
-                    result.Add(video);
-                    continue;
-                }
-
                 var episodeResult = _episodePathParser.Parse(video.Files[0].Path, false);
                 string? key = null;
                 if (episodeResult.Success)
@@ -284,19 +280,18 @@ namespace Emby.Naming.Video
 
                 videos = [];
 
-                StringComparer comparer = StringComparer.Create(CultureInfo.InvariantCulture, CompareOptions.NumericOrdering);
                 foreach (var group in groups)
                 {
                     if (group.Key)
                     {
                         videos.InsertRange(0, group
-                            .OrderByDescending(x => x.resolutionMatch.Value, comparer)
-                            .ThenBy(x => x.filename, comparer)
+                            .OrderByDescending(x => x.resolutionMatch.Value, _numericOrdinalComparer)
+                            .ThenBy(x => x.filename, _numericOrdinalComparer)
                             .Select(x => x.value));
                     }
                     else
                     {
-                        videos.AddRange(group.OrderBy(x => x.filename, comparer).Select(x => x.value));
+                        videos.AddRange(group.OrderBy(x => x.filename, _numericOrdinalComparer).Select(x => x.value));
                     }
                 }
             }
