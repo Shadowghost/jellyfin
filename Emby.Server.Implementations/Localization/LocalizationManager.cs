@@ -31,15 +31,6 @@ namespace Emby.Server.Implementations.Localization
         private static readonly Assembly _assembly = typeof(LocalizationManager).Assembly;
         private static readonly string[] _unratedValues = ["n/a", "unrated", "not rated", "nr"];
 
-        // Maps BCP-47 hyphenated culture codes (set by ASP.NET Core's RequestLocalizationMiddleware
-        // and used as CurrentUICulture.Name) to Jellyfin's underscore-based resource file codes.
-        private static readonly FrozenDictionary<string, string> _bcp47ToJellyfinMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["es-419"] = "es_419",
-            ["es-DO"] = "es_DO",
-            ["ur-PK"] = "ur_PK"
-        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
-
         private readonly IServerConfigurationManager _configurationManager;
         private readonly ILogger<LocalizationManager> _logger;
 
@@ -52,7 +43,13 @@ namespace Emby.Server.Implementations.Localization
         private readonly ConcurrentDictionary<string, CultureDto?> _cultureCache = new(StringComparer.OrdinalIgnoreCase);
         private List<CultureDto> _cultures = [];
 
-        private static readonly IReadOnlyList<LocalizationOption> _localizationOptions = BuildLocalizationOptions();
+        private static readonly (IReadOnlyList<LocalizationOption> Options, FrozenDictionary<string, string> Bcp47ToJellyfinMap) _localizationData = BuildLocalizationData();
+        private static readonly IReadOnlyList<LocalizationOption> _localizationOptions = _localizationData.Options;
+
+        // Maps BCP-47 hyphenated culture codes (set by ASP.NET Core's RequestLocalizationMiddleware
+        // and used as CurrentUICulture.Name) to Jellyfin's underscore-based resource file codes.
+        // Built reflexively from the resource file scan so both directions stay in sync.
+        private static readonly FrozenDictionary<string, string> _bcp47ToJellyfinMap = _localizationData.Bcp47ToJellyfinMap;
 
         private FrozenDictionary<string, string> _iso6392BtoT = null!;
 
@@ -575,9 +572,10 @@ namespace Emby.Server.Implementations.Localization
             return _localizationOptions;
         }
 
-        private static IReadOnlyList<LocalizationOption> BuildLocalizationOptions()
+        private static (IReadOnlyList<LocalizationOption> Options, FrozenDictionary<string, string> Bcp47ToJellyfinMap) BuildLocalizationData()
         {
             var options = new List<LocalizationOption>();
+            var bcp47Map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var prefix = CoreResourcePrefix;
 
             foreach (var resource in _assembly.GetManifestResourceNames())
@@ -590,6 +588,12 @@ namespace Emby.Server.Implementations.Localization
 
                 // Extract culture code from resource name: "...Core.de.json" -> "de", "...Core.pt-BR.json" -> "pt-BR"
                 var code = resource[prefix.Length..^5];
+
+                // Record the BCP-47 → Jellyfin mapping for any resource file using underscores.
+                if (code.Contains('_', StringComparison.Ordinal))
+                {
+                    bcp47Map[code.Replace('_', '-')] = code;
+                }
 
                 // Skip the base language file — en-US is added explicitly below
                 if (code.Equals(DefaultCulture, StringComparison.OrdinalIgnoreCase))
@@ -605,29 +609,19 @@ namespace Emby.Server.Implementations.Localization
             options.Add(new LocalizationOption("English", DefaultCulture));
 
             options.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
-            return options;
+            return (options, bcp47Map.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase));
         }
 
         private static string GetDisplayName(string cultureCode)
         {
-            // Handle Jellyfin-specific codes that aren't valid CultureInfo names
-            if (_bcp47ToJellyfinMap.Values.Contains(cultureCode))
-            {
-                // Convert underscore to hyphen for CultureInfo lookup
-                var normalized = cultureCode.Replace('_', '-');
-                try
-                {
-                    return CultureInfo.GetCultureInfo(normalized).NativeName;
-                }
-                catch (CultureNotFoundException)
-                {
-                    return cultureCode;
-                }
-            }
+            // Resource files use underscores for codes that .NET's CultureInfo doesn't accept directly (e.g. es_419).
+            var lookup = cultureCode.Contains('_', StringComparison.Ordinal)
+                ? cultureCode.Replace('_', '-')
+                : cultureCode;
 
             try
             {
-                return CultureInfo.GetCultureInfo(cultureCode).NativeName;
+                return CultureInfo.GetCultureInfo(lookup).NativeName;
             }
             catch (CultureNotFoundException)
             {
