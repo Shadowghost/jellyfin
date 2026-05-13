@@ -4,6 +4,7 @@ using System.Linq;
 using Emby.Naming.Common;
 using Emby.Naming.Video;
 using Jellyfin.Data.Enums;
+using MediaBrowser.Model.Entities;
 using Xunit;
 
 namespace Jellyfin.Naming.Tests.Video
@@ -197,12 +198,12 @@ namespace Jellyfin.Naming.Tests.Video
             Assert.Single(result);
             Assert.Equal("/movies/Iron Man/Iron Man.mkv", result[0].Files[0].Path);
             Assert.Equal(6, result[0].AlternateVersions.Count);
-            Assert.Equal("/movies/Iron Man/Iron Man-720p.mkv", result[0].AlternateVersions[0].Path);
-            Assert.Equal("/movies/Iron Man/Iron Man-3d.mkv", result[0].AlternateVersions[1].Path);
-            Assert.Equal("/movies/Iron Man/Iron Man-3d-hsbs.mkv", result[0].AlternateVersions[2].Path);
-            Assert.Equal("/movies/Iron Man/Iron Man-bluray.mkv", result[0].AlternateVersions[3].Path);
-            Assert.Equal("/movies/Iron Man/Iron Man-test.mkv", result[0].AlternateVersions[4].Path);
-            Assert.Equal("/movies/Iron Man/Iron Man[test].mkv", result[0].AlternateVersions[5].Path);
+            Assert.Equal("/movies/Iron Man/Iron Man-720p.mkv", result[0].AlternateVersions[0].Files[0].Path);
+            Assert.Equal("/movies/Iron Man/Iron Man-3d.mkv", result[0].AlternateVersions[1].Files[0].Path);
+            Assert.Equal("/movies/Iron Man/Iron Man-3d-hsbs.mkv", result[0].AlternateVersions[2].Files[0].Path);
+            Assert.Equal("/movies/Iron Man/Iron Man-bluray.mkv", result[0].AlternateVersions[3].Files[0].Path);
+            Assert.Equal("/movies/Iron Man/Iron Man-test.mkv", result[0].AlternateVersions[4].Files[0].Path);
+            Assert.Equal("/movies/Iron Man/Iron Man[test].mkv", result[0].AlternateVersions[5].Files[0].Path);
         }
 
         [Fact]
@@ -225,12 +226,12 @@ namespace Jellyfin.Naming.Tests.Video
             Assert.Single(result);
             Assert.Equal("/movies/Iron Man/Iron Man.mkv", result[0].Files[0].Path);
             Assert.Equal(6, result[0].AlternateVersions.Count);
-            Assert.Equal("/movies/Iron Man/Iron Man - 720p.mkv", result[0].AlternateVersions[0].Path);
-            Assert.Equal("/movies/Iron Man/Iron Man - 3d.mkv", result[0].AlternateVersions[1].Path);
-            Assert.Equal("/movies/Iron Man/Iron Man - 3d-hsbs.mkv", result[0].AlternateVersions[2].Path);
-            Assert.Equal("/movies/Iron Man/Iron Man - bluray.mkv", result[0].AlternateVersions[3].Path);
-            Assert.Equal("/movies/Iron Man/Iron Man - test.mkv", result[0].AlternateVersions[4].Path);
-            Assert.Equal("/movies/Iron Man/Iron Man [test].mkv", result[0].AlternateVersions[5].Path);
+            Assert.Equal("/movies/Iron Man/Iron Man - 720p.mkv", result[0].AlternateVersions[0].Files[0].Path);
+            Assert.Equal("/movies/Iron Man/Iron Man - 3d.mkv", result[0].AlternateVersions[1].Files[0].Path);
+            Assert.Equal("/movies/Iron Man/Iron Man - 3d-hsbs.mkv", result[0].AlternateVersions[2].Files[0].Path);
+            Assert.Equal("/movies/Iron Man/Iron Man - bluray.mkv", result[0].AlternateVersions[3].Files[0].Path);
+            Assert.Equal("/movies/Iron Man/Iron Man - test.mkv", result[0].AlternateVersions[4].Files[0].Path);
+            Assert.Equal("/movies/Iron Man/Iron Man [test].mkv", result[0].AlternateVersions[5].Files[0].Path);
         }
 
         [Fact]
@@ -269,9 +270,9 @@ namespace Jellyfin.Naming.Tests.Video
             Assert.Equal(6, result[0].AlternateVersions.Count);
 
             // Verify 3D recognition is preserved on alternate versions
-            var hsbs = result[0].AlternateVersions.First(v => v.Path.Contains("3d-hsbs", StringComparison.Ordinal));
-            Assert.True(hsbs.Is3D);
-            Assert.Equal("hsbs", hsbs.Format3D);
+            var hsbs = result[0].AlternateVersions.First(v => v.Files[0].Path.Contains("3d-hsbs", StringComparison.Ordinal));
+            Assert.True(hsbs.Files[0].Is3D);
+            Assert.Equal("hsbs", hsbs.Files[0].Format3D);
         }
 
         [Fact]
@@ -346,11 +347,11 @@ namespace Jellyfin.Naming.Tests.Video
             Assert.Single(result);
             Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016).mkv", result[0].Files[0].Path);
             Assert.Equal(5, result[0].AlternateVersions.Count);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 2160p.mkv", result[0].AlternateVersions[0].Path);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 1080p.mkv", result[0].AlternateVersions[1].Path);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 720p.mkv", result[0].AlternateVersions[2].Path);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - Directors Cut.mkv", result[0].AlternateVersions[3].Path);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - Theatrical Release.mkv", result[0].AlternateVersions[4].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 2160p.mkv", result[0].AlternateVersions[0].Files[0].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 1080p.mkv", result[0].AlternateVersions[1].Files[0].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 720p.mkv", result[0].AlternateVersions[2].Files[0].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - Directors Cut.mkv", result[0].AlternateVersions[3].Files[0].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - Theatrical Release.mkv", result[0].AlternateVersions[4].Files[0].Path);
         }
 
         [Fact]
@@ -378,17 +379,17 @@ namespace Jellyfin.Naming.Tests.Video
             Assert.Single(result);
             Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016).mkv", result[0].Files[0].Path);
             Assert.Equal(11, result[0].AlternateVersions.Count);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 2160p.mkv", result[0].AlternateVersions[0].Path);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 2160p Remux.mkv", result[0].AlternateVersions[1].Path);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 1080p.mkv", result[0].AlternateVersions[2].Path);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 1080p Directors Cut.mkv", result[0].AlternateVersions[3].Path);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 1080p High Bitrate.mkv", result[0].AlternateVersions[4].Path);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 1080p Remux.mkv", result[0].AlternateVersions[5].Path);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 1080p Theatrical Release.mkv", result[0].AlternateVersions[6].Path);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 720p.mkv", result[0].AlternateVersions[7].Path);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 720p Directors Cut.mkv", result[0].AlternateVersions[8].Path);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - Directors Cut.mkv", result[0].AlternateVersions[9].Path);
-            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - Theatrical Release.mkv", result[0].AlternateVersions[10].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 2160p.mkv", result[0].AlternateVersions[0].Files[0].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 2160p Remux.mkv", result[0].AlternateVersions[1].Files[0].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 1080p.mkv", result[0].AlternateVersions[2].Files[0].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 1080p Directors Cut.mkv", result[0].AlternateVersions[3].Files[0].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 1080p High Bitrate.mkv", result[0].AlternateVersions[4].Files[0].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 1080p Remux.mkv", result[0].AlternateVersions[5].Files[0].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 1080p Theatrical Release.mkv", result[0].AlternateVersions[6].Files[0].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 720p.mkv", result[0].AlternateVersions[7].Files[0].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - 720p Directors Cut.mkv", result[0].AlternateVersions[8].Files[0].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - Directors Cut.mkv", result[0].AlternateVersions[9].Files[0].Path);
+            Assert.Equal("/movies/X-Men Apocalypse (2016)/X-Men Apocalypse (2016) - Theatrical Release.mkv", result[0].AlternateVersions[10].Files[0].Path);
         }
 
         [Fact]
@@ -482,7 +483,7 @@ namespace Jellyfin.Naming.Tests.Video
             Assert.Single(result[0].AlternateVersions);
             // 1080p should be primary (higher resolution)
             Assert.Contains("1080p", result[0].Files[0].Path, StringComparison.Ordinal);
-            Assert.Contains("720p", result[0].AlternateVersions[0].Path, StringComparison.Ordinal);
+            Assert.Contains("720p", result[0].AlternateVersions[0].Files[0].Path, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -602,8 +603,8 @@ namespace Jellyfin.Naming.Tests.Video
             // Primary should be 2160p (highest resolution)
             Assert.Contains("2160p", result[0].Files[0].Path, StringComparison.Ordinal);
             // Next should be 1080p, then 720p
-            Assert.Contains("1080p", result[0].AlternateVersions[0].Path, StringComparison.Ordinal);
-            Assert.Contains("720p", result[0].AlternateVersions[1].Path, StringComparison.Ordinal);
+            Assert.Contains("1080p", result[0].AlternateVersions[0].Files[0].Path, StringComparison.Ordinal);
+            Assert.Contains("720p", result[0].AlternateVersions[1].Files[0].Path, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -681,7 +682,7 @@ namespace Jellyfin.Naming.Tests.Video
             Assert.Single(result);
             Assert.Single(result[0].AlternateVersions);
             Assert.Contains("1080p", result[0].Files[0].Path, StringComparison.Ordinal);
-            Assert.Contains("720p", result[0].AlternateVersions[0].Path, StringComparison.Ordinal);
+            Assert.Contains("720p", result[0].AlternateVersions[0].Files[0].Path, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -733,7 +734,7 @@ namespace Jellyfin.Naming.Tests.Video
             Assert.Single(result);
             Assert.Single(result[0].AlternateVersions);
             Assert.Contains("1080p", result[0].Files[0].Path, StringComparison.Ordinal);
-            Assert.Contains("720p", result[0].AlternateVersions[0].Path, StringComparison.Ordinal);
+            Assert.Contains("720p", result[0].AlternateVersions[0].Files[0].Path, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -774,7 +775,7 @@ namespace Jellyfin.Naming.Tests.Video
             Assert.Single(result);
             Assert.Equal(2, result[0].Files.Count);
             Assert.Single(result[0].AlternateVersions);
-            Assert.Contains("720p", result[0].AlternateVersions[0].Path, StringComparison.Ordinal);
+            Assert.Contains("720p", result[0].AlternateVersions[0].Files[0].Path, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -795,7 +796,7 @@ namespace Jellyfin.Naming.Tests.Video
             Assert.Single(result);
             Assert.Equal(2, result[0].Files.Count);
             Assert.Single(result[0].AlternateVersions);
-            Assert.Contains("720p", result[0].AlternateVersions[0].Path, StringComparison.Ordinal);
+            Assert.Contains("720p", result[0].AlternateVersions[0].Files[0].Path, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -816,7 +817,7 @@ namespace Jellyfin.Naming.Tests.Video
             Assert.Single(result);
             Assert.Equal(2, result[0].Files.Count);
             Assert.Single(result[0].AlternateVersions);
-            Assert.Contains("720p", result[0].AlternateVersions[0].Path, StringComparison.Ordinal);
+            Assert.Contains("720p", result[0].AlternateVersions[0].Files[0].Path, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -838,7 +839,7 @@ namespace Jellyfin.Naming.Tests.Video
             // Primary should be the stacked 1080p version with 2 files
             Assert.Equal(2, result[0].Files.Count);
             Assert.Single(result[0].AlternateVersions);
-            Assert.Contains("720p", result[0].AlternateVersions[0].Path, StringComparison.Ordinal);
+            Assert.Contains("720p", result[0].AlternateVersions[0].Files[0].Path, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -860,7 +861,7 @@ namespace Jellyfin.Naming.Tests.Video
             // Primary should be the stacked 1080p version with 2 files
             Assert.Equal(2, result[0].Files.Count);
             Assert.Single(result[0].AlternateVersions);
-            Assert.Contains("720p", result[0].AlternateVersions[0].Path, StringComparison.Ordinal);
+            Assert.Contains("720p", result[0].AlternateVersions[0].Files[0].Path, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -891,6 +892,88 @@ namespace Jellyfin.Naming.Tests.Video
             var e02 = result.FirstOrDefault(r => r.Files[0].Path.Contains("S01E02", StringComparison.Ordinal));
             Assert.NotNull(e02);
             Assert.Empty(e02!.AlternateVersions);
+        }
+
+        [Fact]
+        public void TestMultiVersionEpisodePartStackAlongsideSingleFileResolutions()
+        {
+            // A part-stacked episode (3 parts, no resolution suffix) alongside single-file 720p and 1080p versions.
+            // The multi-part stack is preferred as primary.
+            var files = new[]
+            {
+                "/TV/Show/Season 1/S01E01 - 720p.mkv",
+                "/TV/Show/Season 1/S01E01 - 1080p.mkv",
+                "/TV/Show/Season 1/S01E01 - Part 1.mkv",
+                "/TV/Show/Season 1/S01E01 - Part 2.mkv",
+                "/TV/Show/Season 1/S01E01 - Part 3.mkv"
+            };
+
+            var result = _videoListResolver.Resolve(
+                files.Select(i => VideoResolver.Resolve(i, false, _namingOptions)).OfType<VideoFileInfo>().ToList(),
+                collectionType: CollectionType.tvshows).ToList();
+
+            Assert.Single(result);
+            Assert.Equal(3, result[0].Files.Count);
+            Assert.All(result[0].Files, f => Assert.Contains("Part", f.Path, StringComparison.Ordinal));
+            Assert.Equal(2, result[0].AlternateVersions.Count);
+            Assert.Contains(result[0].AlternateVersions, f => f.Files[0].Path.Contains("1080p", StringComparison.Ordinal));
+            Assert.Contains(result[0].AlternateVersions, f => f.Files[0].Path.Contains("720p", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void TestMultiVersionEpisodeTwoPartStacks()
+        {
+            // Two part-suffixed stacks of the same episode at different resolutions.
+            // The 1080p stack is primary, the 720p stack is preserved as a multi-file alternate.
+            var files = new[]
+            {
+                "/TV/Show/Season 1/Show - S01E01 - 1080p - part1.mkv",
+                "/TV/Show/Season 1/Show - S01E01 - 1080p - part2.mkv",
+                "/TV/Show/Season 1/Show - S01E01 - 720p - part1.mkv",
+                "/TV/Show/Season 1/Show - S01E01 - 720p - part2.mkv"
+            };
+
+            var result = _videoListResolver.Resolve(
+                files.Select(i => VideoResolver.Resolve(i, false, _namingOptions)).OfType<VideoFileInfo>().ToList(),
+                collectionType: CollectionType.tvshows).ToList();
+
+            Assert.Single(result);
+            Assert.Equal(2, result[0].Files.Count);
+            Assert.Contains("1080p", result[0].Files[0].Path, StringComparison.Ordinal);
+
+            Assert.Single(result[0].AlternateVersions);
+            var alt = result[0].AlternateVersions[0];
+            Assert.Equal(2, alt.Files.Count);
+            Assert.All(alt.Files, f => Assert.Contains("720p", f.Path, StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void TestMultiVersionEpisodePartStackWithTrailer()
+        {
+            // A part-stacked multi-version episode alongside a trailer must not pull the trailer into the version group
+            var files = new[]
+            {
+                "/TV/Show/Season 1/Show - S01E01 - 1080p part1.mkv",
+                "/TV/Show/Season 1/Show - S01E01 - 1080p part2.mkv",
+                "/TV/Show/Season 1/Show - S01E01 - 720p.mkv",
+                "/TV/Show/Season 1/Show - S01E01-trailer.mp4"
+            };
+
+            var result = _videoListResolver.Resolve(
+                files.Select(i => VideoResolver.Resolve(i, false, _namingOptions)).OfType<VideoFileInfo>().ToList(),
+                collectionType: CollectionType.tvshows).ToList();
+
+            Assert.Equal(2, result.Count);
+
+            var episode = result.FirstOrDefault(r => r.ExtraType is null);
+            Assert.NotNull(episode);
+            Assert.Equal(2, episode!.Files.Count);
+            Assert.Single(episode.AlternateVersions);
+            Assert.Contains("720p", episode.AlternateVersions[0].Files[0].Path, StringComparison.Ordinal);
+
+            var trailer = result.FirstOrDefault(r => r.ExtraType is not null);
+            Assert.NotNull(trailer);
+            Assert.Equal(ExtraType.Trailer, trailer!.ExtraType);
         }
 
         [Fact]
@@ -979,6 +1062,31 @@ namespace Jellyfin.Naming.Tests.Video
             // Stacked 1080p (2 files) should be primary, 720p is alternate
             Assert.Equal(2, result[0].Files.Count);
             Assert.Single(result[0].AlternateVersions);
+        }
+
+        [Fact]
+        public void TestMovieMultiVersionWithStackedAlternate()
+        {
+            // Movie folder where the folder-named file is the primary (single file via primaryOverride)
+            // and an alternate version is itself a stack. The stacked alternate must keep all its files.
+            var files = new[]
+            {
+                "/movies/Inception (2010)/Inception (2010).mkv",
+                "/movies/Inception (2010)/Inception (2010) - 4k part1.mkv",
+                "/movies/Inception (2010)/Inception (2010) - 4k part2.mkv"
+            };
+
+            var result = _videoListResolver.Resolve(
+                files.Select(i => VideoResolver.Resolve(i, false, _namingOptions)).OfType<VideoFileInfo>().ToList()).ToList();
+
+            Assert.Single(result);
+            Assert.Single(result[0].Files);
+            Assert.Equal("/movies/Inception (2010)/Inception (2010).mkv", result[0].Files[0].Path);
+
+            Assert.Single(result[0].AlternateVersions);
+            var stackedAlternate = result[0].AlternateVersions[0];
+            Assert.Equal(2, stackedAlternate.Files.Count);
+            Assert.All(stackedAlternate.Files, f => Assert.Contains("4k part", f.Path, StringComparison.Ordinal));
         }
 
         [Fact]

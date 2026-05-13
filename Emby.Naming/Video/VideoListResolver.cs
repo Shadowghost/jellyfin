@@ -296,10 +296,13 @@ namespace Emby.Naming.Video
                 }
             }
 
-            var primary = primaryOverride ?? videos[0];
+            // Prefer a stacked entry (more than one part) as primary
+            var primary = primaryOverride
+                ?? videos.FirstOrDefault(v => v.Files.Count > 1)
+                ?? videos[0];
             videos.Remove(primary);
 
-            primary.AlternateVersions = [.. videos.Select(x => x.Files[0])];
+            primary.AlternateVersions = videos;
 
             if (nameOverride is not null)
             {

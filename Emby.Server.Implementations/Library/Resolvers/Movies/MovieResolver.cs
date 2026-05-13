@@ -305,7 +305,7 @@ namespace Emby.Server.Implementations.Library.Resolvers.Movies
                     ProductionYear = video.Year,
                     Name = parseName ? video.Name : firstVideo.Name,
                     AdditionalParts = additionalParts,
-                    LocalAlternateVersions = video.AlternateVersions.Select(i => i.Path).ToArray()
+                    LocalAlternateVersions = video.AlternateVersions.Select(av => av.Files[0].Path).ToArray()
                 };
 
                 SetVideoType(videoItem, firstVideo);
@@ -334,9 +334,13 @@ namespace Emby.Server.Implementations.Library.Resolvers.Movies
 
                 for (var j = 0; j < current.AlternateVersions.Count; j++)
                 {
-                    if (ContainsFile(current.AlternateVersions[j], file))
+                    var alternate = current.AlternateVersions[j];
+                    for (var k = 0; k < alternate.Files.Count; k++)
                     {
-                        return true;
+                        if (ContainsFile(alternate.Files[k], file))
+                        {
+                            return true;
+                        }
                     }
                 }
             }
