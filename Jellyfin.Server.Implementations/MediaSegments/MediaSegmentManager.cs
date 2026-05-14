@@ -81,10 +81,7 @@ public class MediaSegmentManager : IMediaSegmentManager
 
             foreach (var provider in providers)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
+                cancellationToken.ThrowIfCancellationRequested();
 
                 if (!await provider.Supports(baseItem).ConfigureAwait(false))
                 {
