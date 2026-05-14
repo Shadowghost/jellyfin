@@ -77,20 +77,34 @@ namespace Emby.Server.Implementations.Localization
             var cultures = new List<CultureInfo>();
             foreach (var option in _localizationOptions)
             {
-                // Resource files use underscores for some variants (e.g. es_419);
-                // CultureInfo only accepts hyphenated BCP-47 codes.
-                var code = option.Value.Replace('_', '-');
-                try
+                // Skip novelty codes (e.g. "pr" Pirate, "jbo" Lojban) that .NET cannot resolve.
+                if (TryGetCultureInfo(option.Value, out var cultureInfo))
                 {
-                    cultures.Add(CultureInfo.GetCultureInfo(code));
-                }
-                catch (CultureNotFoundException)
-                {
-                    // Skip novelty codes (e.g. "pr" Pirate, "jbo" Lojban) that .NET cannot resolve.
+                    cultures.Add(cultureInfo);
                 }
             }
 
             return cultures;
+        }
+
+        /// <summary>
+        /// Resolves a Jellyfin resource culture code (which may use underscores, e.g. <c>es_419</c>)
+        /// to a <see cref="CultureInfo"/>. Returns <see langword="false"/> for codes .NET cannot resolve.
+        /// </summary>
+        private static bool TryGetCultureInfo(string cultureCode, [NotNullWhen(true)] out CultureInfo? cultureInfo)
+        {
+            try
+            {
+                // Resource files use underscores for some variants (e.g. es_419);
+                // CultureInfo only accepts hyphenated BCP-47 codes.
+                cultureInfo = CultureInfo.GetCultureInfo(cultureCode.Replace('_', '-'));
+                return true;
+            }
+            catch (CultureNotFoundException)
+            {
+                cultureInfo = null;
+                return false;
+            }
         }
 
         private static void OnConfigurationUpdated(object? sender, EventArgs e)
@@ -614,20 +628,10 @@ namespace Emby.Server.Implementations.Localization
 
         private static string GetDisplayName(string cultureCode)
         {
-            // Resource files use underscores for codes that .NET's CultureInfo doesn't accept directly (e.g. es_419).
-            var lookup = cultureCode.Contains('_', StringComparison.Ordinal)
-                ? cultureCode.Replace('_', '-')
+            // Custom/novelty codes like "pr" (Pirate) — fall back to code itself
+            return TryGetCultureInfo(cultureCode, out var cultureInfo)
+                ? cultureInfo.NativeName
                 : cultureCode;
-
-            try
-            {
-                return CultureInfo.GetCultureInfo(lookup).NativeName;
-            }
-            catch (CultureNotFoundException)
-            {
-                // Custom/novelty codes like "pr" (Pirate) — fall back to code itself
-                return cultureCode;
-            }
         }
 
         /// <inheritdoc />
