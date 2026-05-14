@@ -33,7 +33,7 @@ public class ListenBrainzPlugin : BasePlugin<PluginConfiguration>, IHasWebPages
     public override Guid Id => new("a5b2e8c1-9d4f-4a3b-8c7e-6f1a2b3c4d5e");
 
     /// <inheritdoc />
-    public override string Name => "ListenBrainz";
+    public override string Name => "ListenBrainz Similarity Provider";
 
     /// <inheritdoc />
     public override string Description => "Get similar artist recommendations from ListenBrainz Labs.";
@@ -44,10 +44,21 @@ public class ListenBrainzPlugin : BasePlugin<PluginConfiguration>, IHasWebPages
     /// <inheritdoc />
     public IEnumerable<PluginPageInfo> GetPages()
     {
+        var resourcePrefix = GetType().Namespace + ".Configuration.";
         yield return new PluginPageInfo
         {
             Name = Name,
-            EmbeddedResourcePath = GetType().Namespace + ".Configuration.config.html"
+            EmbeddedResourcePath = resourcePrefix + "config.html"
+        };
+        yield return new PluginPageInfo
+        {
+            Name = Name + "Logo",
+            EmbeddedResourcePath = resourcePrefix + "ListenBrainz_logo.svg"
+        };
+        yield return new PluginPageInfo
+        {
+            Name = Name + "Notice",
+            EmbeddedResourcePath = resourcePrefix + "NOTICE.md"
         };
     }
 }

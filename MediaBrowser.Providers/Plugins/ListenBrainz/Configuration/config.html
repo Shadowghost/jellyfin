@@ -7,6 +7,7 @@
     <div id="configPage" data-role="page" class="page type-interior pluginConfigurationPage configPage" data-require="emby-input,emby-button,emby-select">
         <div data-role="content">
             <div class="content-primary">
+                <img id="listenBrainzLogo" alt="ListenBrainz" style="max-width:240px;display:block;margin:0 auto 1em;" />
                 <h1>ListenBrainz</h1>
                 <p>Get similar artist recommendations from ListenBrainz Labs.</p>
                 <form class="configForm">
@@ -39,6 +40,14 @@
                         <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
                     </div>
                 </form>
+                <div class="verticalSection" style="margin-top:2em;font-size:0.85em;opacity:0.8;">
+                    <p>The ListenBrainz logo is &copy; the MetaBrainz Foundation (by MonkeyDo),
+                    adapted for Jellyfin plugin use by
+                    <a href="https://github.com/lyarenei" target="_blank" rel="noopener">lyarenei</a>,
+                    and redistributed here under
+                    <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a>.
+                    Full attribution notice is shipped alongside the plugin in <code>NOTICE.md</code>.</p>
+                </div>
             </div>
         </div>
         <script type="text/javascript">
@@ -49,6 +58,7 @@
             document.querySelector('.configPage')
                 .addEventListener('pageshow', function () {
                     Dashboard.showLoadingMsg();
+                    document.querySelector('#listenBrainzLogo').src = ApiClient.getUrl('web/ConfigurationPage', { name: 'ListenBrainzLogo' });
                     ApiClient.getPluginConfiguration(ListenBrainzPluginConfig.uniquePluginId).then(function (config) {
                         var labsServer = document.querySelector('#labsServer');
                         labsServer.value = config.LabsServer;
