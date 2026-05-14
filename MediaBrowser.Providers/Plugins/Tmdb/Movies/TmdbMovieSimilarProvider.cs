@@ -37,7 +37,14 @@ public class TmdbMovieSimilarProvider : IRemoteSimilarItemsProvider<Movie>
     public MetadataPluginType Type => MetadataPluginType.SimilarityProvider;
 
     /// <inheritdoc/>
-    public TimeSpan? CacheDuration => TimeSpan.FromDays(7);
+    public TimeSpan? CacheDuration
+    {
+        get
+        {
+            var days = Plugin.Instance?.Configuration.SimilarItemsCacheDays ?? 0;
+            return days > 0 ? TimeSpan.FromDays(days) : null;
+        }
+    }
 
     /// <inheritdoc/>
     public async IAsyncEnumerable<SimilarItemReference> GetSimilarItemsAsync(

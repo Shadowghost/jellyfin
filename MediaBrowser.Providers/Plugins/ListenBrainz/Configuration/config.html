@@ -30,6 +30,10 @@
                         <input is="emby-input" type="number" id="rateLimit" required pattern="[0-9]*" min="0" max="10" step=".01" label="Rate Limit (seconds)" />
                         <div class="fieldDescription">Span of time between requests in seconds. The official server is rate limited to one request per second.</div>
                     </div>
+                    <div class="inputContainer">
+                        <input is="emby-input" type="number" id="similarItemsCacheDays" required pattern="[0-9]*" min="0" max="365" label="Cache duration (days)" />
+                        <div class="fieldDescription">Number of days to cache similar artist results from ListenBrainz. Set to 0 to disable caching.</div>
+                    </div>
                     <br />
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
@@ -62,6 +66,13 @@
                             cancelable: false
                         }));
 
+                        var similarItemsCacheDays = document.querySelector('#similarItemsCacheDays');
+                        similarItemsCacheDays.value = config.SimilarItemsCacheDays;
+                        similarItemsCacheDays.dispatchEvent(new Event('change', {
+                            bubbles: true,
+                            cancelable: false
+                        }));
+
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -74,6 +85,7 @@
                         config.LabsServer = document.querySelector('#labsServer').value;
                         config.Algorithm = parseInt(document.querySelector('#algorithm').value, 10);
                         config.RateLimit = document.querySelector('#rateLimit').value;
+                        config.SimilarItemsCacheDays = parseInt(document.querySelector('#similarItemsCacheDays').value, 10);
 
                         ApiClient.updatePluginConfiguration(ListenBrainzPluginConfig.uniquePluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
                     });

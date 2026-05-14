@@ -54,6 +54,11 @@ public class PluginConfiguration : BasePluginConfiguration
     }
 
     /// <summary>
+    /// Gets or sets the cache duration in days for similar item results. A value of 0 disables caching.
+    /// </summary>
+    public int SimilarItemsCacheDays { get; set; } = 14;
+
+    /// <summary>
     /// Gets the algorithm string for the API call.
     /// </summary>
     public string AlgorithmString => Algorithm.ToApiString();

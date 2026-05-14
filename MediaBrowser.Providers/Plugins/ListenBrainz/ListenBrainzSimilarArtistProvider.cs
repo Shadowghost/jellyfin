@@ -40,7 +40,14 @@ public class ListenBrainzSimilarArtistProvider : IRemoteSimilarItemsProvider<Mus
     public MetadataPluginType Type => MetadataPluginType.SimilarityProvider;
 
     /// <inheritdoc/>
-    public TimeSpan? CacheDuration => TimeSpan.FromDays(14);
+    public TimeSpan? CacheDuration
+    {
+        get
+        {
+            var days = ListenBrainzPlugin.Instance?.Configuration.SimilarItemsCacheDays ?? 0;
+            return days > 0 ? TimeSpan.FromDays(days) : null;
+        }
+    }
 
     /// <inheritdoc/>
     public async IAsyncEnumerable<SimilarItemReference> GetSimilarItemsAsync(
