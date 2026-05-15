@@ -225,6 +225,23 @@ public class SimilarItemsManager : ISimilarItemsManager
             .ToList();
     }
 
+    /// <inheritdoc/>
+    public Task<Dictionary<Guid, IReadOnlyList<BaseItem>>> GetBatchSimilarItemsAsync(
+        IReadOnlyList<BaseItem> sourceItems,
+        SimilarItemsQuery query)
+    {
+        var batchProvider = _similarItemsProviders
+            .OfType<IBatchLocalSimilarItemsProvider>()
+            .FirstOrDefault();
+
+        if (batchProvider is null)
+        {
+            return Task.FromResult(new Dictionary<Guid, IReadOnlyList<BaseItem>>());
+        }
+
+        return batchProvider.GetBatchSimilarItemsAsync(sourceItems, query);
+    }
+
     private List<(BaseItem Item, float Score)> ResolveRemoteReferences(
         IReadOnlyList<SimilarItemReference> references,
         int providerOrder,

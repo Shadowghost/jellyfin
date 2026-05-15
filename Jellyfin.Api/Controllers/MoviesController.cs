@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Jellyfin.Api.Extensions;
 using Jellyfin.Api.Helpers;
 using Jellyfin.Api.ModelBinders;
 using Jellyfin.Data.Enums;
@@ -33,6 +36,7 @@ public class MoviesController : BaseJellyfinApiController
     private readonly ILibraryManager _libraryManager;
     private readonly IDtoService _dtoService;
     private readonly IServerConfigurationManager _serverConfigurationManager;
+    private readonly ISimilarItemsManager _similarItemsManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="MoviesController"/> class.
@@ -41,16 +45,19 @@ public class MoviesController : BaseJellyfinApiController
     /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
     /// <param name="dtoService">Instance of the <see cref="IDtoService"/> interface.</param>
     /// <param name="serverConfigurationManager">Instance of the <see cref="IServerConfigurationManager"/> interface.</param>
+    /// <param name="similarItemsManager">Instance of the <see cref="ISimilarItemsManager"/> interface.</param>
     public MoviesController(
         IUserManager userManager,
         ILibraryManager libraryManager,
         IDtoService dtoService,
-        IServerConfigurationManager serverConfigurationManager)
+        IServerConfigurationManager serverConfigurationManager,
+        ISimilarItemsManager similarItemsManager)
     {
         _userManager = userManager;
         _libraryManager = libraryManager;
         _dtoService = dtoService;
         _serverConfigurationManager = serverConfigurationManager;
+        _similarItemsManager = similarItemsManager;
     }
 
     /// <summary>
@@ -61,15 +68,17 @@ public class MoviesController : BaseJellyfinApiController
     /// <param name="fields">Optional. The fields to return.</param>
     /// <param name="categoryLimit">The max number of categories to return.</param>
     /// <param name="itemLimit">The max number of items to return per category.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
     /// <response code="200">Movie recommendations returned.</response>
     /// <returns>The list of movie recommendations.</returns>
     [HttpGet("Recommendations")]
-    public ActionResult<IEnumerable<RecommendationDto>> GetMovieRecommendations(
+    public Task<ActionResult<IEnumerable<RecommendationDto>>> GetMovieRecommendations(
         [FromQuery] Guid? userId,
         [FromQuery] Guid? parentId,
         [FromQuery, ModelBinder(typeof(CommaDelimitedCollectionModelBinder))] ItemFields[] fields,
         [FromQuery] int categoryLimit = 5,
-        [FromQuery] int itemLimit = 8)
+        [FromQuery] int itemLimit = 8,
+        CancellationToken cancellationToken = default)
     {
         userId = RequestHelpers.GetUserId(User, userId);
         var user = userId.IsNullOrEmpty()
@@ -86,15 +95,13 @@ public class MoviesController : BaseJellyfinApiController
             IncludeItemTypes = new[]
             {
                 BaseItemKind.Movie,
-                // nameof(Trailer),
-                // nameof(LiveTvProgram)
             },
-            // IsMovie = true
             OrderBy = new[] { (ItemSortBy.DatePlayed, SortOrder.Descending), (ItemSortBy.Random, SortOrder.Descending) },
             Limit = 7,
             ParentId = parentIdGuid,
             Recursive = true,
             IsPlayed = true,
+            EnableGroupByMetadataKey = true,
             DtoOptions = dtoOptions
         };
 
@@ -122,31 +129,52 @@ public class MoviesController : BaseJellyfinApiController
         });
 
         var mostRecentMovies = recentlyPlayedMovies.Take(Math.Min(recentlyPlayedMovies.Count, 6)).ToList();
-        // Get recently played directors
-        var recentDirectors = GetDirectors(mostRecentMovies)
-            .ToList();
+        var recentDirectors = GetDirectors(mostRecentMovies).ToList();
+        var recentActors = GetActors(mostRecentMovies).ToList();
 
-        // Get recently played actors
-        var recentActors = GetActors(mostRecentMovies)
-            .ToList();
+        // Cap baseline items to categoryLimit - the round-robin can't use more categories than that.
+        var recentlyPlayedBaseline = recentlyPlayedMovies.Count > categoryLimit
+            ? recentlyPlayedMovies.Take(categoryLimit).ToList()
+            : recentlyPlayedMovies;
+        var likedBaseline = likedMovies.Count > categoryLimit
+            ? likedMovies.Take(categoryLimit).ToList()
+            : likedMovies;
 
-        var similarToRecentlyPlayed = GetSimilarTo(user, recentlyPlayedMovies, itemLimit, dtoOptions, RecommendationType.SimilarToRecentlyPlayed).GetEnumerator();
-        var similarToLiked = GetSimilarTo(user, likedMovies, itemLimit, dtoOptions, RecommendationType.SimilarToLikedItem).GetEnumerator();
+        var batchQuery = new SimilarItemsQuery
+        {
+            User = user,
+            Limit = itemLimit,
+            DtoOptions = dtoOptions
+        };
 
-        var hasDirectorFromRecentlyPlayed = GetWithDirector(user, recentDirectors, itemLimit, dtoOptions, RecommendationType.HasDirectorFromRecentlyPlayed).GetEnumerator();
-        var hasActorFromRecentlyPlayed = GetWithActor(user, recentActors, itemLimit, dtoOptions, RecommendationType.HasActorFromRecentlyPlayed).GetEnumerator();
+        var similarToRecentlyPlayed = BuildPendingFromBatch(
+            _similarItemsManager.GetBatchSimilarItemsAsync(recentlyPlayedBaseline, batchQuery),
+            recentlyPlayedBaseline,
+            RecommendationType.SimilarToRecentlyPlayed);
 
-        var categoryTypes = new List<IEnumerator<RecommendationDto>>
+        var similarToLiked = BuildPendingFromBatch(
+            _similarItemsManager.GetBatchSimilarItemsAsync(likedBaseline, batchQuery),
+            likedBaseline,
+            RecommendationType.SimilarToLikedItem);
+
+        var hasDirectorFromRecentlyPlayed = GetWithPerson(user, recentDirectors, itemLimit, dtoOptions, RecommendationType.HasDirectorFromRecentlyPlayed);
+        var hasActorFromRecentlyPlayed = GetWithPerson(user, recentActors, itemLimit, dtoOptions, RecommendationType.HasActorFromRecentlyPlayed);
+
+        // Use a single enumerator per list, listed twice so MoveNext advances it
+        // twice per round-robin pass (giving these categories double weight).
+        // IMPORTANT: Declare as IEnumerator<T> to box the List<T>.Enumerator struct once;
+        // using var would box separately per list insertion, creating independent copies.
+        IEnumerator<PendingRecommendation> similarToRecentlyPlayedEnum = similarToRecentlyPlayed.GetEnumerator();
+        IEnumerator<PendingRecommendation> similarToLikedEnum = similarToLiked.GetEnumerator();
+
+        var categoryTypes = new List<IEnumerator<PendingRecommendation>>
             {
-                // Give this extra weight
-                similarToRecentlyPlayed,
-                similarToRecentlyPlayed,
-
-                // Give this extra weight
-                similarToLiked,
-                similarToLiked,
-                hasDirectorFromRecentlyPlayed,
-                hasActorFromRecentlyPlayed
+                similarToRecentlyPlayedEnum,
+                similarToRecentlyPlayedEnum,
+                similarToLikedEnum,
+                similarToLikedEnum,
+                hasDirectorFromRecentlyPlayed.GetEnumerator(),
+                hasActorFromRecentlyPlayed.GetEnumerator()
             };
 
         while (categories.Count < categoryLimit)
@@ -157,7 +185,17 @@ public class MoviesController : BaseJellyfinApiController
             {
                 if (category.MoveNext())
                 {
-                    categories.Add(category.Current);
+                    var pending = category.Current;
+                    var returnItems = _dtoService.GetBaseItemDtos(pending.Items, dtoOptions, user);
+
+                    categories.Add(new RecommendationDto
+                    {
+                        BaselineItemName = pending.BaselineItemName,
+                        CategoryId = pending.CategoryId,
+                        RecommendationType = pending.RecommendationType,
+                        Items = returnItems
+                    });
+
                     allEmpty = false;
 
                     if (categories.Count >= categoryLimit)
@@ -173,10 +211,36 @@ public class MoviesController : BaseJellyfinApiController
             }
         }
 
-        return Ok(categories.OrderBy(i => i.RecommendationType).AsEnumerable());
+        return Task.FromResult<ActionResult<IEnumerable<RecommendationDto>>>(
+            Ok(categories.OrderBy(i => i.RecommendationType).AsEnumerable()));
     }
 
-    private IEnumerable<RecommendationDto> GetWithDirector(
+    private static List<PendingRecommendation> BuildPendingFromBatch(
+        Task<Dictionary<Guid, IReadOnlyList<BaseItem>>> batchTask,
+        IReadOnlyList<BaseItem> baselineItems,
+        RecommendationType type)
+    {
+        var batchResults = batchTask.GetAwaiter().GetResult();
+        var results = new List<PendingRecommendation>();
+
+        foreach (var item in baselineItems)
+        {
+            if (batchResults.TryGetValue(item.Id, out var similar) && similar.Count > 0)
+            {
+                results.Add(new PendingRecommendation
+                {
+                    BaselineItemName = item.Name,
+                    CategoryId = item.Id,
+                    RecommendationType = type,
+                    Items = similar
+                });
+            }
+        }
+
+        return results;
+    }
+
+    private IEnumerable<PendingRecommendation> GetWithPerson(
         User? user,
         IEnumerable<string> names,
         int itemLimit,
@@ -190,17 +254,21 @@ public class MoviesController : BaseJellyfinApiController
             itemTypes.Add(BaseItemKind.LiveTvProgram);
         }
 
+        var personTypes = type == RecommendationType.HasDirectorFromRecentlyPlayed
+            ? [PersonType.Director]
+            : Array.Empty<string>();
+
         foreach (var name in names)
         {
             var items = _libraryManager.GetItemList(
                 new InternalItemsQuery(user)
                 {
                     Person = name,
-                    // Account for duplicates by IMDb id, since the database doesn't support this yet
                     Limit = itemLimit + 2,
-                    PersonTypes = new[] { PersonType.Director },
+                    PersonTypes = personTypes,
                     IncludeItemTypes = itemTypes.ToArray(),
                     IsMovie = true,
+                    IsPlayed = false,
                     EnableGroupByMetadataKey = true,
                     DtoOptions = dtoOptions
                 }).DistinctBy(i => i.GetProviderId(MediaBrowser.Model.Entities.MetadataProvider.Imdb) ?? Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture))
@@ -209,119 +277,47 @@ public class MoviesController : BaseJellyfinApiController
 
             if (items.Count > 0)
             {
-                var returnItems = _dtoService.GetBaseItemDtos(items, dtoOptions, user);
-
-                yield return new RecommendationDto
+                yield return new PendingRecommendation
                 {
                     BaselineItemName = name,
                     CategoryId = name.GetMD5(),
                     RecommendationType = type,
-                    Items = returnItems
+                    Items = items
                 };
             }
         }
     }
 
-    private IEnumerable<RecommendationDto> GetWithActor(User? user, IEnumerable<string> names, int itemLimit, DtoOptions dtoOptions, RecommendationType type)
+    private IReadOnlyList<string> GetActors(IReadOnlyList<BaseItem> items)
     {
-        var itemTypes = new List<BaseItemKind> { BaseItemKind.Movie };
-        if (_serverConfigurationManager.Configuration.EnableExternalContentInSuggestions)
-        {
-            itemTypes.Add(BaseItemKind.Trailer);
-            itemTypes.Add(BaseItemKind.LiveTvProgram);
-        }
-
-        foreach (var name in names)
-        {
-            var items = _libraryManager.GetItemList(new InternalItemsQuery(user)
-            {
-                Person = name,
-                // Account for duplicates by IMDb id, since the database doesn't support this yet
-                Limit = itemLimit + 2,
-                IncludeItemTypes = itemTypes.ToArray(),
-                IsMovie = true,
-                EnableGroupByMetadataKey = true,
-                DtoOptions = dtoOptions
-            }).DistinctBy(i => i.GetProviderId(MediaBrowser.Model.Entities.MetadataProvider.Imdb) ?? Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture))
-                .Take(itemLimit)
-                .ToList();
-
-            if (items.Count > 0)
-            {
-                var returnItems = _dtoService.GetBaseItemDtos(items, dtoOptions, user);
-
-                yield return new RecommendationDto
-                {
-                    BaselineItemName = name,
-                    CategoryId = name.GetMD5(),
-                    RecommendationType = type,
-                    Items = returnItems
-                };
-            }
-        }
+        var itemIds = items.Select(i => i.Id).ToArray();
+        return _libraryManager.GetPeopleNamesByItems(
+            itemIds,
+            new[] { PersonType.Actor, PersonType.GuestStar },
+            limit: 0);
     }
 
-    private IEnumerable<RecommendationDto> GetSimilarTo(User? user, IEnumerable<BaseItem> baselineItems, int itemLimit, DtoOptions dtoOptions, RecommendationType type)
+    private IReadOnlyList<string> GetDirectors(IReadOnlyList<BaseItem> items)
     {
-        var itemTypes = new List<BaseItemKind> { BaseItemKind.Movie };
-        if (_serverConfigurationManager.Configuration.EnableExternalContentInSuggestions)
-        {
-            itemTypes.Add(BaseItemKind.Trailer);
-            itemTypes.Add(BaseItemKind.LiveTvProgram);
-        }
-
-        foreach (var item in baselineItems)
-        {
-            var similar = _libraryManager.GetItemList(new InternalItemsQuery(user)
-            {
-                Limit = itemLimit,
-                IncludeItemTypes = itemTypes.ToArray(),
-                IsMovie = true,
-                EnableGroupByMetadataKey = true,
-                DtoOptions = dtoOptions
-            });
-
-            if (similar.Count > 0)
-            {
-                var returnItems = _dtoService.GetBaseItemDtos(similar, dtoOptions, user);
-
-                yield return new RecommendationDto
-                {
-                    BaselineItemName = item.Name,
-                    CategoryId = item.Id,
-                    RecommendationType = type,
-                    Items = returnItems
-                };
-            }
-        }
+        var itemIds = items.Select(i => i.Id).ToArray();
+        return _libraryManager.GetPeopleNamesByItems(
+            itemIds,
+            [PersonType.Director],
+            limit: 0);
     }
 
-    private IEnumerable<string> GetActors(IEnumerable<BaseItem> items)
+    /// <summary>
+    /// Holds a recommendation category's BaseItems before DTO conversion.
+    /// DTO conversion is deferred until the round-robin actually selects the category.
+    /// </summary>
+    private sealed class PendingRecommendation
     {
-        var people = _libraryManager.GetPeople(new InternalPeopleQuery(Array.Empty<string>(), new[] { PersonType.Director })
-        {
-            MaxListOrder = 3
-        });
+        public required string BaselineItemName { get; init; }
 
-        var itemIds = items.Select(i => i.Id).ToList();
+        public required Guid CategoryId { get; init; }
 
-        return people
-            .Where(i => itemIds.Contains(i.ItemId))
-            .Select(i => i.Name)
-            .DistinctNames();
-    }
+        public required RecommendationType RecommendationType { get; init; }
 
-    private IEnumerable<string> GetDirectors(IEnumerable<BaseItem> items)
-    {
-        var people = _libraryManager.GetPeople(new InternalPeopleQuery(
-            new[] { PersonType.Director },
-            Array.Empty<string>()));
-
-        var itemIds = items.Select(i => i.Id).ToList();
-
-        return people
-            .Where(i => itemIds.Contains(i.ItemId))
-            .Select(i => i.Name)
-            .DistinctNames();
+        public required IReadOnlyList<BaseItem> Items { get; init; }
     }
 }
