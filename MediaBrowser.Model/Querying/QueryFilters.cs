@@ -2,6 +2,7 @@
 #pragma warning disable CS1591
 
 using System;
+using System.Collections.Generic;
 using MediaBrowser.Model.Dto;
 
 namespace MediaBrowser.Model.Querying
@@ -16,12 +17,12 @@ namespace MediaBrowser.Model.Querying
             SubtitleLanguages = Array.Empty<NameValuePair>();
         }
 
-        public NameGuidPair[] Genres { get; set; }
+        public IReadOnlyList<NameGuidPair> Genres { get; set; }
 
-        public string[] Tags { get; set; }
+        public IReadOnlyList<string> Tags { get; set; }
 
-        public NameValuePair[] AudioLanguages { get; set; }
+        public IReadOnlyList<NameValuePair> AudioLanguages { get; set; }
 
-        public NameValuePair[] SubtitleLanguages { get; set; }
+        public IReadOnlyList<NameValuePair> SubtitleLanguages { get; set; }
     }
 }

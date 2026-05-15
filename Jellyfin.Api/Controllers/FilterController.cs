@@ -197,7 +197,7 @@ public class FilterController : BaseJellyfinApiController
                     var culture = _localization.FindLanguageInfo(language);
                     return new NameValuePair
                     {
-                        Name = culture != null ? $"{culture.DisplayName} ({language})" : language,
+                        Name = culture is null ? language : $"{culture.DisplayName} ({language})",
                         Value = language
                     };
                 })
@@ -210,7 +210,7 @@ public class FilterController : BaseJellyfinApiController
                     var culture = _localization.FindLanguageInfo(language);
                     return new NameValuePair
                     {
-                        Name = culture != null ? $"{culture.DisplayName} ({language})" : language,
+                        Name = culture is null ? language : $"{culture.DisplayName} ({language})",
                         Value = language
                     };
                 })
