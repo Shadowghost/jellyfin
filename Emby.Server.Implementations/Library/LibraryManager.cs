@@ -88,6 +88,7 @@ namespace Emby.Server.Implementations.Library
         private readonly IPathManager _pathManager;
         private readonly FastConcurrentLru<Guid, BaseItem> _cache;
         private readonly DotIgnoreIgnoreRule _dotIgnoreIgnoreRule;
+        private readonly IMediaStreamRepository _mediaStreamRepository;
 
         /// <summary>
         /// The _root folder sync lock.
@@ -130,6 +131,7 @@ namespace Emby.Server.Implementations.Library
         /// <param name="peopleRepository">The people repository.</param>
         /// <param name="pathManager">The path manager.</param>
         /// <param name="dotIgnoreIgnoreRule">The .ignore rule handler.</param>
+        /// <param name="mediaStreamRepository">The media stream repository.</param>
         public LibraryManager(
             IServerApplicationHost appHost,
             ILoggerFactory loggerFactory,
@@ -152,7 +154,8 @@ namespace Emby.Server.Implementations.Library
             IDirectoryService directoryService,
             IPeopleRepository peopleRepository,
             IPathManager pathManager,
-            DotIgnoreIgnoreRule dotIgnoreIgnoreRule)
+            DotIgnoreIgnoreRule dotIgnoreIgnoreRule,
+            IMediaStreamRepository mediaStreamRepository)
         {
             _appHost = appHost;
             _logger = loggerFactory.CreateLogger<LibraryManager>();
@@ -181,6 +184,8 @@ namespace Emby.Server.Implementations.Library
             _extraResolver = new ExtraResolver(loggerFactory.CreateLogger<ExtraResolver>(), namingOptions, directoryService);
 
             _configurationManager.ConfigurationUpdated += ConfigurationUpdated;
+
+            _mediaStreamRepository = mediaStreamRepository;
 
             RecordConfigurationValues(_configurationManager.Configuration);
         }
@@ -3844,6 +3849,12 @@ namespace Emby.Server.Implementations.Library
 
             SetTopParentOrAncestorIds(query);
             return _itemRepository.GetQueryFiltersLegacy(query);
+        }
+
+        /// <inheritdoc />
+        public IReadOnlyList<string> GetMediaStreamLanguages(MediaStreamType mediaStreamType)
+        {
+            return _mediaStreamRepository.GetMediaStreamLanguages(mediaStreamType);
         }
     }
 }
