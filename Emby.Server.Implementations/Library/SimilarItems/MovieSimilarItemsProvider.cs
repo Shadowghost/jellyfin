@@ -188,7 +188,6 @@ public sealed class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie
         var entitiesById = _queryHelpers.ApplyNavigations(
                 context.BaseItems.AsNoTracking().Where(e => allOrderedIdsList.Contains(e.Id)),
                 filter)
-            .AsSplitQuery()
             .AsEnumerable()
             .Select(e => _queryHelpers.DeserializeBaseItem(e, filter.SkipDeserialization))
             .Where(dto => dto is not null)
