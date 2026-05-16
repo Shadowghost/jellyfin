@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Entities;
 
@@ -16,8 +17,10 @@ public interface IBatchLocalSimilarItemsProvider : ISimilarItemsProvider
     /// </summary>
     /// <param name="sourceItems">The source items to find similar items for.</param>
     /// <param name="query">The query options.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>Per-source-item results keyed by source item ID.</returns>
     Task<Dictionary<Guid, IReadOnlyList<BaseItem>>> GetBatchSimilarItemsAsync(
         IReadOnlyList<BaseItem> sourceItems,
-        SimilarItemsQuery query);
+        SimilarItemsQuery query,
+        CancellationToken cancellationToken);
 }

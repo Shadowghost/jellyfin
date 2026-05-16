@@ -299,12 +299,14 @@ public class SimilarItemsManager : ISimilarItemsManager
         var similarToRecentlyPlayed = await GetSimilarItemsRecommendationsAsync(
             recentlyPlayedBaseline,
             RecommendationType.SimilarToRecentlyPlayed,
-            batchQuery).ConfigureAwait(false);
+            batchQuery,
+            cancellationToken).ConfigureAwait(false);
 
         var similarToLiked = await GetSimilarItemsRecommendationsAsync(
             likedBaseline,
             RecommendationType.SimilarToLikedItem,
-            batchQuery).ConfigureAwait(false);
+            batchQuery,
+            cancellationToken).ConfigureAwait(false);
 
         var hasDirectorFromRecentlyPlayed = GetPersonRecommendations(user, recentDirectors, itemLimit, dtoOptions, RecommendationType.HasDirectorFromRecentlyPlayed, itemTypes);
         var hasActorFromRecentlyPlayed = GetPersonRecommendations(user, recentActors, itemLimit, dtoOptions, RecommendationType.HasActorFromRecentlyPlayed, itemTypes);
@@ -356,7 +358,8 @@ public class SimilarItemsManager : ISimilarItemsManager
     private async Task<IReadOnlyList<SimilarItemsRecommendation>> GetSimilarItemsRecommendationsAsync(
         IReadOnlyList<BaseItem> baselineItems,
         RecommendationType recommendationType,
-        SimilarItemsQuery query)
+        SimilarItemsQuery query,
+        CancellationToken cancellationToken)
     {
         var batchProvider = _similarItemsProviders
             .OfType<IBatchLocalSimilarItemsProvider>()
@@ -367,7 +370,7 @@ public class SimilarItemsManager : ISimilarItemsManager
             return [];
         }
 
-        var batchResults = await batchProvider.GetBatchSimilarItemsAsync(baselineItems, query).ConfigureAwait(false);
+        var batchResults = await batchProvider.GetBatchSimilarItemsAsync(baselineItems, query, cancellationToken).ConfigureAwait(false);
 
         var recommendations = new List<SimilarItemsRecommendation>(baselineItems.Count);
         foreach (var baseline in baselineItems)

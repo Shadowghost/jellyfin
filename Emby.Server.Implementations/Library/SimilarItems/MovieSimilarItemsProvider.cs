@@ -30,6 +30,10 @@ public sealed class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie
     private const int DirectorWeight = 50;
     private const int ActorWeight = 15;
 
+    // Caps the batch fan-out so downstream IN-list sizes (per-source scores, accessible-id
+    // load, navigation includes) stay bounded regardless of caller input.
+    private const int MaxBatchSourceItems = 64;
+
     private static readonly (ItemValueType Type, int Weight)[] _itemValueDimensions =
     [
         (ItemValueType.Genre, GenreWeight),
@@ -72,14 +76,14 @@ public sealed class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie
     /// <inheritdoc/>
     public async Task<IReadOnlyList<BaseItemDto>> GetSimilarItemsAsync(Movie item, SimilarItemsQuery query, CancellationToken cancellationToken)
     {
-        var results = await GetBatchSimilarItemsAsync([item], query).ConfigureAwait(false);
+        var results = await GetBatchSimilarItemsAsync([item], query, cancellationToken).ConfigureAwait(false);
         return results.TryGetValue(item.Id, out var items) ? items : [];
     }
 
     /// <inheritdoc/>
     public async Task<IReadOnlyList<BaseItemDto>> GetSimilarItemsAsync(Trailer item, SimilarItemsQuery query, CancellationToken cancellationToken)
     {
-        var results = await GetBatchSimilarItemsAsync([item], query).ConfigureAwait(false);
+        var results = await GetBatchSimilarItemsAsync([item], query, cancellationToken).ConfigureAwait(false);
         return results.TryGetValue(item.Id, out var items) ? items : [];
     }
 
@@ -95,9 +99,10 @@ public sealed class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie
         };
 
     /// <inheritdoc/>
-    public Task<Dictionary<Guid, IReadOnlyList<BaseItemDto>>> GetBatchSimilarItemsAsync(
+    public async Task<Dictionary<Guid, IReadOnlyList<BaseItemDto>>> GetBatchSimilarItemsAsync(
         IReadOnlyList<BaseItemDto> sourceItems,
-        SimilarItemsQuery query)
+        SimilarItemsQuery query,
+        CancellationToken cancellationToken)
     {
         var includeItemTypes = new List<BaseItemKind> { BaseItemKind.Movie };
         if (_serverConfigurationManager.Configuration.EnableExternalContentInSuggestions)
@@ -109,108 +114,119 @@ public sealed class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie
         var limit = query.Limit ?? 50;
         var dtoOptions = query.DtoOptions ?? new DtoOptions();
 
-        using var context = _dbProvider.CreateDbContext();
-
-        // Phase 1: Score all candidates per source item
-        var sourceIds = sourceItems.Select(i => i.Id).ToList();
-        var perSourceScores = ComputeBatchScores(sourceIds, context);
-
-        var allCandidateIds = new HashSet<Guid>();
-        foreach (var (_, scores) in perSourceScores)
+        if (sourceItems.Count > MaxBatchSourceItems)
         {
-            allCandidateIds.UnionWith(
-                scores.OrderByDescending(kvp => kvp.Value)
-                    .Take(limit * 3)
-                    .Select(kvp => kvp.Key));
+            sourceItems = sourceItems.Take(MaxBatchSourceItems).ToList();
         }
 
-        var result = new Dictionary<Guid, IReadOnlyList<BaseItemDto>>();
-        if (allCandidateIds.Count == 0)
+        var context = await _dbProvider.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using (context.ConfigureAwait(false))
         {
-            return Task.FromResult(result);
-        }
+            // Phase 1: Score all candidates per source item
+            var sourceIds = sourceItems.Select(i => i.Id).ToList();
+            var perSourceScores = await ComputeBatchScoresAsync(sourceIds, context, cancellationToken).ConfigureAwait(false);
 
-        // Phase 2: One access filter for all candidates
-        var filter = new InternalItemsQuery(query.User)
-        {
-            IncludeItemTypes = [.. includeItemTypes],
-            ExcludeItemIds = [.. query.ExcludeItemIds],
-            DtoOptions = dtoOptions,
-            EnableGroupByMetadataKey = true,
-            EnableTotalRecordCount = false,
-            IsMovie = true,
-            IsPlayed = false
-        };
-
-        _queryHelpers.PrepareFilterQuery(filter);
-        var baseQuery = _queryHelpers.PrepareItemQuery(context, filter);
-        baseQuery = _queryHelpers.TranslateQuery(baseQuery, context, filter);
-
-        var allCandidateIdsList = allCandidateIds.ToList();
-        var accessibleItems = baseQuery
-            .Where(e => allCandidateIdsList.Contains(e.Id))
-            .Select(e => new { e.Id, e.PresentationUniqueKey })
-            .ToList();
-
-        // Phase 3: Pick top IDs per source, dedup by PresentationUniqueKey
-        var allOrderedIds = new HashSet<Guid>();
-        var perSourceOrderedIds = new Dictionary<Guid, List<Guid>>();
-
-        foreach (var item in sourceItems)
-        {
-            if (!perSourceScores.TryGetValue(item.Id, out var scores))
+            var allCandidateIds = new HashSet<Guid>();
+            foreach (var (_, scores) in perSourceScores)
             {
-                continue;
+                allCandidateIds.UnionWith(
+                    scores.OrderByDescending(kvp => kvp.Value)
+                        .Take(limit * 3)
+                        .Select(kvp => kvp.Key));
             }
 
-            var orderedIds = accessibleItems
-                .Where(x => scores.ContainsKey(x.Id))
-                .OrderByDescending(x => scores.GetValueOrDefault(x.Id))
-                .DistinctBy(x => x.PresentationUniqueKey)
-                .Take(limit)
-                .Select(x => x.Id)
-                .ToList();
-
-            if (orderedIds.Count > 0)
+            var result = new Dictionary<Guid, IReadOnlyList<BaseItemDto>>();
+            if (allCandidateIds.Count == 0)
             {
-                perSourceOrderedIds[item.Id] = orderedIds;
-                allOrderedIds.UnionWith(orderedIds);
+                return result;
             }
-        }
 
-        if (allOrderedIds.Count == 0)
-        {
-            return Task.FromResult(result);
-        }
-
-        // Phase 4: One entity load for all results
-        var allOrderedIdsList = allOrderedIds.ToList();
-        var entitiesById = _queryHelpers.ApplyNavigations(
-                context.BaseItems.AsNoTracking().Where(e => allOrderedIdsList.Contains(e.Id)),
-                filter)
-            .AsEnumerable()
-            .Select(e => _queryHelpers.DeserializeBaseItem(e, filter.SkipDeserialization))
-            .Where(dto => dto is not null)
-            .ToDictionary(i => i!.Id);
-
-        // Phase 5: Split by source, preserving score order
-        foreach (var (sourceId, orderedIds) in perSourceOrderedIds)
-        {
-            var items = orderedIds
-                .Where(entitiesById.ContainsKey)
-                .Select(id => entitiesById[id]!)
-                .ToList();
-
-            if (items.Count > 0)
+            // Phase 2: One access filter for all candidates
+            var filter = new InternalItemsQuery(query.User)
             {
-                result[sourceId] = items;
-            }
-        }
+                IncludeItemTypes = [.. includeItemTypes],
+                ExcludeItemIds = [.. query.ExcludeItemIds],
+                DtoOptions = dtoOptions,
+                EnableGroupByMetadataKey = true,
+                EnableTotalRecordCount = false,
+                IsMovie = true,
+                IsPlayed = false
+            };
 
-        return Task.FromResult(result);
+            _queryHelpers.PrepareFilterQuery(filter);
+            var baseQuery = _queryHelpers.PrepareItemQuery(context, filter);
+            baseQuery = _queryHelpers.TranslateQuery(baseQuery, context, filter);
+
+            var allCandidateIdsList = allCandidateIds.ToList();
+            var accessibleItems = await baseQuery
+                .WhereOneOrMany(allCandidateIdsList, e => e.Id)
+                .Select(e => new { e.Id, e.PresentationUniqueKey })
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+            // Phase 3: Pick top IDs per source, dedup by PresentationUniqueKey
+            var allOrderedIds = new HashSet<Guid>();
+            var perSourceOrderedIds = new Dictionary<Guid, List<Guid>>();
+
+            foreach (var item in sourceItems)
+            {
+                if (!perSourceScores.TryGetValue(item.Id, out var scores))
+                {
+                    continue;
+                }
+
+                var orderedIds = accessibleItems
+                    .Where(x => scores.ContainsKey(x.Id))
+                    .OrderByDescending(x => scores.GetValueOrDefault(x.Id))
+                    .DistinctBy(x => x.PresentationUniqueKey)
+                    .Take(limit)
+                    .Select(x => x.Id)
+                    .ToList();
+
+                if (orderedIds.Count > 0)
+                {
+                    perSourceOrderedIds[item.Id] = orderedIds;
+                    allOrderedIds.UnionWith(orderedIds);
+                }
+            }
+
+            if (allOrderedIds.Count == 0)
+            {
+                return result;
+            }
+
+            // Phase 4: One entity load for all results. AsSplitQuery avoids a SQL Cartesian
+            // product across the multiple collection Includes added by ApplyNavigations.
+            var allOrderedIdsList = allOrderedIds.ToList();
+            var entities = await _queryHelpers.ApplyNavigations(
+                    context.BaseItems.AsNoTracking().WhereOneOrMany(allOrderedIdsList, e => e.Id),
+                    filter)
+                .AsSplitQuery()
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+            var entitiesById = entities
+                .Select(e => _queryHelpers.DeserializeBaseItem(e, filter.SkipDeserialization))
+                .Where(dto => dto is not null)
+                .ToDictionary(i => i!.Id);
+
+            // Phase 5: Split by source, preserving score order
+            foreach (var (sourceId, orderedIds) in perSourceOrderedIds)
+            {
+                var items = orderedIds
+                    .Where(entitiesById.ContainsKey)
+                    .Select(id => entitiesById[id]!)
+                    .ToList();
+
+                if (items.Count > 0)
+                {
+                    result[sourceId] = items;
+                }
+            }
+
+            return result;
+        }
     }
 
-    private Dictionary<Guid, Dictionary<Guid, int>> ComputeBatchScores(List<Guid> sourceIds, JellyfinDbContext context)
+    private static async Task<Dictionary<Guid, Dictionary<Guid, int>>> ComputeBatchScoresAsync(List<Guid> sourceIds, JellyfinDbContext context, CancellationToken cancellationToken)
     {
         var result = new Dictionary<Guid, Dictionary<Guid, int>>();
         foreach (var id in sourceIds)
@@ -218,95 +234,52 @@ public sealed class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie
             result[id] = [];
         }
 
-        // Score item-value dimensions (genre, tags, studios)
         foreach (var (valueType, weight) in _itemValueDimensions)
         {
-            var sourceMap = context.ItemValuesMap.AsNoTracking()
+            var sourceRows = await context.ItemValuesMap.AsNoTracking()
                 .Where(m => sourceIds.Contains(m.ItemId) && m.ItemValue.Type == valueType)
-                .Select(m => new { m.ItemId, m.ItemValue.CleanValue })
-                .ToList()
-                .GroupBy(m => m.ItemId)
-                .ToDictionary(g => g.Key, g => g.Select(x => x.CleanValue).ToHashSet());
+                .Select(m => new { m.ItemId, Key = m.ItemValue.CleanValue })
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
 
-            var allValues = sourceMap.Values.SelectMany(v => v).Distinct().ToList();
-            if (allValues.Count == 0)
+            var sourceMap = sourceRows.GroupBy(r => r.ItemId).ToDictionary(g => g.Key, g => g.Select(x => x.Key).ToHashSet());
+            var allKeys = sourceMap.Values.SelectMany(v => v).Distinct().ToList();
+            if (allKeys.Count == 0)
             {
                 continue;
             }
 
-            var valueToCandidates = context.ItemValuesMap.AsNoTracking()
-                .Where(m => m.ItemValue.Type == valueType && allValues.Contains(m.ItemValue.CleanValue))
-                .Select(m => new { m.ItemId, m.ItemValue.CleanValue })
-                .ToList()
-                .GroupBy(m => m.CleanValue)
-                .ToDictionary(g => g.Key, g => g.Select(x => x.ItemId).ToList());
+            var candidateRows = await context.ItemValuesMap.AsNoTracking()
+                .Where(m => m.ItemValue.Type == valueType && allKeys.Contains(m.ItemValue.CleanValue))
+                .Select(m => new { m.ItemId, Key = m.ItemValue.CleanValue })
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
 
-            foreach (var sourceId in sourceIds)
-            {
-                if (!sourceMap.TryGetValue(sourceId, out var sourceValues))
-                {
-                    continue;
-                }
-
-                var scoreMap = result[sourceId];
-                foreach (var value in sourceValues)
-                {
-                    if (valueToCandidates.TryGetValue(value, out var candidates))
-                    {
-                        foreach (var candidateId in candidates)
-                        {
-                            scoreMap[candidateId] = scoreMap.GetValueOrDefault(candidateId) + weight;
-                        }
-                    }
-                }
-            }
+            var keyToCandidates = candidateRows.GroupBy(r => r.Key).ToDictionary(g => g.Key, g => g.Select(x => x.ItemId).ToList());
+            ApplyDimensionScores(sourceIds, sourceMap, keyToCandidates, weight, result);
         }
 
-        // Score people dimensions (directors, actors)
         foreach (var (personTypes, weight) in _peopleDimensions)
         {
-            var sourceMap = context.PeopleBaseItemMap.AsNoTracking()
+            var sourceRows = await context.PeopleBaseItemMap.AsNoTracking()
                 .Where(m => sourceIds.Contains(m.ItemId) && personTypes.Contains(m.People.PersonType))
-                .Select(m => new { m.ItemId, m.PeopleId })
-                .ToList()
-                .GroupBy(m => m.ItemId)
-                .ToDictionary(g => g.Key, g => g.Select(x => x.PeopleId).ToHashSet());
+                .Select(m => new { m.ItemId, Key = m.PeopleId })
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
 
-            var allPeopleIds = sourceMap.Values.SelectMany(v => v).Distinct().ToList();
-            if (allPeopleIds.Count == 0)
+            var sourceMap = sourceRows.GroupBy(r => r.ItemId).ToDictionary(g => g.Key, g => g.Select(x => x.Key).ToHashSet());
+            var allKeys = sourceMap.Values.SelectMany(v => v).Distinct().ToList();
+            if (allKeys.Count == 0)
             {
                 continue;
             }
 
-            var personToCandidates = context.PeopleBaseItemMap.AsNoTracking()
-                .Where(m => allPeopleIds.Contains(m.PeopleId))
-                .Select(m => new { m.ItemId, m.PeopleId })
-                .ToList()
-                .GroupBy(m => m.PeopleId)
-                .ToDictionary(g => g.Key, g => g.Select(x => x.ItemId).ToList());
+            var candidateRows = await context.PeopleBaseItemMap.AsNoTracking()
+                .Where(m => allKeys.Contains(m.PeopleId))
+                .Select(m => new { m.ItemId, Key = m.PeopleId })
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
 
-            foreach (var sourceId in sourceIds)
-            {
-                if (!sourceMap.TryGetValue(sourceId, out var sourcePeopleIds))
-                {
-                    continue;
-                }
-
-                var scoreMap = result[sourceId];
-                foreach (var peopleId in sourcePeopleIds)
-                {
-                    if (personToCandidates.TryGetValue(peopleId, out var candidates))
-                    {
-                        foreach (var candidateId in candidates)
-                        {
-                            scoreMap[candidateId] = scoreMap.GetValueOrDefault(candidateId) + weight;
-                        }
-                    }
-                }
-            }
+            var keyToCandidates = candidateRows.GroupBy(r => r.Key).ToDictionary(g => g.Key, g => g.Select(x => x.ItemId).ToList());
+            ApplyDimensionScores(sourceIds, sourceMap, keyToCandidates, weight, result);
         }
 
-        // Remove self-references and empty entries
         foreach (var sourceId in sourceIds)
         {
             var scoreMap = result[sourceId];
@@ -318,5 +291,36 @@ public sealed class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie
         }
 
         return result;
+    }
+
+    private static void ApplyDimensionScores<TKey>(
+        List<Guid> sourceIds,
+        Dictionary<Guid, HashSet<TKey>> sourceMap,
+        Dictionary<TKey, List<Guid>> keyToCandidates,
+        int weight,
+        Dictionary<Guid, Dictionary<Guid, int>> result)
+        where TKey : notnull
+    {
+        foreach (var sourceId in sourceIds)
+        {
+            if (!sourceMap.TryGetValue(sourceId, out var sourceKeys))
+            {
+                continue;
+            }
+
+            var scoreMap = result[sourceId];
+            foreach (var key in sourceKeys)
+            {
+                if (!keyToCandidates.TryGetValue(key, out var candidates))
+                {
+                    continue;
+                }
+
+                foreach (var candidateId in candidates)
+                {
+                    scoreMap[candidateId] = scoreMap.GetValueOrDefault(candidateId) + weight;
+                }
+            }
+        }
     }
 }
