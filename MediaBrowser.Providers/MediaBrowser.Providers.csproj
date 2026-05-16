@@ -55,18 +55,6 @@
     <EmbeddedResource Include="Plugins\AudioDb\jellyfin-plugin-tadb.svg" />
   </ItemGroup>
 
-  <!-- ComicVine -->
-  <ItemGroup>
-    <None Remove="Plugins\ComicVine\jellyfin-plugin-comicvine.svg" />
-    <EmbeddedResource Include="Plugins\ComicVine\jellyfin-plugin-comicvine.svg" />
-  </ItemGroup>
-
-  <!-- GoogleBooks -->
-  <ItemGroup>
-    <None Remove="Plugins\GoogleBooks\jellyfin-plugin-googlebooks.svg" />
-    <EmbeddedResource Include="Plugins\GoogleBooks\jellyfin-plugin-googlebooks.svg" />
-  </ItemGroup>
-
   <!-- ListenBrainz -->
   <ItemGroup>
     <None Remove="Plugins\ListenBrainz\Configuration\config.html" />
