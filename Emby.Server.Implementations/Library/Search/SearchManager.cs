@@ -84,12 +84,27 @@ public class SearchManager : ISearchManager
 
         var searchTerm = query.SearchTerm.Trim().RemoveDiacritics();
 
-        var results = await CollectFromProvidersAsync(_externalProviders, query, searchTerm, cancellationToken).ConfigureAwait(false);
-        var fromExternal = results.Count > 0;
-        if (results.Count == 0 && _internalProviders.Length > 0)
+        var externalTask = CollectFromProvidersAsync(_externalProviders, query, searchTerm, cancellationToken);
+        var internalTask = _internalProviders.Length > 0
+            ? CollectFromProvidersAsync(_internalProviders, query, searchTerm, cancellationToken)
+            : Task.FromResult<IReadOnlyList<SearchResult>>([]);
+
+        await Task.WhenAll(externalTask, internalTask).ConfigureAwait(false);
+
+        var externalResults = await externalTask.ConfigureAwait(false);
+        var fromExternal = externalResults.Count > 0;
+        IReadOnlyList<SearchResult> results;
+        if (fromExternal)
         {
-            _logger.LogDebug("No results from external providers, falling back to internal providers");
-            results = await CollectFromProvidersAsync(_internalProviders, query, searchTerm, cancellationToken).ConfigureAwait(false);
+            results = externalResults;
+        }
+        else
+        {
+            results = await internalTask.ConfigureAwait(false);
+            if (_internalProviders.Length > 0)
+            {
+                _logger.LogDebug("No results from external providers, using internal provider results");
+            }
         }
 
         // Internal providers apply user-access filtering inline in their queries. External
