@@ -41,11 +41,14 @@ public sealed class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie
         (ItemValueType.Studios, StudioWeight)
     ];
 
-    private static readonly (string[] PersonTypes, int Weight)[] _peopleDimensions =
-    [
-        ([nameof(PersonKind.Director)], DirectorWeight),
-        ([nameof(PersonKind.Actor), nameof(PersonKind.GuestStar)], ActorWeight)
-    ];
+    private static readonly Dictionary<string, int> _personTypeWeights = new(StringComparer.Ordinal)
+    {
+        [nameof(PersonKind.Director)] = DirectorWeight,
+        [nameof(PersonKind.Actor)] = ActorWeight,
+        [nameof(PersonKind.GuestStar)] = ActorWeight,
+    };
+
+    private static readonly string[] _scoredPersonTypes = [.. _personTypeWeights.Keys];
 
     private readonly IDbContextFactory<JellyfinDbContext> _dbProvider;
     private readonly IItemQueryHelpers _queryHelpers;
@@ -194,8 +197,7 @@ public sealed class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie
                 return result;
             }
 
-            // Phase 4: One entity load for all results. AsSplitQuery avoids a SQL Cartesian
-            // product across the multiple collection Includes added by ApplyNavigations.
+            // Phase 4: One entity load for all results
             var allOrderedIdsList = allOrderedIds.ToList();
             var entities = await _queryHelpers.ApplyNavigations(
                     context.BaseItems.AsNoTracking().WhereOneOrMany(allOrderedIdsList, e => e.Id),
@@ -257,27 +259,31 @@ public sealed class MovieSimilarItemsProvider : ILocalSimilarItemsProvider<Movie
             ApplyDimensionScores(sourceIds, sourceMap, keyToCandidates, weight, result);
         }
 
-        foreach (var (personTypes, weight) in _peopleDimensions)
+        var personSourceRows = await context.PeopleBaseItemMap.AsNoTracking()
+            .Where(m => sourceIds.Contains(m.ItemId) && _scoredPersonTypes.Contains(m.People.PersonType))
+            .Select(m => new { m.ItemId, m.PeopleId, m.People.PersonType })
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        if (personSourceRows.Count > 0)
         {
-            var sourceRows = await context.PeopleBaseItemMap.AsNoTracking()
-                .Where(m => sourceIds.Contains(m.ItemId) && personTypes.Contains(m.People.PersonType))
-                .Select(m => new { m.ItemId, Key = m.PeopleId })
+            var allPersonIds = personSourceRows.Select(r => r.PeopleId).Distinct().ToList();
+
+            var personCandidateRows = await context.PeopleBaseItemMap.AsNoTracking()
+                .Where(m => allPersonIds.Contains(m.PeopleId))
+                .Select(m => new { m.ItemId, m.PeopleId })
                 .ToListAsync(cancellationToken).ConfigureAwait(false);
 
-            var sourceMap = sourceRows.GroupBy(r => r.ItemId).ToDictionary(g => g.Key, g => g.Select(x => x.Key).ToHashSet());
-            var allKeys = sourceMap.Values.SelectMany(v => v).Distinct().ToList();
-            if (allKeys.Count == 0)
+            var personToCandidates = personCandidateRows
+                .GroupBy(r => r.PeopleId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ItemId).ToList());
+
+            foreach (var weightGroup in personSourceRows.GroupBy(r => _personTypeWeights[r.PersonType!]))
             {
-                continue;
+                var sourceMap = weightGroup
+                    .GroupBy(r => r.ItemId)
+                    .ToDictionary(g => g.Key, g => g.Select(x => x.PeopleId).ToHashSet());
+                ApplyDimensionScores(sourceIds, sourceMap, personToCandidates, weightGroup.Key, result);
             }
-
-            var candidateRows = await context.PeopleBaseItemMap.AsNoTracking()
-                .Where(m => allKeys.Contains(m.PeopleId))
-                .Select(m => new { m.ItemId, Key = m.PeopleId })
-                .ToListAsync(cancellationToken).ConfigureAwait(false);
-
-            var keyToCandidates = candidateRows.GroupBy(r => r.Key).ToDictionary(g => g.Key, g => g.Select(x => x.ItemId).ToList());
-            ApplyDimensionScores(sourceIds, sourceMap, keyToCandidates, weight, result);
         }
 
         foreach (var sourceId in sourceIds)
