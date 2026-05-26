@@ -674,16 +674,11 @@ public class UserLibraryController : BaseJellyfinApiController
     /// <param name="isFavorite">if set to <c>true</c> [is favorite].</param>
     private UserItemDataDto MarkFavorite(User user, BaseItem item, bool isFavorite)
     {
-        // Get the user data for this item
-        var data = _userDataRepository.GetUserData(user, item);
-
-        if (data is not null)
-        {
-            // Set favorite status
-            data.IsFavorite = isFavorite;
-
-            _userDataRepository.SaveUserData(user, item, data, UserDataSaveReason.UpdateUserRating, CancellationToken.None);
-        }
+        _userDataRepository.SaveUserData(
+            user,
+            item,
+            new UpdateUserItemDataDto { IsFavorite = isFavorite },
+            UserDataSaveReason.UpdateUserRating);
 
         return _userDataRepository.GetUserDataDto(item, user)!;
     }
@@ -696,15 +691,17 @@ public class UserLibraryController : BaseJellyfinApiController
     /// <param name="likes">if set to <c>true</c> [likes].</param>
     private UserItemDataDto? UpdateUserItemRatingInternal(User user, BaseItem item, bool? likes)
     {
-        // Get the user data for this item
-        var data = _userDataRepository.GetUserData(user, item);
-
-        if (data is not null)
+        var dto = new UpdateUserItemDataDto();
+        if (likes.HasValue)
         {
-            data.Likes = likes;
-
-            _userDataRepository.SaveUserData(user, item, data, UserDataSaveReason.UpdateUserRating, CancellationToken.None);
+            dto.Likes = likes.Value;
         }
+        else
+        {
+            dto.ResetRating = true;
+        }
+
+        _userDataRepository.SaveUserData(user, item, dto, UserDataSaveReason.UpdateUserRating);
 
         return _userDataRepository.GetUserDataDto(item, user);
     }

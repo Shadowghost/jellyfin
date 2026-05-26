@@ -823,17 +823,20 @@ namespace Emby.Server.Implementations.Session
         /// <param name="item">The item.</param>
         private void OnPlaybackStart(User user, BaseItem item)
         {
-            var data = _userDataManager.GetUserData(user, item);
+            var current = _userDataManager.GetUserData(user, item);
 
-            data.PlayCount++;
-            data.LastPlayedDate = DateTime.UtcNow;
+            var dto = new UpdateUserItemDataDto
+            {
+                PlayCount = current.PlayCount + 1,
+                LastPlayedDate = DateTime.UtcNow
+            };
 
             if (item.SupportsPlayedStatus && !item.SupportsPositionTicksResume)
             {
-                data.Played = true;
+                dto.Played = true;
             }
 
-            _userDataManager.SaveUserData(user, item, data, UserDataSaveReason.PlaybackStart, CancellationToken.None);
+            _userDataManager.SaveUserData(user, item, dto, UserDataSaveReason.PlaybackStart);
         }
 
         /// <inheritdoc />
@@ -943,66 +946,62 @@ namespace Emby.Server.Implementations.Session
 
         private void OnPlaybackProgress(User user, BaseItem item, PlaybackProgressInfo info)
         {
-            var data = _userDataManager.GetUserData(user, item);
-
-            var positionTicks = info.PositionTicks;
-
+            var current = _userDataManager.GetUserData(user, item);
+            var dto = new UpdateUserItemDataDto();
             var changed = false;
 
-            if (positionTicks.HasValue)
+            if (info.PositionTicks.HasValue)
             {
-                _userDataManager.UpdatePlayState(item, data, positionTicks.Value);
+                var scratch = new UserItemData { Key = current.Key };
+                _userDataManager.UpdatePlayState(item, scratch, info.PositionTicks.Value);
+                dto.PlaybackPositionTicks = scratch.PlaybackPositionTicks;
+                if (scratch.Played)
+                {
+                    dto.Played = true;
+                }
+
                 changed = true;
             }
 
-            var tracksChanged = UpdatePlaybackSettings(user, info, data);
-            if (tracksChanged)
+            var streamSelectionChanged = ApplyStreamSelections(user, info, current, dto);
+            if (streamSelectionChanged)
             {
                 changed = true;
             }
 
             if (changed)
             {
-                _userDataManager.SaveUserData(user, item, data, UserDataSaveReason.PlaybackProgress, CancellationToken.None);
+                _userDataManager.SaveUserData(user, item, dto, UserDataSaveReason.PlaybackProgress);
+            }
+
+            // Explicit clear path: when the user has opted out of remembering selections and there is a
+            // stored value, drop it. Issued as a separate call so the progress DTO above never has to
+            // express "set this nullable column to null", which would be ambiguous with "leave unchanged".
+            if ((!user.RememberAudioSelections && current.AudioStreamIndex.HasValue)
+                || (!user.RememberSubtitleSelections && current.SubtitleStreamIndex.HasValue))
+            {
+                _userDataManager.ResetPlaybackStreamSelections(user, item);
             }
         }
 
-        private static bool UpdatePlaybackSettings(User user, PlaybackProgressInfo info, UserItemData data)
+        private static bool ApplyStreamSelections(User user, PlaybackProgressInfo info, UserItemData current, UpdateUserItemDataDto dto)
         {
             var changed = false;
 
-            if (user.RememberAudioSelections)
+            if (user.RememberAudioSelections
+                && info.AudioStreamIndex.HasValue
+                && current.AudioStreamIndex != info.AudioStreamIndex)
             {
-                if (info.AudioStreamIndex.HasValue && data.AudioStreamIndex != info.AudioStreamIndex)
-                {
-                    data.AudioStreamIndex = info.AudioStreamIndex;
-                    changed = true;
-                }
-            }
-            else
-            {
-                if (data.AudioStreamIndex.HasValue)
-                {
-                    data.AudioStreamIndex = null;
-                    changed = true;
-                }
+                dto.AudioStreamIndex = info.AudioStreamIndex;
+                changed = true;
             }
 
-            if (user.RememberSubtitleSelections)
+            if (user.RememberSubtitleSelections
+                && info.SubtitleStreamIndex.HasValue
+                && current.SubtitleStreamIndex != info.SubtitleStreamIndex)
             {
-                if (info.SubtitleStreamIndex.HasValue && data.SubtitleStreamIndex != info.SubtitleStreamIndex)
-                {
-                    data.SubtitleStreamIndex = info.SubtitleStreamIndex;
-                    changed = true;
-                }
-            }
-            else
-            {
-                if (data.SubtitleStreamIndex.HasValue)
-                {
-                    data.SubtitleStreamIndex = null;
-                    changed = true;
-                }
+                dto.SubtitleStreamIndex = info.SubtitleStreamIndex;
+                changed = true;
             }
 
             return changed;
@@ -1133,22 +1132,30 @@ namespace Emby.Server.Implementations.Session
                 return false;
             }
 
-            var data = _userDataManager.GetUserData(user, item);
+            var dto = new UpdateUserItemDataDto();
             bool playedToCompletion;
+
             if (positionTicks.HasValue)
             {
-                playedToCompletion = _userDataManager.UpdatePlayState(item, data, positionTicks.Value);
+                var scratch = new UserItemData { Key = string.Empty };
+                playedToCompletion = _userDataManager.UpdatePlayState(item, scratch, positionTicks.Value);
+                dto.PlaybackPositionTicks = scratch.PlaybackPositionTicks;
+                if (scratch.Played)
+                {
+                    dto.Played = true;
+                }
             }
             else
             {
                 // If the client isn't able to report this, then we'll just have to make an assumption
-                data.PlayCount++;
-                data.Played = item.SupportsPlayedStatus;
-                data.PlaybackPositionTicks = 0;
+                var current = _userDataManager.GetUserData(user, item);
+                dto.PlayCount = current.PlayCount + 1;
+                dto.Played = item.SupportsPlayedStatus;
+                dto.PlaybackPositionTicks = 0;
                 playedToCompletion = true;
             }
 
-            _userDataManager.SaveUserData(user, item, data, UserDataSaveReason.PlaybackFinished, CancellationToken.None);
+            _userDataManager.SaveUserData(user, item, dto, UserDataSaveReason.PlaybackFinished);
 
             return playedToCompletion;
         }

@@ -99,44 +99,143 @@ namespace Emby.Server.Implementations.Library
             ArgumentNullException.ThrowIfNull(item);
             ArgumentNullException.ThrowIfNull(userDataDto);
 
-            var userData = GetUserData(user, item) ?? throw new InvalidOperationException("UserData should not be null.");
+            var keys = item.GetUserDataKeys();
 
-            if (userDataDto.PlaybackPositionTicks.HasValue)
+            using var dbContext = _repository.CreateDbContext();
+            using var transaction = dbContext.Database.BeginTransaction();
+
+            UserData? authoritativeRow = null;
+            var preferredKey = item.Id.ToString("N");
+
+            foreach (var key in keys)
             {
-                userData.PlaybackPositionTicks = userDataDto.PlaybackPositionTicks.Value;
+                var row = dbContext.UserData
+                    .FirstOrDefault(e => e.ItemId == item.Id && e.UserId == user.Id && e.CustomDataKey == key);
+
+                if (row is null)
+                {
+                    row = new UserData
+                    {
+                        ItemId = item.Id,
+                        UserId = user.Id,
+                        CustomDataKey = key,
+                        Item = null,
+                        User = null
+                    };
+                    dbContext.UserData.Add(row);
+                }
+
+                if (userDataDto.PlaybackPositionTicks.HasValue)
+                {
+                    row.PlaybackPositionTicks = userDataDto.PlaybackPositionTicks.Value;
+                }
+
+                if (userDataDto.PlayCount.HasValue)
+                {
+                    row.PlayCount = userDataDto.PlayCount.Value;
+                }
+
+                if (userDataDto.IsFavorite.HasValue)
+                {
+                    row.IsFavorite = userDataDto.IsFavorite.Value;
+                }
+
+                if (userDataDto.Played.HasValue)
+                {
+                    row.Played = userDataDto.Played.Value;
+                }
+
+                if (userDataDto.ResetLastPlayedDate)
+                {
+                    row.LastPlayedDate = null;
+                }
+                else if (userDataDto.LastPlayedDate.HasValue)
+                {
+                    row.LastPlayedDate = userDataDto.LastPlayedDate.Value;
+                }
+
+                if (userDataDto.ResetRating)
+                {
+                    row.Rating = null;
+                }
+                else if (userDataDto.Rating.HasValue)
+                {
+                    row.Rating = userDataDto.Rating.Value;
+                }
+                else if (userDataDto.Likes.HasValue)
+                {
+                    row.Rating = userDataDto.Likes.Value ? 10 : 1;
+                }
+
+                if (userDataDto.AudioStreamIndex.HasValue)
+                {
+                    row.AudioStreamIndex = userDataDto.AudioStreamIndex.Value;
+                }
+
+                if (userDataDto.SubtitleStreamIndex.HasValue)
+                {
+                    row.SubtitleStreamIndex = userDataDto.SubtitleStreamIndex.Value;
+                }
+
+                if (authoritativeRow is null || string.Equals(key, preferredKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    authoritativeRow = row;
+                }
             }
 
-            if (userDataDto.PlayCount.HasValue)
+            dbContext.SaveChanges();
+            transaction.Commit();
+
+            var savedUserData = Map(authoritativeRow!);
+
+            var cacheKey = GetCacheKey(user.InternalId, item.Id);
+            _cache.AddOrUpdate(cacheKey, savedUserData);
+            item.UserData = dbContext.UserData.Where(e => e.ItemId == item.Id).AsNoTracking().ToArray();
+
+            UserDataSaved?.Invoke(this, new UserDataSaveEventArgs
             {
-                userData.PlayCount = userDataDto.PlayCount.Value;
+                Keys = keys,
+                UserData = savedUserData,
+                SaveReason = reason,
+                UserId = user.Id,
+                Item = item
+            });
+        }
+
+        /// <inheritdoc />
+        public void ResetPlaybackStreamSelections(User user, BaseItem item)
+        {
+            ArgumentNullException.ThrowIfNull(user);
+            ArgumentNullException.ThrowIfNull(item);
+
+            using var dbContext = _repository.CreateDbContext();
+            var rows = dbContext.UserData
+                .Where(e => e.ItemId == item.Id && e.UserId == user.Id
+                            && (e.AudioStreamIndex != null || e.SubtitleStreamIndex != null))
+                .ToList();
+
+            if (rows.Count == 0)
+            {
+                return;
             }
 
-            if (userDataDto.IsFavorite.HasValue)
+            foreach (var row in rows)
             {
-                userData.IsFavorite = userDataDto.IsFavorite.Value;
+                row.AudioStreamIndex = null;
+                row.SubtitleStreamIndex = null;
             }
 
-            if (userDataDto.Likes.HasValue)
+            dbContext.SaveChanges();
+
+            var cacheKey = GetCacheKey(user.InternalId, item.Id);
+            if (_cache.TryGet(cacheKey, out var cached))
             {
-                userData.Likes = userDataDto.Likes.Value;
+                cached.AudioStreamIndex = null;
+                cached.SubtitleStreamIndex = null;
+                _cache.AddOrUpdate(cacheKey, cached);
             }
 
-            if (userDataDto.Played.HasValue)
-            {
-                userData.Played = userDataDto.Played.Value;
-            }
-
-            if (userDataDto.LastPlayedDate.HasValue)
-            {
-                userData.LastPlayedDate = userDataDto.LastPlayedDate.Value;
-            }
-
-            if (userDataDto.Rating.HasValue)
-            {
-                userData.Rating = userDataDto.Rating.Value;
-            }
-
-            SaveUserData(user, item, userData, reason, CancellationToken.None);
+            item.UserData = dbContext.UserData.Where(e => e.ItemId == item.Id).AsNoTracking().ToArray();
         }
 
         private UserData Map(UserItemData dto, Guid userId, Guid itemId)

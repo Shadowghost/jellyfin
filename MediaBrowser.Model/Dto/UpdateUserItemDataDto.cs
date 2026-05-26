@@ -62,6 +62,28 @@ namespace MediaBrowser.Model.Dto
         public bool? Played { get; set; }
 
         /// <summary>
+        /// Gets or sets the audio stream index. Null leaves the stored value unchanged.
+        /// </summary>
+        public int? AudioStreamIndex { get; set; }
+
+        /// <summary>
+        /// Gets or sets the subtitle stream index. Null leaves the stored value unchanged.
+        /// </summary>
+        public int? SubtitleStreamIndex { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether <see cref="LastPlayedDate"/> should be cleared.
+        /// When true, the stored value is set to null and <see cref="LastPlayedDate"/> is ignored.
+        /// </summary>
+        public bool ResetLastPlayedDate { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether <see cref="Rating"/> (and therefore <see cref="Likes"/>) should be cleared.
+        /// When true, the stored rating is set to null and <see cref="Rating"/>/<see cref="Likes"/> are ignored.
+        /// </summary>
+        public bool ResetRating { get; set; }
+
+        /// <summary>
         /// Gets or sets the key.
         /// </summary>
         /// <value>The key.</value>

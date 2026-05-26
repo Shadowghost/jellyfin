@@ -1966,29 +1966,21 @@ namespace MediaBrowser.Controller.Entities
         {
             ArgumentNullException.ThrowIfNull(user);
 
-            var data = UserDataManager.GetUserData(user, this) ?? new UserItemData()
+            var current = UserDataManager.GetUserData(user, this);
+
+            var dto = new UpdateUserItemDataDto
             {
-                Key = GetUserDataKeys().First(),
+                Played = true,
+                PlayCount = Math.Max(datePlayed.HasValue ? current.PlayCount + 1 : current.PlayCount, 1),
+                LastPlayedDate = datePlayed ?? current.LastPlayedDate ?? DateTime.UtcNow
             };
-
-            if (datePlayed.HasValue)
-            {
-                // Increment
-                data.PlayCount++;
-            }
-
-            // Ensure it's at least one
-            data.PlayCount = Math.Max(data.PlayCount, 1);
 
             if (resetPosition)
             {
-                data.PlaybackPositionTicks = 0;
+                dto.PlaybackPositionTicks = 0;
             }
 
-            data.LastPlayedDate = datePlayed ?? data.LastPlayedDate ?? DateTime.UtcNow;
-            data.Played = true;
-
-            UserDataManager.SaveUserData(user, this, data, UserDataSaveReason.TogglePlayed, CancellationToken.None);
+            UserDataManager.SaveUserData(user, this, dto, UserDataSaveReason.TogglePlayed);
         }
 
         /// <summary>
@@ -2000,17 +1992,15 @@ namespace MediaBrowser.Controller.Entities
         {
             ArgumentNullException.ThrowIfNull(user);
 
-            var data = UserDataManager.GetUserData(user, this);
+            var dto = new UpdateUserItemDataDto
+            {
+                PlayCount = 0,
+                PlaybackPositionTicks = 0,
+                Played = false,
+                ResetLastPlayedDate = true
+            };
 
-            // I think it is okay to do this here.
-            // if this is only called when a user is manually forcing something to un-played
-            // then it probably is what we want to do...
-            data.PlayCount = 0;
-            data.PlaybackPositionTicks = 0;
-            data.LastPlayedDate = null;
-            data.Played = false;
-
-            UserDataManager.SaveUserData(user, this, data, UserDataSaveReason.TogglePlayed, CancellationToken.None);
+            UserDataManager.SaveUserData(user, this, dto, UserDataSaveReason.TogglePlayed);
         }
 
         /// <summary>
