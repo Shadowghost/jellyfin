@@ -49,8 +49,7 @@ public sealed class AlternateVersionQueryTranslationTests : IDisposable
         using (var ctx = CreateDbContext())
         {
             // Mirrors the resumable filter in BaseItemRepository.TranslateQuery: progress on any
-            // version coalesces onto the primary's id. Driven off the in-progress rows and joined to
-            // the item by primary key, rather than scanning the whole BaseItems table.
+            // version coalesces onto the primary's id.
             var inProgress = ctx.UserData
                 .Where(ud => ud.UserId == userId && ud.PlaybackPositionTicks > 0);
             var resumableMovieIds = inProgress
