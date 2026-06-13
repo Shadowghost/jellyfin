@@ -66,6 +66,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             TimeSpan? transcodingPosition = null;
             long? bytesTranscoded = null;
             int? bitRate = null;
+            float? encodingSpeed = null;
 
             var parts = line.Split(' ');
 
@@ -118,46 +119,131 @@ namespace MediaBrowser.Controller.MediaEncoding
                 {
                     var size = part.Split('=', 2)[^1];
 
-                    int? scale = null;
-                    if (size.Contains("kb", StringComparison.OrdinalIgnoreCase))
+                    // ffmpeg right-pads values, which can push the number into the next token
+                    // ("size=  1234KiB" -> ["size=", "", "1234KiB"]).
+                    if (string.IsNullOrEmpty(size) && i + 1 < parts.Length)
                     {
-                        scale = 1024;
-                        size = size.Replace("kb", string.Empty, StringComparison.OrdinalIgnoreCase);
+                        size = parts[i + 1];
                     }
 
-                    if (scale.HasValue)
-                    {
-                        if (long.TryParse(size, CultureInfo.InvariantCulture, out var val))
-                        {
-                            bytesTranscoded = val * scale.Value;
-                        }
-                    }
+                    bytesTranscoded = ParseSize(size) ?? bytesTranscoded;
                 }
                 else if (part.StartsWith("bitrate=", StringComparison.OrdinalIgnoreCase))
                 {
                     var rate = part.Split('=', 2)[^1];
 
-                    int? scale = null;
-                    if (rate.Contains("kbits/s", StringComparison.OrdinalIgnoreCase))
+                    if (string.IsNullOrEmpty(rate) && i + 1 < parts.Length)
                     {
-                        scale = 1024;
-                        rate = rate.Replace("kbits/s", string.Empty, StringComparison.OrdinalIgnoreCase);
+                        rate = parts[i + 1];
                     }
 
-                    if (scale.HasValue)
+                    bitRate = ParseBitrate(rate) ?? bitRate;
+                }
+                else if (part.StartsWith("speed=", StringComparison.OrdinalIgnoreCase))
+                {
+                    var speed = part.Split('=', 2)[^1];
+
+                    if (string.IsNullOrEmpty(speed) && i + 1 < parts.Length)
                     {
-                        if (float.TryParse(rate, CultureInfo.InvariantCulture, out var val))
-                        {
-                            bitRate = (int)Math.Ceiling(val * scale.Value);
-                        }
+                        speed = parts[i + 1];
                     }
+
+                    encodingSpeed = ParseSpeed(speed) ?? encodingSpeed;
                 }
             }
 
             if (framerate.HasValue || percent.HasValue)
             {
-                state.ReportTranscodingProgress(transcodingPosition, framerate, percent, bytesTranscoded, bitRate);
+                state.ReportTranscodingProgress(transcodingPosition, framerate, percent, bytesTranscoded, bitRate, encodingSpeed);
             }
+        }
+
+        /// <summary>
+        /// Parses an ffmpeg <c>size=</c> value into bytes. ffmpeg emits binary units (KiB/MiB/GiB,
+        /// powers of 1024) by default and decimal units (kB/MB/GB, powers of 1000) in legacy
+        /// formatting; these are different multipliers and are handled distinctly. Returns
+        /// <see langword="null"/> for <c>N/A</c> (e.g. segmented HLS/DASH output) or unparseable input.
+        /// </summary>
+        private static long? ParseSize(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value.Contains("N/A", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            // Most specific suffixes first so "KiB" is not matched by the bare "B" rule.
+            (string Suffix, double Scale)[] units =
+            [
+                ("KiB", 1024d),
+                ("MiB", 1024d * 1024),
+                ("GiB", 1024d * 1024 * 1024),
+                ("kB", 1000d),
+                ("MB", 1000d * 1000),
+                ("GB", 1000d * 1000 * 1000),
+                ("B", 1d)
+            ];
+
+            foreach (var (suffix, scale) in units)
+            {
+                if (value.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    var number = value[..^suffix.Length];
+                    return double.TryParse(number, CultureInfo.InvariantCulture, out var val)
+                        ? (long)(val * scale)
+                        : null;
+                }
+            }
+
+            return long.TryParse(value, CultureInfo.InvariantCulture, out var raw) ? raw : null;
+        }
+
+        /// <summary>
+        /// Parses an ffmpeg <c>bitrate=</c> value into bits per second. ffmpeg reports decimal-scaled
+        /// rates (kbits/s = 1000 bit/s, Mbits/s = 1e6 bit/s). Returns <see langword="null"/> for
+        /// <c>N/A</c> or unparseable input.
+        /// </summary>
+        private static int? ParseBitrate(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value.Contains("N/A", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            (string Suffix, double Scale)[] units =
+            [
+                ("kbits/s", 1000d),
+                ("Mbits/s", 1000d * 1000),
+                ("Gbits/s", 1000d * 1000 * 1000),
+                ("bits/s", 1d)
+            ];
+
+            foreach (var (suffix, scale) in units)
+            {
+                if (value.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    var number = value[..^suffix.Length];
+                    return float.TryParse(number, CultureInfo.InvariantCulture, out var val)
+                        ? (int)Math.Ceiling(val * scale)
+                        : null;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Parses an ffmpeg <c>speed=</c> value (e.g. <c>4.42x</c>) into a realtime multiplier.
+        /// Returns <see langword="null"/> for <c>N/A</c> or unparseable input.
+        /// </summary>
+        private static float? ParseSpeed(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value.Contains("N/A", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var number = value.TrimEnd('x', 'X');
+            return float.TryParse(number, CultureInfo.InvariantCulture, out var val) ? val : null;
         }
     }
 }
