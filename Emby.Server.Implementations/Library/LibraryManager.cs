@@ -3623,6 +3623,11 @@ namespace Emby.Server.Implementations.Library
                     personEntity.DateLastSaved = DateTime.UtcNow;
 
                     CreateItems([personEntity], null, CancellationToken.None);
+
+                    if (itemUpdateType == ItemUpdateType.ImageUpdate)
+                    {
+                        await UpdateImagesAsync(personEntity).ConfigureAwait(false);
+                    }
                 }
             }
         }
