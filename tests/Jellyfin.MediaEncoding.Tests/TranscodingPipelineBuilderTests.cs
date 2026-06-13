@@ -384,6 +384,29 @@ public class TranscodingPipelineBuilderTests
     }
 
     [Fact]
+    public void BuildGraphProbeArguments_WindowsPaths_RedirectsOutputDir()
+    {
+        // The probe paths are rebuilt from the command line's own separators, so a command line
+        // written with backslashes must be redirected just as one written with forward slashes -
+        // and neither may depend on the separator of the host the test runs on.
+        const string Args = "-i file:\"C:\\movies\\x.mkv\" -map 0:0 -codec:v:0 hevc_qsv "
+            + "-hls_segment_filename \"C:\\cache\\transcodes\\HASH%d.mp4\" "
+            + "-y \"C:\\cache\\transcodes\\HASH.m3u8\"";
+
+        var probe = TranscodingPipelineBuilder.BuildGraphProbeArguments(
+            Args,
+            "C:\\cache\\transcodes\\HASH.m3u8",
+            "C:\\cache\\transcodes\\graphprobe-1",
+            "C:\\cache\\transcodes\\graphprobe-1\\graph.json");
+
+        Assert.NotNull(probe);
+        Assert.Contains("-t 0 \"C:\\cache\\transcodes\\graphprobe-1\\HASH.m3u8\"", probe, StringComparison.Ordinal);
+        Assert.Contains("\"C:\\cache\\transcodes\\graphprobe-1\\HASH%d.mp4\"", probe, StringComparison.Ordinal);
+        Assert.Contains("-i file:\"C:\\movies\\x.mkv\"", probe, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"C:\\cache\\transcodes\\HASH.m3u8\"", probe, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Build_UsesGraphJson_DecodersEncodersAndFilters_DroppingSubtitlePrep()
     {
         var state = new EncodingJobInfo(TranscodingJobType.Progressive)
