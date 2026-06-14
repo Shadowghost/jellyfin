@@ -141,7 +141,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
             {
                 remoteResult.TrySetProviderId(MetadataProvider.Imdb, series.ExternalIds.ImdbId);
 
-                remoteResult.TrySetProviderId(MetadataProvider.Tvdb, series.ExternalIds.TvdbId);
+                remoteResult.TrySetProviderId(MetadataProvider.Tvdb, series.ExternalIds.TvdbId?.ToString(CultureInfo.InvariantCulture));
             }
 
             remoteResult.PremiereDate = series.FirstAirDate?.ToUniversalTime();
@@ -295,8 +295,8 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
             if (ids is not null)
             {
                 series.TrySetProviderId(MetadataProvider.Imdb, ids.ImdbId);
-                series.TrySetProviderId(MetadataProvider.TvRage, ids.TvrageId);
-                series.TrySetProviderId(MetadataProvider.Tvdb, ids.TvdbId);
+                series.TrySetProviderId(MetadataProvider.TvRage, ids.TvrageId?.ToString(CultureInfo.InvariantCulture));
+                series.TrySetProviderId(MetadataProvider.Tvdb, ids.TvdbId?.ToString(CultureInfo.InvariantCulture));
             }
 
             var contentRatings = seriesResult.ContentRatings?.Results ?? new List<ContentRating>();

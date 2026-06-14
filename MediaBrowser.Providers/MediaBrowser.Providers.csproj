@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="..\MediaBrowser.Controller\MediaBrowser.Controller.csproj" />
     <ProjectReference Include="..\MediaBrowser.Model\MediaBrowser.Model.csproj" />
+    <ProjectReference Include="..\..\TMDbLib\TMDbLib\TMDbLib.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -24,7 +25,6 @@
     <PackageReference Include="PlaylistsNET" />
     <PackageReference Include="SharpCompress" />
     <PackageReference Include="z440.atl.core" />
-    <PackageReference Include="TMDbLib" />
   </ItemGroup>
 
   <PropertyGroup>

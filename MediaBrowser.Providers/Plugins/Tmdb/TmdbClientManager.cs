@@ -288,7 +288,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
             episode = await _tmDbClient.GetTvEpisodeAsync(
                 tvShowId,
                 seasonNumber,
-                episodeNumber,
+                (int)episodeNumber,
                 language: TmdbUtils.NormalizeLanguage(language, countryCode),
                 includeImageLanguage: imageLanguages,
                 extraMethods: TvEpisodeMethods.Credits | TvEpisodeMethods.Images | TvEpisodeMethods.ExternalIds | TvEpisodeMethods.Videos,
