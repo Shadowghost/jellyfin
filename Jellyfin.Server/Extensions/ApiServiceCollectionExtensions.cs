@@ -22,18 +22,22 @@ using Jellyfin.Api.ModelBinders;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Enums;
 using Jellyfin.Extensions.Json;
+using Jellyfin.Server.Auth;
 using Jellyfin.Server.Configuration;
 using Jellyfin.Server.Filters;
 using MediaBrowser.Common.Api;
 using MediaBrowser.Common.Net;
+using MediaBrowser.Controller.Security;
 using MediaBrowser.Model.Entities;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.Swagger;
 using Swashbuckle.AspNetCore.SwaggerGen;
@@ -65,7 +69,7 @@ namespace Jellyfin.Server.Extensions
             return serviceCollection.AddAuthorizationCore(options =>
             {
                 options.DefaultPolicy = new AuthorizationPolicyBuilder()
-                    .AddAuthenticationSchemes(AuthenticationSchemes.CustomAuthentication)
+                    .AddAuthenticationSchemes(AuthenticationSchemes.JellyfinSelector)
                     .AddRequirements(new DefaultAuthorizationRequirement())
                     .Build();
 
@@ -87,7 +91,7 @@ namespace Jellyfin.Server.Extensions
                 options.AddPolicy(Policies.LyricManagement, new UserPermissionRequirement(PermissionKind.EnableLyricManagement));
                 options.AddPolicy(
                     Policies.RequiresElevation,
-                    policy => policy.AddAuthenticationSchemes(AuthenticationSchemes.CustomAuthentication)
+                    policy => policy.AddAuthenticationSchemes(AuthenticationSchemes.JellyfinSelector)
                         .RequireClaim(ClaimTypes.Role, UserRoles.Administrator));
 
                 // One policy per endpoint scope.
@@ -108,8 +112,24 @@ namespace Jellyfin.Server.Extensions
         /// <returns>The updated service collection.</returns>
         public static AuthenticationBuilder AddCustomAuthentication(this IServiceCollection serviceCollection)
         {
-            return serviceCollection.AddAuthentication(AuthenticationSchemes.CustomAuthentication)
-                .AddScheme<AuthenticationSchemeOptions, CustomAuthenticationHandler>(AuthenticationSchemes.CustomAuthentication, null);
+            serviceCollection.AddSingleton<IJellyfinSigningKeyProvider, JellyfinSigningKeyProvider>();
+            serviceCollection.AddSingleton<IJellyfinJwtIssuer, JellyfinJwtIssuer>();
+            serviceCollection.AddSingleton<IConfigureOptions<JwtBearerOptions>, ConfigureJellyfinJwtBearerOptions>();
+            serviceCollection.AddSingleton<IClaimsTransformation, JellyfinClaimsTransformation>();
+
+            return serviceCollection.AddAuthentication(options =>
+                {
+                    options.DefaultScheme = AuthenticationSchemes.JellyfinSelector;
+                    options.DefaultChallengeScheme = AuthenticationSchemes.JellyfinSelector;
+                    options.DefaultAuthenticateScheme = AuthenticationSchemes.JellyfinSelector;
+                })
+                .AddScheme<AuthenticationSchemeOptions, CustomAuthenticationHandler>(AuthenticationSchemes.LegacyMediaBrowserToken, null)
+                .AddJwtBearer(AuthenticationSchemes.JellyfinJwt)
+                .AddJwtBearer(AuthenticationSchemes.JellyfinTempJwt)
+                .AddPolicyScheme(AuthenticationSchemes.JellyfinSelector, "Jellyfin", options =>
+                {
+                    options.ForwardDefaultSelector = context => JellyfinSchemeSelector.Select(context);
+                });
         }
 
         /// <summary>
@@ -229,6 +249,14 @@ namespace Jellyfin.Server.Extensions
                     Description = "API key header parameter"
                 });
 
+                c.AddSecurityDefinition(AuthenticationSchemes.JellyfinJwt, new OpenApiSecurityScheme
+                {
+                    Type = SecuritySchemeType.Http,
+                    Scheme = "bearer",
+                    BearerFormat = "JWT",
+                    Description = "Jellyfin-issued JWT bearer token"
+                });
+
                 // Add all xml doc files to swagger generator.
                 var xmlFiles = Directory.EnumerateFiles(
                     AppContext.BaseDirectory,
@@ -279,7 +307,7 @@ namespace Jellyfin.Server.Extensions
         {
             authorizationOptions.AddPolicy(policyName, policy =>
             {
-                policy.AddAuthenticationSchemes(AuthenticationSchemes.CustomAuthentication).AddRequirements(authorizationRequirement);
+                policy.AddAuthenticationSchemes(AuthenticationSchemes.JellyfinSelector).AddRequirements(authorizationRequirement);
             });
         }
 
