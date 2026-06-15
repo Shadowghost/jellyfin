@@ -460,10 +460,25 @@ namespace MediaBrowser.Providers.Manager
         public IEnumerable<IMetadataProvider<T>> GetMetadataProviders<T>(BaseItem item, LibraryOptions libraryOptions, bool includeDisabled)
             where T : BaseItem
         {
+            return GetMetadataProviders<T>(item, libraryOptions, includeDisabled, false);
+        }
+
+        /// <summary>
+        /// Gets the metadata providers for the provided item.
+        /// </summary>
+        /// <typeparam name="T">The item type.</typeparam>
+        /// <param name="item">The item.</param>
+        /// <param name="libraryOptions">The library options.</param>
+        /// <param name="includeDisabled">Whether to include disabled providers.</param>
+        /// <param name="ignoreItemLock">Whether to ignore the item lock (e.g. for an explicit, manual identify).</param>
+        /// <returns>The metadata providers.</returns>
+        public IEnumerable<IMetadataProvider<T>> GetMetadataProviders<T>(BaseItem item, LibraryOptions libraryOptions, bool includeDisabled, bool ignoreItemLock)
+            where T : BaseItem
+        {
             var globalMetadataOptions = GetMetadataOptions(item);
             var libraryPath = GetLibraryPathForItem(item);
 
-            return GetMetadataProvidersInternal<T>(item, libraryOptions, globalMetadataOptions, includeDisabled, false, libraryPath);
+            return GetMetadataProvidersInternal<T>(item, libraryOptions, globalMetadataOptions, includeDisabled, false, libraryPath, ignoreItemLock);
         }
 
         private static string GetLibraryPathForItem(BaseItem item)

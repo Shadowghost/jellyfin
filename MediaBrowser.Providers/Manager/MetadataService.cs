@@ -420,7 +420,8 @@ namespace MediaBrowser.Providers.Manager
                 }
             }
 
-            if (!(isFullRefresh || currentUpdateType > ItemUpdateType.None) || item.IsLocked)
+            // Aggregating fields from children reflects the item's actual contents, so a locked item must still be updated.
+            if (!(isFullRefresh || currentUpdateType > ItemUpdateType.None))
             {
                 return updateType;
             }
@@ -612,8 +613,11 @@ namespace MediaBrowser.Providers.Manager
         /// <returns>IEnumerable{`0}.</returns>
         protected IEnumerable<IMetadataProvider> GetProviders(BaseItem item, LibraryOptions libraryOptions, MetadataRefreshOptions options, bool isFirstRefresh, bool requiresRefresh)
         {
+            // An explicit identify (SearchResult set) is a manual override, so the item being locked must not prevent the chosen metadata from being fetched and applied.
+            var ignoreItemLock = options.SearchResult is not null;
+
             // Get providers to refresh
-            var providers = ProviderManager.GetMetadataProviders<TItemType>(item, libraryOptions).ToList();
+            var providers = ProviderManager.GetMetadataProviders<TItemType>(item, libraryOptions, false, ignoreItemLock).ToList();
 
             var metadataRefreshMode = options.MetadataRefreshMode;
 
@@ -741,7 +745,8 @@ namespace MediaBrowser.Providers.Manager
                 await RunCustomProvider(provider, item, logName, options, refreshResult, cancellationToken).ConfigureAwait(false);
             }
 
-            if (item.IsLocked)
+            // A locked item normally skips provider refresh, except for an explicit identify.
+            if (item.IsLocked && options.SearchResult is null)
             {
                 return refreshResult;
             }
@@ -843,7 +848,10 @@ namespace MediaBrowser.Providers.Manager
             {
                 if (refreshResult.UpdateType > ItemUpdateType.None)
                 {
-                    if (!options.RemoveOldMetadata)
+                    // An explicit identify on a locked item is a manual override
+                    var preserveExistingMetadata = !options.RemoveOldMetadata || (item.IsLocked && options.SearchResult is not null);
+
+                    if (preserveExistingMetadata)
                     {
                         // Add existing metadata to provider result if it does not exist there
                         MergeData(metadata, temp, [], false, false);

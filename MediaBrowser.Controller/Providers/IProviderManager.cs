@@ -155,6 +155,18 @@ namespace MediaBrowser.Controller.Providers
             where T : BaseItem;
 
         /// <summary>
+        /// Gets the metadata providers for the provided item.
+        /// </summary>
+        /// <param name="item">The item.</param>
+        /// <param name="libraryOptions">The library options.</param>
+        /// <param name="includeDisabled">Whether to include disabled providers.</param>
+        /// <param name="ignoreItemLock">Whether to ignore the item lock (e.g. for an explicit, manual identify).</param>
+        /// <typeparam name="T">The type of metadata provider.</typeparam>
+        /// <returns>The metadata providers.</returns>
+        IEnumerable<IMetadataProvider<T>> GetMetadataProviders<T>(BaseItem item, LibraryOptions libraryOptions, bool includeDisabled, bool ignoreItemLock)
+            where T : BaseItem;
+
+        /// <summary>
         /// Gets the metadata savers for the provided item.
         /// </summary>
         /// <param name="item">The item.</param>
