@@ -98,6 +98,8 @@ namespace Jellyfin.Server
 
             serviceCollection.AddScoped<IAuthenticationManager, AuthenticationManager>();
 
+            serviceCollection.AddSingleton<ITempTokenStore, TempTokenStore>();
+
             foreach (var type in GetExportTypes<ILyricProvider>())
             {
                 serviceCollection.AddSingleton(typeof(ILyricProvider), type);

@@ -6,8 +6,11 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Mime;
 using System.Text;
+using System.Threading.RateLimiting;
 using Emby.Server.Implementations.EntryPoints;
 using Emby.Server.Implementations.Localization;
+using Jellyfin.Api.Controllers;
+using Jellyfin.Api.Extensions;
 using Jellyfin.Api.Middleware;
 using Jellyfin.Database.Implementations;
 using Jellyfin.LiveTv.Extensions;
@@ -24,6 +27,7 @@ using MediaBrowser.Controller.Extensions;
 using MediaBrowser.XbmcMetadata;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.Configuration;
@@ -77,6 +81,24 @@ namespace Jellyfin.Server
             services.AddCustomAuthentication();
 
             services.AddJellyfinApiAuthorization();
+
+            services.AddRateLimiter(options =>
+            {
+                options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                options.AddPolicy(AuthController.IssuanceRateLimitPolicy, httpContext =>
+                {
+                    // Partition by user; temp-token issuance requires authentication.
+                    var partitionKey = httpContext.User.GetUserId().ToString("N", CultureInfo.InvariantCulture);
+                    return RateLimitPartition.GetTokenBucketLimiter(partitionKey, _ => new TokenBucketRateLimiterOptions
+                    {
+                        TokenLimit = 10,
+                        TokensPerPeriod = 10,
+                        ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    });
+                });
+            });
 
             var productHeader = new ProductInfoHeaderValue(
                 _serverApplicationHost.Name.Replace(' ', '-'),
@@ -231,6 +253,7 @@ namespace Jellyfin.Server
                 mainApp.UseJellyfinApiSwagger(_serverConfigurationManager);
                 mainApp.UseQueryStringDecoding();
                 mainApp.UseRouting();
+                mainApp.UseRateLimiter();
                 mainApp.UseAuthorization();
 
                 mainApp.UseIPBasedAccessValidation();

@@ -39,6 +39,11 @@ public class JellyfinDbContext(DbContextOptions<JellyfinDbContext> options, ILog
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
 
     /// <summary>
+    /// Gets the <see cref="DbSet{TEntity}"/> containing the issued temp tokens.
+    /// </summary>
+    public DbSet<TempToken> TempTokens => Set<TempToken>();
+
+    /// <summary>
     /// Gets the <see cref="DbSet{TEntity}"/> containing the devices.
     /// </summary>
     public DbSet<Device> Devices => Set<Device>();

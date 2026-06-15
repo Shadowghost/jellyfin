@@ -3,8 +3,11 @@ using System.Linq;
 using System.Threading.Tasks;
 using Jellyfin.Api.Constants;
 using MediaBrowser.Controller;
+using MediaBrowser.Controller.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Jellyfin.Server.Auth;
@@ -74,14 +77,28 @@ public sealed class ConfigureJellyfinJwtBearerOptions : IConfigureNamedOptions<J
                 return Task.CompletedTask;
             };
 
-            events.OnTokenValidated = context =>
+            events.OnTokenValidated = async context =>
             {
                 if (context.Principal?.Claims.Any(c => c.Type == JellyfinClaimTypes.Scope) != true)
                 {
                     context.Fail("Temp token is missing a scope claim.");
+                    return;
                 }
 
-                return Task.CompletedTask;
+                // Reject revoked (or unknown) temp tokens.
+                var jti = context.Principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+                if (string.IsNullOrEmpty(jti))
+                {
+                    context.Fail("Temp token is missing a jti claim.");
+                    return;
+                }
+
+                var store = context.HttpContext.RequestServices.GetRequiredService<ITempTokenStore>();
+                if (await store.IsRevokedAsync(jti, context.HttpContext.RequestAborted).ConfigureAwait(false))
+                {
+                    context.Fail("Temp token has been revoked.");
+                    return;
+                }
             };
 
             options.TokenValidationParameters.LifetimeValidator = ValidateTempLifetime;
