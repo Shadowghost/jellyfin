@@ -25,6 +25,11 @@ public class AuthenticationResult
     public string AccessToken { get; set; }
 
     /// <summary>
+    /// Gets or sets the Jellyfin-issued JWT access token.
+    /// </summary>
+    public string AccessTokenJwt { get; set; }
+
+    /// <summary>
     /// Gets or sets the server id.
     /// </summary>
     public string ServerId { get; set; }

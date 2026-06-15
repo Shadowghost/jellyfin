@@ -1,7 +1,6 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Threading.Tasks;
 using Jellyfin.Database.Implementations.Entities;
 using MediaBrowser.Controller.Authentication;
 using MediaBrowser.Model.Cryptography;
@@ -10,42 +9,31 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Server.Implementations.Users
 {
     /// <summary>
-    /// The default authentication provider.
+    /// Validates and changes built-in username/password credentials using PBKDF2.
     /// </summary>
-    public class DefaultAuthenticationProvider : IAuthenticationProvider, IRequiresResolvedUser
+    public class PasswordValidator
     {
-        private readonly ILogger<DefaultAuthenticationProvider> _logger;
+        private readonly ILogger<PasswordValidator> _logger;
         private readonly ICryptoProvider _cryptographyProvider;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="DefaultAuthenticationProvider"/> class.
+        /// Initializes a new instance of the <see cref="PasswordValidator"/> class.
         /// </summary>
         /// <param name="logger">The logger.</param>
         /// <param name="cryptographyProvider">The cryptography provider.</param>
-        public DefaultAuthenticationProvider(ILogger<DefaultAuthenticationProvider> logger, ICryptoProvider cryptographyProvider)
+        public PasswordValidator(ILogger<PasswordValidator> logger, ICryptoProvider cryptographyProvider)
         {
             _logger = logger;
             _cryptographyProvider = cryptographyProvider;
         }
 
-        /// <inheritdoc />
-        public string Name => "Default";
-
-        /// <inheritdoc />
-        public bool IsEnabled => true;
-
-        /// <inheritdoc />
-        // This is dumb and an artifact of the backwards way auth providers were designed.
-        // This version of authenticate was never meant to be called, but needs to be here for interface compat
-        // Only the providers that don't provide local user support use this
-        public Task<ProviderAuthenticationResult> Authenticate(string username, string password)
-        {
-            throw new NotImplementedException();
-        }
-
-        /// <inheritdoc />
-        // This is the version that we need to use for local users. Because reasons.
-        public Task<ProviderAuthenticationResult> Authenticate(string username, string password, User? resolvedUser)
+        /// <summary>
+        /// Validates the supplied password against the resolved user's stored credentials.
+        /// </summary>
+        /// <param name="resolvedUser">The resolved user.</param>
+        /// <param name="password">The password to validate.</param>
+        /// <exception cref="AuthenticationException">Thrown when the credentials are invalid.</exception>
+        public void Validate(User resolvedUser, string password)
         {
             [DoesNotReturn]
             static void ThrowAuthenticationException()
@@ -61,10 +49,7 @@ namespace Jellyfin.Server.Implementations.Users
             // As long as jellyfin supports password-less users, we need this little block here to accommodate
             if (string.IsNullOrEmpty(resolvedUser.Password) && string.IsNullOrEmpty(password))
             {
-                return Task.FromResult(new ProviderAuthenticationResult
-                {
-                    Username = username
-                });
+                return;
             }
 
             // Handle the case when the stored password is null, but the user tried to login with a password
@@ -83,29 +68,26 @@ namespace Jellyfin.Server.Implementations.Users
             if (!string.Equals(readyHash.Id, _cryptographyProvider.DefaultHashMethod, StringComparison.Ordinal)
                 || int.Parse(readyHash.Parameters["iterations"], CultureInfo.InvariantCulture) != Constants.DefaultIterations)
             {
-                _logger.LogInformation("Migrating password hash of {User} to the latest default", username);
+                _logger.LogInformation("Migrating password hash of {User} to the latest default", resolvedUser.Username);
                 ChangePassword(resolvedUser, password);
             }
-
-            return Task.FromResult(new ProviderAuthenticationResult
-            {
-                Username = username
-            });
         }
 
-        /// <inheritdoc />
-        public Task ChangePassword(User user, string newPassword)
+        /// <summary>
+        /// Changes the stored password for the given user.
+        /// </summary>
+        /// <param name="user">The user.</param>
+        /// <param name="newPassword">The new password.</param>
+        public void ChangePassword(User user, string newPassword)
         {
             if (string.IsNullOrEmpty(newPassword))
             {
                 user.Password = null;
-                return Task.CompletedTask;
+                return;
             }
 
             PasswordHash newPasswordHash = _cryptographyProvider.CreatePasswordHash(newPassword);
             user.Password = newPasswordHash.ToString();
-
-            return Task.CompletedTask;
         }
     }
 }

@@ -29,6 +29,7 @@ using MediaBrowser.Controller.Events.Authentication;
 using MediaBrowser.Controller.Events.Session;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Net;
+using MediaBrowser.Controller.Security;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
@@ -60,6 +61,7 @@ namespace Emby.Server.Implementations.Session
         private readonly IMediaSourceManager _mediaSourceManager;
         private readonly IServerApplicationHost _appHost;
         private readonly IDeviceManager _deviceManager;
+        private readonly IJellyfinJwtIssuer _jwtIssuer;
         private readonly CancellationTokenRegistration _shutdownCallback;
         private readonly ConcurrentDictionary<string, SessionInfo> _activeConnections
             = new(StringComparer.OrdinalIgnoreCase);
@@ -88,6 +90,7 @@ namespace Emby.Server.Implementations.Session
         /// <param name="appHost">Instance of <see cref="IServerApplicationHost"/> interface.</param>
         /// <param name="deviceManager">Instance of <see cref="IDeviceManager"/> interface.</param>
         /// <param name="mediaSourceManager">Instance of <see cref="IMediaSourceManager"/> interface.</param>
+        /// <param name="jwtIssuer">Instance of <see cref="IJellyfinJwtIssuer"/> interface.</param>
         /// <param name="hostApplicationLifetime">Instance of <see cref="IHostApplicationLifetime"/> interface.</param>
         public SessionManager(
             ILogger<SessionManager> logger,
@@ -102,6 +105,7 @@ namespace Emby.Server.Implementations.Session
             IServerApplicationHost appHost,
             IDeviceManager deviceManager,
             IMediaSourceManager mediaSourceManager,
+            IJellyfinJwtIssuer jwtIssuer,
             IHostApplicationLifetime hostApplicationLifetime)
         {
             _logger = logger;
@@ -116,6 +120,7 @@ namespace Emby.Server.Implementations.Session
             _appHost = appHost;
             _deviceManager = deviceManager;
             _mediaSourceManager = mediaSourceManager;
+            _jwtIssuer = jwtIssuer;
             _shutdownCallback = hostApplicationLifetime.ApplicationStopping.Register(OnApplicationStopping);
 
             _deviceManager.DeviceOptionsUpdated += OnDeviceManagerDeviceOptionsUpdated;
@@ -1639,11 +1644,20 @@ namespace Emby.Server.Implementations.Session
                 request.RemoteEndPoint,
                 user).ConfigureAwait(false);
 
+            var jwt = _jwtIssuer.IssueSession(
+                user.Id,
+                request.DeviceId,
+                request.App,
+                request.AppVersion,
+                request.DeviceName,
+                TimeSpan.FromDays(365));
+
             var returnResult = new AuthenticationResult
             {
                 User = _userManager.GetUserDto(user, request.RemoteEndPoint),
                 SessionInfo = ToSessionInfoDto(session),
                 AccessToken = token,
+                AccessTokenJwt = jwt,
                 ServerId = _appHost.SystemId
             };
 

@@ -55,10 +55,9 @@ namespace Jellyfin.Server.Implementations.Tests.Users
 
             var appHost = new Mock<IApplicationHost>();
 
-            var defaultAuthProvider = new DefaultAuthenticationProvider(
-                NullLogger<DefaultAuthenticationProvider>.Instance,
+            var passwordValidator = new PasswordValidator(
+                NullLogger<PasswordValidator>.Instance,
                 cryptoProvider.Object);
-            var invalidAuthProvider = new InvalidAuthProvider();
             var defaultPasswordResetProvider = new DefaultPasswordResetProvider(
                 configManager.Object,
                 appHost.Object);
@@ -72,7 +71,7 @@ namespace Jellyfin.Server.Implementations.Tests.Users
                 NullLogger<UserManager>.Instance,
                 configManager.Object,
                 new IPasswordResetProvider[] { defaultPasswordResetProvider },
-                new IAuthenticationProvider[] { defaultAuthProvider, invalidAuthProvider });
+                passwordValidator);
         }
 
         public void Dispose()

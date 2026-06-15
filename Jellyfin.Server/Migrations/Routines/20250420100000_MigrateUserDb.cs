@@ -109,7 +109,7 @@ public class MigrateUserDb : IMigrationRoutine
                     "Emby.Server.Implementations.Library",
                     "Jellyfin.Server.Implementations.Users",
                     StringComparison.Ordinal)
-                    ?? typeof(DefaultAuthenticationProvider).FullName;
+                    ?? typeof(PasswordValidator).FullName;
 
                 policy.PasswordResetProviderId = typeof(DefaultPasswordResetProvider).FullName;
                 int? maxLoginAttempts = policy.LoginAttemptsBeforeLockout switch

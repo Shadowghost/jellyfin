@@ -120,6 +120,7 @@ namespace Jellyfin.Server.Extensions
             serviceCollection.AddSingleton<IClaimsTransformation, JellyfinClaimsTransformation>();
             serviceCollection.AddSingleton<IAuthenticationPluginRegistry, AuthenticationPluginRegistry>();
             serviceCollection.AddSingleton<IAuthenticationPluginContext>(sp => (IAuthenticationPluginContext)sp.GetRequiredService<IAuthenticationPluginRegistry>());
+            serviceCollection.AddHostedService<LegacyAuthenticationProviderStartupCheck>();
 
             return serviceCollection.AddAuthentication(options =>
                 {
