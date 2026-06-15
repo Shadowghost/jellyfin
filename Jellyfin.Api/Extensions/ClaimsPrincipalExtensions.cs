@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using Jellyfin.Api.Constants;
@@ -74,6 +75,32 @@ public static class ClaimsPrincipalExtensions
         return bool.TryParse(claimValue, out var parsedClaimValue)
                && parsedClaimValue;
     }
+
+    /// <summary>
+    /// Gets the endpoint scopes granted to the principal.
+    /// </summary>
+    /// <param name="user">Current claims principal.</param>
+    /// <returns>The granted scopes.</returns>
+    public static IReadOnlyList<string> GetScopes(this ClaimsPrincipal user)
+        => user.FindAll(JellyfinClaimTypes.Scope).Select(claim => claim.Value).ToList();
+
+    /// <summary>
+    /// Gets a value indicating whether the principal holds the given scope (or the <c>full</c> scope).
+    /// </summary>
+    /// <param name="user">Current claims principal.</param>
+    /// <param name="scope">The required scope.</param>
+    /// <returns>Whether the principal satisfies the scope.</returns>
+    public static bool HasScope(this ClaimsPrincipal user, string scope)
+        => user.HasClaim(JellyfinClaimTypes.Scope, scope)
+           || user.HasClaim(JellyfinClaimTypes.Scope, EndpointScopes.Full);
+
+    /// <summary>
+    /// Gets the item id a token is bound to, if any.
+    /// </summary>
+    /// <param name="user">Current claims principal.</param>
+    /// <returns>The bound item id, or <c>null</c>.</returns>
+    public static string? GetBoundItemId(this ClaimsPrincipal user)
+        => GetClaimValue(user, JellyfinClaimTypes.ItemId);
 
     private static string? GetClaimValue(in ClaimsPrincipal user, string name)
         => user.Claims.FirstOrDefault(claim => claim.Type.Equals(name, StringComparison.OrdinalIgnoreCase))?.Value;

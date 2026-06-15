@@ -1,0 +1,47 @@
+Controller,Action,CurrentDecision,FutureScopeCandidate,Justification
+# 41 controllers carry a class-level [Authorize] and are covered by their existing policies (see those classes).
+# The rows below are the actions that previously had NO explicit authorization decision and were anonymous by omission.
+# They are now explicitly marked [AllowAnonymous] to preserve behavior. "FutureScopeCandidate" marks endpoints
+# that should later be converted to scope-protected once the temp-token system (Phase 6) and clients are ready.
+AudioController,GetAudioStream,AllowAnonymous,media.stream,Media delivered to players authenticating via token query param
+AudioController,GetAudioStreamByContainer,AllowAnonymous,media.stream,Media delivered to players authenticating via token query param
+VideosController,GetVideoStream,AllowAnonymous,media.stream,Media delivered to players authenticating via token query param
+VideosController,GetVideoStreamByContainer,AllowAnonymous,media.stream,Media delivered to players authenticating via token query param
+HlsSegmentController,GetHlsAudioSegmentLegacy,AllowAnonymous,media.hls,HLS segment delivery
+HlsSegmentController,GetHlsVideoSegmentLegacy,AllowAnonymous,media.hls,HLS segment delivery
+SubtitleController,GetSubtitle,AllowAnonymous,media.subtitle,Subtitle delivery to players
+SubtitleController,GetSubtitleWithTicks,AllowAnonymous,media.subtitle,Subtitle delivery to players
+VideoAttachmentsController,GetAttachment,AllowAnonymous,media.stream,Attachment delivery to players
+LiveTvController,GetLiveRecordingFile,AllowAnonymous,media.stream,Live TV file delivery
+LiveTvController,GetLiveStreamFile,AllowAnonymous,media.stream,Live TV file delivery
+ImageController,GetItemImage,AllowAnonymous,media.image,Images served anonymously (login screen / img tags)
+ImageController,GetItemImageByIndex,AllowAnonymous,media.image,Images served anonymously
+ImageController,GetItemImage2,AllowAnonymous,media.image,Images served anonymously
+ImageController,GetArtistImage,AllowAnonymous,media.image,Images served anonymously
+ImageController,GetGenreImage,AllowAnonymous,media.image,Images served anonymously
+ImageController,GetGenreImageByIndex,AllowAnonymous,media.image,Images served anonymously
+ImageController,GetMusicGenreImage,AllowAnonymous,media.image,Images served anonymously
+ImageController,GetMusicGenreImageByIndex,AllowAnonymous,media.image,Images served anonymously
+ImageController,GetPersonImage,AllowAnonymous,media.image,Images served anonymously
+ImageController,GetPersonImageByIndex,AllowAnonymous,media.image,Images served anonymously
+ImageController,GetStudioImage,AllowAnonymous,media.image,Images served anonymously
+ImageController,GetStudioImageByIndex,AllowAnonymous,media.image,Images served anonymously
+ImageController,GetUserImage,AllowAnonymous,media.image,Images served anonymously
+ImageController,GetUserImageLegacy,AllowAnonymous,media.image,Images served anonymously
+ImageController,GetUserImageByIndexLegacy,AllowAnonymous,media.image,Images served anonymously
+ImageController,GetSplashscreen,AllowAnonymous,,Splashscreen shown before login
+BrandingController,GetBrandingOptions,AllowAnonymous,,Branding is public (shown before login)
+BrandingController,GetBrandingCss,AllowAnonymous,,Branding is public (shown before login)
+DashboardController,GetDashboardConfigurationPage,AllowAnonymous,,Served as a static-like dashboard resource
+QuickConnectController,GetQuickConnectEnabled,AllowAnonymous,,Quick Connect initiation is intentionally anonymous
+QuickConnectController,InitiateQuickConnect,AllowAnonymous,,Quick Connect initiation is intentionally anonymous
+QuickConnectController,GetQuickConnectState,AllowAnonymous,,Quick Connect initiation is intentionally anonymous
+SystemController,GetPublicSystemInfo,AllowAnonymous,,Public discovery endpoint
+SystemController,PingSystem,AllowAnonymous,,Public discovery endpoint
+TimeSyncController,GetUtcTime,AllowAnonymous,,Public time sync endpoint
+UserController,GetPublicUsers,AllowAnonymous,,Public user list for the login screen
+UserController,AuthenticateUser,AllowAnonymous,,Login endpoint must be anonymous
+UserController,AuthenticateUserByName,AllowAnonymous,,Login endpoint must be anonymous
+UserController,AuthenticateWithQuickConnect,AllowAnonymous,,Login endpoint must be anonymous
+UserController,ForgotPassword,AllowAnonymous,,Password recovery must be anonymous
+UserController,ForgotPasswordPin,AllowAnonymous,,Password recovery must be anonymous

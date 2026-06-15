@@ -205,6 +205,8 @@ public class SubtitleController : BaseJellyfinApiController
     /// <param name="startPositionTicks">The start position of the subtitle in ticks.</param>
     /// <response code="200">File returned.</response>
     /// <returns>A <see cref="FileContentResult"/> with the subtitle file.</returns>
+    // auth-audit: media delivered to players that authenticate via token query param; scope-protection tracked for a later coordinated change
+    [AllowAnonymous]
     [HttpGet("Videos/{routeItemId}/{routeMediaSourceId}/Subtitles/{routeIndex}/Stream.{routeFormat}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesFile("text/*")]
@@ -292,6 +294,8 @@ public class SubtitleController : BaseJellyfinApiController
     /// <param name="addVttTimeMap">Optional. Whether to add a VTT time map.</param>
     /// <response code="200">File returned.</response>
     /// <returns>A <see cref="FileContentResult"/> with the subtitle file.</returns>
+    // auth-audit: media delivered to players that authenticate via token query param; scope-protection tracked for a later coordinated change
+    [AllowAnonymous]
     [HttpGet("Videos/{routeItemId}/{routeMediaSourceId}/Subtitles/{routeIndex}/{routeStartPositionTicks}/Stream.{routeFormat}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesFile("text/*")]

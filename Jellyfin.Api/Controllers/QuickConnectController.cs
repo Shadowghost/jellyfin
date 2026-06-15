@@ -38,6 +38,8 @@ public class QuickConnectController : BaseJellyfinApiController
     /// </summary>
     /// <response code="200">Quick connect state returned.</response>
     /// <returns>Whether Quick Connect is enabled on the server or not.</returns>
+    // auth-audit: Quick Connect initiation is intentionally anonymous
+    [AllowAnonymous]
     [HttpGet("Enabled")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public ActionResult<bool> GetQuickConnectEnabled()
@@ -51,6 +53,8 @@ public class QuickConnectController : BaseJellyfinApiController
     /// <response code="200">Quick connect request successfully created.</response>
     /// <response code="401">Quick connect is not active on this server.</response>
     /// <returns>A <see cref="QuickConnectResult"/> with a secret and code for future use or an error message.</returns>
+    // auth-audit: Quick Connect initiation is intentionally anonymous
+    [AllowAnonymous]
     [HttpPost("Initiate")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -74,6 +78,8 @@ public class QuickConnectController : BaseJellyfinApiController
     /// <response code="200">Quick connect result returned.</response>
     /// <response code="404">Unknown quick connect secret.</response>
     /// <returns>An updated <see cref="QuickConnectResult"/>.</returns>
+    // auth-audit: Quick Connect initiation is intentionally anonymous
+    [AllowAnonymous]
     [HttpGet("Connect")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

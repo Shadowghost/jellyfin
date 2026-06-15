@@ -10,6 +10,7 @@ using MediaBrowser.Common.Extensions;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -47,6 +48,8 @@ public class VideoAttachmentsController : BaseJellyfinApiController
     /// <response code="200">Attachment retrieved.</response>
     /// <response code="404">Video or attachment not found.</response>
     /// <returns>An <see cref="FileStreamResult"/> containing the attachment stream on success, or a <see cref="NotFoundResult"/> if the attachment could not be found.</returns>
+    // auth-audit: media delivered to players that authenticate via token query param; scope-protection tracked for a later coordinated change
+    [AllowAnonymous]
     [HttpGet("{videoId}/{mediaSourceId}/Attachments/{index}")]
     [ProducesFile(MediaTypeNames.Application.Octet)]
     [ProducesResponseType(StatusCodes.Status200OK)]

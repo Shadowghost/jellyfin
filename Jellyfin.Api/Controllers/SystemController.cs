@@ -89,6 +89,8 @@ public class SystemController : BaseJellyfinApiController
     /// </summary>
     /// <response code="200">Information retrieved.</response>
     /// <returns>A <see cref="PublicSystemInfo"/> with public info about the system.</returns>
+    // auth-audit: public discovery endpoint
+    [AllowAnonymous]
     [HttpGet("Info/Public")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public ActionResult<PublicSystemInfo> GetPublicSystemInfo()
@@ -99,6 +101,8 @@ public class SystemController : BaseJellyfinApiController
     /// </summary>
     /// <response code="200">Information retrieved.</response>
     /// <returns>The server name.</returns>
+    // auth-audit: public discovery endpoint
+    [AllowAnonymous]
     [HttpGet("Ping", Name = "GetPingSystem")]
     [HttpPost("Ping", Name = "PostPingSystem")]
     [ProducesResponseType(StatusCodes.Status200OK)]

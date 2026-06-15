@@ -12,6 +12,7 @@ using Jellyfin.Api.Auth.AnonymousLanAccessPolicy;
 using Jellyfin.Api.Auth.DefaultAuthorizationPolicy;
 using Jellyfin.Api.Auth.FirstTimeSetupPolicy;
 using Jellyfin.Api.Auth.LocalAccessOrRequiresElevationPolicy;
+using Jellyfin.Api.Auth.ScopePolicy;
 using Jellyfin.Api.Auth.SyncPlayAccessPolicy;
 using Jellyfin.Api.Auth.UserPermissionPolicy;
 using Jellyfin.Api.Constants;
@@ -59,6 +60,7 @@ namespace Jellyfin.Server.Extensions
             serviceCollection.AddSingleton<IAuthorizationHandler, AnonymousLanAccessHandler>();
             serviceCollection.AddSingleton<IAuthorizationHandler, SyncPlayAccessHandler>();
             serviceCollection.AddSingleton<IAuthorizationHandler, LocalAccessOrRequiresElevationHandler>();
+            serviceCollection.AddSingleton<IAuthorizationHandler, ScopeAuthorizationHandler>();
 
             return serviceCollection.AddAuthorizationCore(options =>
             {
@@ -87,6 +89,15 @@ namespace Jellyfin.Server.Extensions
                     Policies.RequiresElevation,
                     policy => policy.AddAuthenticationSchemes(AuthenticationSchemes.CustomAuthentication)
                         .RequireClaim(ClaimTypes.Role, UserRoles.Administrator));
+
+                // One policy per endpoint scope.
+                foreach (var scope in EndpointScopes.All)
+                {
+                    options.AddPolicy(
+                        EndpointScopes.PolicyFor(scope),
+                        policy => policy.AddAuthenticationSchemes(AuthenticationSchemes.JellyfinSelector)
+                            .AddRequirements(new ScopeRequirement(scope)));
+                }
             });
         }
 

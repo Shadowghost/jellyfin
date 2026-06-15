@@ -70,6 +70,8 @@ public class DashboardController : BaseJellyfinApiController
     /// <response code="200">ConfigurationPage returned.</response>
     /// <response code="404">Plugin configuration page not found.</response>
     /// <returns>The configuration page.</returns>
+    // auth-audit: served as a static-like dashboard resource
+    [AllowAnonymous]
     [HttpGet("web/ConfigurationPage")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
