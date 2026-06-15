@@ -117,5 +117,15 @@ namespace Jellyfin.Server.Extensions
         {
             return appBuilder.UseMiddleware<RobotsRedirectionMiddleware>();
         }
+
+        /// <summary>
+        /// Adds legacy-authentication deprecation headers to the application pipeline.
+        /// </summary>
+        /// <param name="appBuilder">The application builder.</param>
+        /// <returns>The updated application builder.</returns>
+        public static IApplicationBuilder UseLegacyAuthenticationDeprecation(this IApplicationBuilder appBuilder)
+        {
+            return appBuilder.UseMiddleware<LegacyAuthenticationDeprecationMiddleware>();
+        }
     }
 }

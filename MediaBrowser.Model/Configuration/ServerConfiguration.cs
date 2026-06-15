@@ -287,5 +287,10 @@ public class ServerConfiguration : BaseApplicationConfiguration
     /// <summary>
     /// Gets or sets a value indicating whether old authorization methods are allowed.
     /// </summary>
+    /// <remarks>
+    /// Deprecated. The legacy <c>X-Emby-Token</c>/<c>X-MediaBrowser-Token</c> headers, the
+    /// <c>?api_key=</c> query parameter and the <c>Emby</c> authorization scheme are disabled by
+    /// default and slated for removal; migrate clients to Jellyfin-issued JWTs.
+    /// </remarks>
     public bool EnableLegacyAuthorization { get; set; }
 }
