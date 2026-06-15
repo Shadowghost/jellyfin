@@ -25,8 +25,10 @@ using Jellyfin.Extensions.Json;
 using Jellyfin.Server.Auth;
 using Jellyfin.Server.Configuration;
 using Jellyfin.Server.Filters;
+using Jellyfin.Server.Implementations.Security;
 using MediaBrowser.Common.Api;
 using MediaBrowser.Common.Net;
+using MediaBrowser.Controller.Authentication;
 using MediaBrowser.Controller.Security;
 using MediaBrowser.Model.Entities;
 using Microsoft.AspNetCore.Authentication;
@@ -116,6 +118,8 @@ namespace Jellyfin.Server.Extensions
             serviceCollection.AddSingleton<IJellyfinJwtIssuer, JellyfinJwtIssuer>();
             serviceCollection.AddSingleton<IConfigureOptions<JwtBearerOptions>, ConfigureJellyfinJwtBearerOptions>();
             serviceCollection.AddSingleton<IClaimsTransformation, JellyfinClaimsTransformation>();
+            serviceCollection.AddSingleton<IAuthenticationPluginRegistry, AuthenticationPluginRegistry>();
+            serviceCollection.AddSingleton<IAuthenticationPluginContext>(sp => (IAuthenticationPluginContext)sp.GetRequiredService<IAuthenticationPluginRegistry>());
 
             return serviceCollection.AddAuthentication(options =>
                 {
@@ -124,6 +128,7 @@ namespace Jellyfin.Server.Extensions
                     options.DefaultAuthenticateScheme = AuthenticationSchemes.JellyfinSelector;
                 })
                 .AddScheme<AuthenticationSchemeOptions, CustomAuthenticationHandler>(AuthenticationSchemes.LegacyMediaBrowserToken, null)
+                .AddScheme<AuthenticationSchemeOptions, PluginAuthenticationHandler>(AuthenticationSchemes.PluginToken, null)
                 .AddJwtBearer(AuthenticationSchemes.JellyfinJwt)
                 .AddJwtBearer(AuthenticationSchemes.JellyfinTempJwt)
                 .AddPolicyScheme(AuthenticationSchemes.JellyfinSelector, "Jellyfin", options =>

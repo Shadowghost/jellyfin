@@ -1,13 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Api.Constants;
 using Jellyfin.Api.Extensions;
 using Jellyfin.Api.Helpers;
 using Jellyfin.Api.ModelBinders;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Common.Api;
+using MediaBrowser.Controller.Authentication;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Dto;
@@ -16,6 +19,8 @@ using MediaBrowser.Model.Session;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using Microsoft.Net.Http.Headers;
 
 namespace Jellyfin.Api.Controllers;
 
@@ -27,18 +32,26 @@ public class SessionController : BaseJellyfinApiController
 {
     private readonly ISessionManager _sessionManager;
     private readonly IUserManager _userManager;
+    private readonly IAuthenticationPluginRegistry _pluginRegistry;
+    private readonly ILogger<SessionController> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SessionController"/> class.
     /// </summary>
     /// <param name="sessionManager">Instance of <see cref="ISessionManager"/> interface.</param>
     /// <param name="userManager">Instance of <see cref="IUserManager"/> interface.</param>
+    /// <param name="pluginRegistry">Instance of <see cref="IAuthenticationPluginRegistry"/> interface.</param>
+    /// <param name="logger">Instance of <see cref="ILogger{SessionController}"/> interface.</param>
     public SessionController(
         ISessionManager sessionManager,
-        IUserManager userManager)
+        IUserManager userManager,
+        IAuthenticationPluginRegistry pluginRegistry,
+        ILogger<SessionController> logger)
     {
         _sessionManager = sessionManager;
         _userManager = userManager;
+        _pluginRegistry = pluginRegistry;
+        _logger = logger;
     }
 
     /// <summary>
@@ -421,8 +434,66 @@ public class SessionController : BaseJellyfinApiController
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<ActionResult> ReportSessionEnded()
     {
+        await RevokePluginTokenIfPresentAsync().ConfigureAwait(false);
         await _sessionManager.Logout(User.GetToken()).ConfigureAwait(false);
         return NoContent();
+    }
+
+    /// <summary>
+    /// If the current request authenticated with a plugin-owned token, ask the owning plugin to revoke
+    /// it. Best-effort: failures are logged and never block logout.
+    /// </summary>
+    private async Task RevokePluginTokenIfPresentAsync()
+    {
+        var pluginId = User.FindFirstValue(JellyfinClaimTypes.PluginId);
+        if (string.IsNullOrEmpty(pluginId))
+        {
+            return;
+        }
+
+        var authHeader = Request.Headers[HeaderNames.Authorization].ToString();
+        string? wireToken = null;
+        if (authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            wireToken = authHeader["Bearer ".Length..].Trim();
+        }
+        else
+        {
+            var queryToken = Request.Query["token"].ToString();
+            if (!string.IsNullOrEmpty(queryToken))
+            {
+                wireToken = queryToken;
+            }
+        }
+
+        if (string.IsNullOrEmpty(wireToken)
+            || !wireToken.StartsWith(AuthenticationSchemes.PluginTokenPrefix, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var body = wireToken[AuthenticationSchemes.PluginTokenPrefix.Length..];
+        var separatorIndex = body.IndexOf('_', StringComparison.Ordinal);
+        if (separatorIndex <= 0 || separatorIndex == body.Length - 1)
+        {
+            return;
+        }
+
+        var inner = body[(separatorIndex + 1)..];
+        var plugin = _pluginRegistry.GetById(pluginId);
+        if (plugin is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await plugin.RevokeAsync(inner, HttpContext.RequestAborted).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Plugin {PluginId} failed to revoke a token on logout.", pluginId);
+        }
     }
 
     /// <summary>
@@ -430,7 +501,7 @@ public class SessionController : BaseJellyfinApiController
     /// </summary>
     /// <response code="200">Auth providers retrieved.</response>
     /// <returns>An <see cref="IEnumerable{NameIdPair}"/> with the auth providers.</returns>
-    [HttpGet("Auth/Providers")]
+    [HttpGet("Auth/InternalProviders")]
     [Authorize(Policy = Policies.RequiresElevation)]
     [Tags("Authentication")]
     [ProducesResponseType(StatusCodes.Status200OK)]

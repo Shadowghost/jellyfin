@@ -269,6 +269,41 @@ namespace Jellyfin.Server.Implementations.Users
             }
         }
 
+        /// <inheritdoc/>
+        public async Task<User?> ResolveOrProvisionPluginUserAsync(string pluginId, PluginUserIdentity identity, CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(pluginId);
+            ArgumentNullException.ThrowIfNull(identity);
+            ArgumentException.ThrowIfNullOrEmpty(identity.Username);
+
+            // TODO: Plugin users are currently keyed on username, which is not rename-safe. A stable
+            // ExternalUserId column on the user record would let renames be tracked without losing identity.
+            var user = GetUserByName(identity.Username);
+            if (user is null)
+            {
+                if (!identity.ShouldAutoProvision)
+                {
+                    return null;
+                }
+
+                user = await CreateUserAsync(identity.Username).ConfigureAwait(false);
+            }
+
+            user.AuthenticationProviderId = "pt:" + pluginId;
+            user.SetPermission(PermissionKind.IsAdministrator, identity.IsAdministrator);
+
+            if (identity.PermissionOverrides is not null)
+            {
+                foreach (var (kind, value) in identity.PermissionOverrides)
+                {
+                    user.SetPermission(kind, value);
+                }
+            }
+
+            await UpdateUserAsync(user).ConfigureAwait(false);
+            return user;
+        }
+
         internal async Task<User> CreateUserInternalAsync(string name, JellyfinDbContext dbContext)
         {
             // TODO: Remove after user item data is migrated.

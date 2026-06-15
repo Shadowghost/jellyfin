@@ -7,7 +7,9 @@ using System.Threading.Tasks;
 using Jellyfin.Api.Constants;
 using Jellyfin.Api.Extensions;
 using Jellyfin.Api.Models.TempTokenDtos;
+using Jellyfin.Api.Models.UserDtos;
 using Jellyfin.Extensions;
+using MediaBrowser.Controller.Authentication;
 using MediaBrowser.Controller.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -31,16 +33,53 @@ public class AuthController : BaseJellyfinApiController
 
     private readonly IJellyfinJwtIssuer _jwtIssuer;
     private readonly ITempTokenStore _tempTokenStore;
+    private readonly IAuthenticationPluginRegistry _pluginRegistry;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AuthController"/> class.
     /// </summary>
     /// <param name="jwtIssuer">The JWT issuer.</param>
     /// <param name="tempTokenStore">The temp token store.</param>
-    public AuthController(IJellyfinJwtIssuer jwtIssuer, ITempTokenStore tempTokenStore)
+    /// <param name="pluginRegistry">The authentication plugin registry.</param>
+    public AuthController(IJellyfinJwtIssuer jwtIssuer, ITempTokenStore tempTokenStore, IAuthenticationPluginRegistry pluginRegistry)
     {
         _jwtIssuer = jwtIssuer;
         _tempTokenStore = tempTokenStore;
+        _pluginRegistry = pluginRegistry;
+    }
+
+    /// <summary>
+    /// Lists the authentication providers available for the login picker.
+    /// </summary>
+    /// <response code="200">Providers retrieved.</response>
+    /// <returns>The available authentication providers.</returns>
+    [AllowAnonymous]
+    [HttpGet("/Auth/Providers")]
+    [Tags("Authentication")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<IReadOnlyList<AuthenticationProviderInfo>> GetProviders()
+    {
+        var providers = new List<AuthenticationProviderInfo>
+        {
+            new AuthenticationProviderInfo
+            {
+                Id = "builtin",
+                DisplayName = "Jellyfin",
+                Capabilities = "UsernamePassword"
+            }
+        };
+
+        foreach (var plugin in _pluginRegistry.GetEnabledPlugins())
+        {
+            providers.Add(new AuthenticationProviderInfo
+            {
+                Id = plugin.Id,
+                DisplayName = plugin.DisplayName,
+                Capabilities = plugin.Capabilities.ToString()
+            });
+        }
+
+        return providers;
     }
 
     /// <summary>

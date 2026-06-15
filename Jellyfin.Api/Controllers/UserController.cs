@@ -13,6 +13,7 @@ using Jellyfin.Extensions;
 using MediaBrowser.Common.Api;
 using MediaBrowser.Common.Extensions;
 using MediaBrowser.Common.Net;
+using MediaBrowser.Controller;
 using MediaBrowser.Controller.Authentication;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Devices;
@@ -46,6 +47,8 @@ public class UserController : BaseJellyfinApiController
     private readonly ILogger _logger;
     private readonly IQuickConnect _quickConnectManager;
     private readonly IPlaylistManager _playlistManager;
+    private readonly IAuthenticationPluginRegistry _pluginRegistry;
+    private readonly IServerApplicationHost _appHost;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="UserController"/> class.
@@ -59,6 +62,8 @@ public class UserController : BaseJellyfinApiController
     /// <param name="logger">Instance of the <see cref="ILogger"/> interface.</param>
     /// <param name="quickConnectManager">Instance of the <see cref="IQuickConnect"/> interface.</param>
     /// <param name="playlistManager">Instance of the <see cref="IPlaylistManager"/> interface.</param>
+    /// <param name="pluginRegistry">Instance of the <see cref="IAuthenticationPluginRegistry"/> interface.</param>
+    /// <param name="appHost">Instance of the <see cref="IServerApplicationHost"/> interface.</param>
     public UserController(
         IUserManager userManager,
         ISessionManager sessionManager,
@@ -68,7 +73,9 @@ public class UserController : BaseJellyfinApiController
         IServerConfigurationManager config,
         ILogger<UserController> logger,
         IQuickConnect quickConnectManager,
-        IPlaylistManager playlistManager)
+        IPlaylistManager playlistManager,
+        IAuthenticationPluginRegistry pluginRegistry,
+        IServerApplicationHost appHost)
     {
         _userManager = userManager;
         _sessionManager = sessionManager;
@@ -79,6 +86,8 @@ public class UserController : BaseJellyfinApiController
         _logger = logger;
         _quickConnectManager = quickConnectManager;
         _playlistManager = playlistManager;
+        _pluginRegistry = pluginRegistry;
+        _appHost = appHost;
     }
 
     /// <summary>
@@ -104,6 +113,8 @@ public class UserController : BaseJellyfinApiController
     /// </summary>
     /// <response code="200">Public users returned.</response>
     /// <returns>An <see cref="IEnumerable{UserDto}"/> containing the public users.</returns>
+    // auth-audit: public user list for the login screen
+    [AllowAnonymous]
     [HttpGet("Public")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public ActionResult<IEnumerable<UserDto>> GetPublicUsers()
@@ -175,6 +186,8 @@ public class UserController : BaseJellyfinApiController
     /// <response code="403">Sha1-hashed password only is not allowed.</response>
     /// <response code="404">User not found.</response>
     /// <returns>A <see cref="Task"/> containing an <see cref="AuthenticationResult"/>.</returns>
+    // auth-audit: login endpoint, must be anonymous
+    [AllowAnonymous]
     [HttpPost("{userId}/Authenticate")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -206,11 +219,20 @@ public class UserController : BaseJellyfinApiController
     /// <param name="request">The <see cref="AuthenticateUserByName"/> request.</param>
     /// <response code="200">User authenticated.</response>
     /// <returns>A <see cref="Task"/> containing an <see cref="AuthenticationRequest"/> with information about the new session.</returns>
+    // auth-audit: login endpoint, must be anonymous
+    [AllowAnonymous]
     [HttpPost("AuthenticateByName")]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [Tags("Authentication")]
     public async Task<ActionResult<AuthenticationResult>> AuthenticateUserByName([FromBody, Required] AuthenticateUserByName request)
     {
+        if (!string.IsNullOrEmpty(request.AuthProvider)
+            && !string.Equals(request.AuthProvider, "builtin", StringComparison.OrdinalIgnoreCase))
+        {
+            return await AuthenticateWithPluginAsync(request, request.AuthProvider).ConfigureAwait(false);
+        }
+
         var auth = await _authContext.GetAuthorizationInfo(Request).ConfigureAwait(false);
 
         try
@@ -236,12 +258,88 @@ public class UserController : BaseJellyfinApiController
     }
 
     /// <summary>
+    /// Authenticates a user by name against a specific authentication plugin.
+    /// </summary>
+    /// <param name="providerId">The authentication plugin id.</param>
+    /// <param name="request">The <see cref="AuthenticateUserByName"/> request.</param>
+    /// <response code="200">User authenticated.</response>
+    /// <response code="401">Authentication failed.</response>
+    /// <returns>A <see cref="Task"/> containing an <see cref="AuthenticationResult"/> with information about the new session.</returns>
+    // auth-audit: login endpoint, must be anonymous
+    [AllowAnonymous]
+    [HttpPost("AuthenticateByName/{providerId}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [Tags("Authentication")]
+    public async Task<ActionResult<AuthenticationResult>> AuthenticateUserByNameWithProvider(
+        [FromRoute, Required] string providerId,
+        [FromBody, Required] AuthenticateUserByName request)
+    {
+        if (string.IsNullOrEmpty(providerId)
+            || string.Equals(providerId, "builtin", StringComparison.OrdinalIgnoreCase))
+        {
+            request.AuthProvider = null;
+            return await AuthenticateUserByName(request).ConfigureAwait(false);
+        }
+
+        return await AuthenticateWithPluginAsync(request, providerId).ConfigureAwait(false);
+    }
+
+    private async Task<ActionResult<AuthenticationResult>> AuthenticateWithPluginAsync(AuthenticateUserByName request, string providerId)
+    {
+        var plugin = _pluginRegistry.GetById(providerId);
+        if (plugin is null)
+        {
+            _logger.LogWarning("Login attempt against unknown or disabled authentication plugin {ProviderId}", providerId);
+            return Unauthorized();
+        }
+
+        _logger.LogInformation("Authenticating user against authentication plugin {ProviderId}", plugin.Id);
+
+        var auth = await _authContext.GetAuthorizationInfo(Request).ConfigureAwait(false);
+        var pluginRequest = new PluginAuthenticationRequest
+        {
+            Username = request.Username,
+            Password = request.Pw,
+            DeviceId = auth.DeviceId,
+            DeviceName = auth.Device,
+            ClientName = auth.Client,
+            ClientVersion = auth.Version,
+            RequestHeaders = Request.Headers,
+            RemoteIp = HttpContext.GetNormalizedRemoteIP()
+        };
+
+        var result = await plugin.AuthenticateAsync(pluginRequest, HttpContext.RequestAborted).ConfigureAwait(false);
+        if (!result.Success || result.Identity is null)
+        {
+            _logger.LogWarning("Plugin {ProviderId} rejected login: {FailureReason}", plugin.Id, result.FailureReason);
+            return Unauthorized();
+        }
+
+        var user = await _userManager.ResolveOrProvisionPluginUserAsync(plugin.Id, result.Identity, HttpContext.RequestAborted).ConfigureAwait(false);
+        if (user is null)
+        {
+            _logger.LogWarning("Plugin {ProviderId} authenticated a user that could not be resolved or provisioned.", plugin.Id);
+            return Unauthorized();
+        }
+
+        return new AuthenticationResult
+        {
+            User = _userManager.GetUserDto(user, HttpContext.GetNormalizedRemoteIP().ToString()),
+            ServerId = _appHost.SystemId,
+            AccessToken = AuthenticationSchemes.PluginTokenPrefix + plugin.Id + "_" + result.OpaqueToken
+        };
+    }
+
+    /// <summary>
     /// Authenticates a user with quick connect.
     /// </summary>
     /// <param name="request">The <see cref="QuickConnectDto"/> request.</param>
     /// <response code="200">User authenticated.</response>
     /// <response code="400">Missing token.</response>
     /// <returns>A <see cref="Task"/> containing an <see cref="AuthenticationRequest"/> with information about the new session.</returns>
+    // auth-audit: login endpoint, must be anonymous
+    [AllowAnonymous]
     [HttpPost("AuthenticateWithQuickConnect")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [Tags("Authentication")]
@@ -538,6 +636,8 @@ public class UserController : BaseJellyfinApiController
     /// <param name="forgotPasswordRequest">The forgot password request containing the entered username.</param>
     /// <response code="200">Password reset process started.</response>
     /// <returns>A <see cref="Task"/> containing a <see cref="ForgotPasswordResult"/>.</returns>
+    // auth-audit: password recovery, must be anonymous
+    [AllowAnonymous]
     [HttpPost("ForgotPassword")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [Tags("Authentication")]
@@ -563,6 +663,8 @@ public class UserController : BaseJellyfinApiController
     /// <param name="forgotPasswordPinRequest">The forgot password pin request containing the entered pin.</param>
     /// <response code="200">Pin reset process started.</response>
     /// <returns>A <see cref="Task"/> containing a <see cref="PinRedeemResult"/>.</returns>
+    // auth-audit: password recovery, must be anonymous
+    [AllowAnonymous]
     [HttpPost("ForgotPassword/Pin")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [Tags("Authentication")]

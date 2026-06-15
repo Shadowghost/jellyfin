@@ -28,6 +28,12 @@ public static class JellyfinSchemeSelector
         string authHeader = context.Request.Headers[HeaderNames.Authorization].ToString();
         if (authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
+            var bearerToken = authHeader["Bearer ".Length..].Trim();
+            if (bearerToken.StartsWith(AuthenticationSchemes.PluginTokenPrefix, StringComparison.Ordinal))
+            {
+                return AuthenticationSchemes.PluginToken;
+            }
+
             return AuthenticationSchemes.JellyfinJwt;
         }
 

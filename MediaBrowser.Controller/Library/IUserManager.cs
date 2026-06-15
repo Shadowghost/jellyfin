@@ -2,9 +2,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Events;
 using Jellyfin.Database.Implementations.Entities;
+using MediaBrowser.Controller.Authentication;
 using MediaBrowser.Model.Configuration;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Users;
@@ -174,5 +176,15 @@ namespace MediaBrowser.Controller.Library
         /// <param name="user">The user.</param>
         /// <returns>A task representing the clearing of the profile image.</returns>
         Task ClearProfileImageAsync(User user);
+
+        /// <summary>
+        /// Resolves the Jellyfin user for a plugin identity, provisioning a new user when allowed, and
+        /// reconciles the identity's permissions onto the user record.
+        /// </summary>
+        /// <param name="pluginId">The authentication plugin id.</param>
+        /// <param name="identity">The authoritative identity reported by the plugin.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The resolved user, or <c>null</c> if the user does not exist and may not be provisioned.</returns>
+        Task<User?> ResolveOrProvisionPluginUserAsync(string pluginId, PluginUserIdentity identity, CancellationToken cancellationToken);
     }
 }
