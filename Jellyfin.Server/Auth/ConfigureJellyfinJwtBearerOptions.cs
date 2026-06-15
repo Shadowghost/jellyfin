@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Jellyfin.Api.Auth;
 using Jellyfin.Api.Constants;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Security;
@@ -58,7 +59,15 @@ public sealed class ConfigureJellyfinJwtBearerOptions : IConfigureNamedOptions<J
             RoleClaimType = System.Security.Claims.ClaimTypes.Role
         };
 
-        var events = new JwtBearerEvents();
+        var schemeLabel = isTemp ? AuthMetrics.SchemeTemp : AuthMetrics.SchemeJwt;
+        var events = new JwtBearerEvents
+        {
+            OnAuthenticationFailed = context =>
+            {
+                AuthMetrics.RecordAttempt(schemeLabel, false);
+                return Task.CompletedTask;
+            }
+        };
 
         if (isTemp)
         {
@@ -81,6 +90,7 @@ public sealed class ConfigureJellyfinJwtBearerOptions : IConfigureNamedOptions<J
             {
                 if (context.Principal?.Claims.Any(c => c.Type == JellyfinClaimTypes.Scope) != true)
                 {
+                    AuthMetrics.RecordAttempt(AuthMetrics.SchemeTemp, false);
                     context.Fail("Temp token is missing a scope claim.");
                     return;
                 }
@@ -89,6 +99,7 @@ public sealed class ConfigureJellyfinJwtBearerOptions : IConfigureNamedOptions<J
                 var jti = context.Principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
                 if (string.IsNullOrEmpty(jti))
                 {
+                    AuthMetrics.RecordAttempt(AuthMetrics.SchemeTemp, false);
                     context.Fail("Temp token is missing a jti claim.");
                     return;
                 }
@@ -96,12 +107,23 @@ public sealed class ConfigureJellyfinJwtBearerOptions : IConfigureNamedOptions<J
                 var store = context.HttpContext.RequestServices.GetRequiredService<ITempTokenStore>();
                 if (await store.IsRevokedAsync(jti, context.HttpContext.RequestAborted).ConfigureAwait(false))
                 {
+                    AuthMetrics.RecordAttempt(AuthMetrics.SchemeTemp, false);
                     context.Fail("Temp token has been revoked.");
                     return;
                 }
+
+                AuthMetrics.RecordAttempt(AuthMetrics.SchemeTemp, true);
             };
 
             options.TokenValidationParameters.LifetimeValidator = ValidateTempLifetime;
+        }
+        else
+        {
+            events.OnTokenValidated = context =>
+            {
+                AuthMetrics.RecordAttempt(AuthMetrics.SchemeJwt, true);
+                return Task.CompletedTask;
+            };
         }
 
         options.Events = events;

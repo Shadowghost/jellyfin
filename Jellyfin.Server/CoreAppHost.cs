@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using Emby.Server.Implementations;
 using Emby.Server.Implementations.Session;
+using Jellyfin.Api.Auth;
 using Jellyfin.Api.WebSocketListeners;
 using Jellyfin.Database.Implementations;
 using Jellyfin.Drawing;
@@ -21,6 +22,7 @@ using MediaBrowser.Controller.BaseItemManager;
 using MediaBrowser.Controller.Devices;
 using MediaBrowser.Controller.Drawing;
 using MediaBrowser.Controller.Events;
+using MediaBrowser.Controller.Events.Authentication;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Lyrics;
 using MediaBrowser.Controller.Net;
@@ -98,6 +100,9 @@ namespace Jellyfin.Server
             serviceCollection.AddScoped<IAuthenticationManager, AuthenticationManager>();
 
             serviceCollection.AddSingleton<ITempTokenStore, TempTokenStore>();
+
+            serviceCollection.AddScoped<IEventConsumer<AuthenticationResultEventArgs>, AuthLoginMetricsConsumer>();
+            serviceCollection.AddScoped<IEventConsumer<AuthenticationRequestEventArgs>, AuthLoginMetricsConsumer>();
 
             foreach (var type in GetExportTypes<ILyricProvider>())
             {

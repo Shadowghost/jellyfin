@@ -74,15 +74,19 @@ namespace Jellyfin.Api.Auth
                 var principal = new ClaimsPrincipal(identity);
                 var ticket = new AuthenticationTicket(principal, Scheme.Name);
 
+                AuthMetrics.RecordAttempt(AuthMetrics.SchemeLegacy, true);
                 return AuthenticateResult.Success(ticket);
             }
             catch (AuthenticationException ex)
             {
+                // A token was presented but rejected.
+                AuthMetrics.RecordAttempt(AuthMetrics.SchemeLegacy, false);
                 _logger.LogDebug(ex, "Error authenticating with {Handler}", nameof(CustomAuthenticationHandler));
                 return AuthenticateResult.NoResult();
             }
             catch (SecurityException ex)
             {
+                AuthMetrics.RecordAttempt(AuthMetrics.SchemeLegacy, false);
                 return AuthenticateResult.Fail(ex);
             }
         }

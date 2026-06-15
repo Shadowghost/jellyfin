@@ -82,6 +82,7 @@ namespace Jellyfin.Api.Auth
             if (_registry.IsCircuitOpen(pluginId))
             {
                 Response.Headers["Retry-After"] = "30";
+                AuthMetrics.RecordAttempt(AuthMetrics.SchemePlugin, false);
                 return AuthenticateResult.Fail("Plugin temporarily unavailable.");
             }
 
@@ -100,6 +101,7 @@ namespace Jellyfin.Api.Auth
                 {
                     _logger.LogError(ex, "Plugin {PluginId} threw while validating a token.", pluginId);
                     _registry.RecordFailure(pluginId);
+                    AuthMetrics.RecordAttempt(AuthMetrics.SchemePlugin, false);
                     return AuthenticateResult.Fail("Authentication failed.");
                 }
             }
@@ -107,11 +109,13 @@ namespace Jellyfin.Api.Auth
             if (!result.Valid || result.Identity is null)
             {
                 _registry.RecordFailure(pluginId);
+                AuthMetrics.RecordAttempt(AuthMetrics.SchemePlugin, false);
                 return AuthenticateResult.Fail("Invalid token.");
             }
 
             Context.Items[PerRequestKey] = result;
             _registry.RecordSuccess(pluginId);
+            AuthMetrics.RecordAttempt(AuthMetrics.SchemePlugin, true);
 
             var user = await _userManager.ResolveOrProvisionPluginUserAsync(pluginId, result.Identity, Context.RequestAborted).ConfigureAwait(false);
             if (user is null)

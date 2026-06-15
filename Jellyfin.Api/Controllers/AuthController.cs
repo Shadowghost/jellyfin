@@ -4,6 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Api.Auth;
 using Jellyfin.Api.Constants;
 using Jellyfin.Api.Extensions;
 using Jellyfin.Api.Models.TempTokenDtos;
@@ -133,6 +134,7 @@ public class AuthController : BaseJellyfinApiController
 
         await _tempTokenStore.RecordAsync(jti, userId, issuedAt, expiresAt, request.Scopes, request.ItemId, request.Label, cancellationToken).ConfigureAwait(false);
 
+        AuthMetrics.TempTokenIssued();
         return new TempTokenResultDto { Token = token, ExpiresAt = expiresAt };
     }
 
@@ -176,6 +178,12 @@ public class AuthController : BaseJellyfinApiController
         }
 
         var revoked = await _tempTokenStore.RevokeAsync(tokenId, userId, User.IsInRole(UserRoles.Administrator), cancellationToken).ConfigureAwait(false);
-        return revoked ? NoContent() : NotFound();
+        if (revoked)
+        {
+            AuthMetrics.TempTokenRevoked();
+            return NoContent();
+        }
+
+        return NotFound();
     }
 }
