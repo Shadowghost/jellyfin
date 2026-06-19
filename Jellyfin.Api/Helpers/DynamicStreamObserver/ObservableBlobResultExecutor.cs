@@ -138,6 +138,13 @@ public class ObservableBlobResultExecutor : FileResultExecutorBase, IActionResul
 
         var userId = httpContext.User.GetUserId();
 
+        // The play session id correlates the measured transfer to a recorded playback session.
+        var playSessionId = httpContext.Request.Query["PlaySessionId"].ToString();
+        if (string.IsNullOrEmpty(playSessionId))
+        {
+            playSessionId = null;
+        }
+
         if (range != null)
         {
             return SendFileAsync(
@@ -147,6 +154,7 @@ public class ObservableBlobResultExecutor : FileResultExecutorBase, IActionResul
                 count: rangeLength,
                 userId,
                 ItemId,
+                playSessionId,
                 CancellationToken.None);
         }
 
@@ -157,6 +165,7 @@ public class ObservableBlobResultExecutor : FileResultExecutorBase, IActionResul
             count: null,
             userId,
             ItemId,
+            playSessionId,
             CancellationToken.None);
     }
 
@@ -167,6 +176,7 @@ public class ObservableBlobResultExecutor : FileResultExecutorBase, IActionResul
         long? count,
         Guid userId,
         Guid itemId,
+        string? playSessionId,
         CancellationToken cancellationToken)
     {
         Stream fileStream;
@@ -207,7 +217,7 @@ public class ObservableBlobResultExecutor : FileResultExecutorBase, IActionResul
                 fileStream.Seek(offset, SeekOrigin.Begin);
             }
 
-            await CopyToAsync(fileStream, destination, count, bufferSize, userId, itemId, cancellationToken).ConfigureAwait(false);
+            await CopyToAsync(fileStream, destination, count, bufferSize, userId, itemId, playSessionId, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -218,10 +228,11 @@ public class ObservableBlobResultExecutor : FileResultExecutorBase, IActionResul
         int bufferSize,
         Guid userId,
         Guid itemId,
+        string? playSessionId,
         CancellationToken cancel)
     {
         var bytesRemaining = count;
-        var streamMetricCollector = _streamObserverService.BeginStream(itemId, userId);
+        var streamMetricCollector = _streamObserverService.BeginStream(itemId, userId, playSessionId);
 
         var buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
         try

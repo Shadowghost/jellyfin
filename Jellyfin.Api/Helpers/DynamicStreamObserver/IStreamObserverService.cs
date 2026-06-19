@@ -17,6 +17,7 @@ public interface IStreamObserverService
     /// </summary>
     /// <param name="itemId">The item id of the stream.</param>
     /// <param name="userId">The user id of the stream.</param>
+    /// <param name="playSessionId">The play session id of the stream, if known.</param>
     /// <returns>A collector tied to the stream key.</returns>
-    StreamMetricCollector BeginStream(Guid itemId, Guid userId);
+    StreamMetricCollector BeginStream(Guid itemId, Guid userId, string? playSessionId = null);
 }

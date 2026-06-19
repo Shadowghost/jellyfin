@@ -32,13 +32,14 @@ public sealed class StreamObserverService : IStreamObserverService, IAsyncDispos
     public event EventHandler<StreamMetricsEventArgs>? MetricsUpdated;
 
     /// <inheritdoc />
-    public StreamMetricCollector BeginStream(Guid itemId, Guid userId)
+    public StreamMetricCollector BeginStream(Guid itemId, Guid userId, string? playSessionId = null)
     {
         var id = Guid.NewGuid();
         var streamState = _streams.GetOrAdd(id, key => new StreamState
         {
             ItemId = itemId,
-            UserId = userId
+            UserId = userId,
+            PlaySessionId = playSessionId
         });
 
         return new StreamMetricCollector(streamState);
@@ -103,6 +104,7 @@ public sealed class StreamObserverService : IStreamObserverService, IAsyncDispos
                 ElapsedTime = DateTime.UtcNow - state.StartTime,
                 ItemId = state.ItemId,
                 UserId = state.UserId,
+                PlaySessionId = state.PlaySessionId,
                 TransferSpeedBytesPerSecond = bytesTransferred - state.LastSnapshotBytesTransferred,
                 Timestamp = DateTime.UtcNow,
                 SessionEnd = item.Value.EndSnapshot
@@ -130,6 +132,8 @@ public sealed class StreamObserverService : IStreamObserverService, IAsyncDispos
         public Guid UserId { get; set; }
 
         public Guid ItemId { get; set; }
+
+        public string? PlaySessionId { get; set; }
 
         public bool EndSnapshot { get; set; }
 

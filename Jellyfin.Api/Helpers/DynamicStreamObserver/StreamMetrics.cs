@@ -35,6 +35,11 @@ public record StreamMetrics
     public Guid ItemId { get; init; }
 
     /// <summary>
+    /// Gets the play session id associated with the stream, if known.
+    /// </summary>
+    public string? PlaySessionId { get; init; }
+
+    /// <summary>
     /// Gets the elapsed time.
     /// </summary>
     public TimeSpan ElapsedTime { get; init; }

@@ -48,6 +48,9 @@ namespace Emby.Server.Implementations.Session
     /// </summary>
     public sealed class SessionManager : ISessionManager, IAsyncDisposable
     {
+        // Minimum accurate played span before a (non-completed) session is recorded, to drop accidental scrubs.
+        private const long MinRecordedSpanTicks = 20 * TimeSpan.TicksPerSecond;
+
         private readonly IUserDataManager _userDataManager;
         private readonly IServerConfigurationManager _config;
         private readonly ILogger<SessionManager> _logger;
@@ -60,9 +63,14 @@ namespace Emby.Server.Implementations.Session
         private readonly IMediaSourceManager _mediaSourceManager;
         private readonly IServerApplicationHost _appHost;
         private readonly IDeviceManager _deviceManager;
+        private readonly IPlaybackHistoryManager _playbackHistoryManager;
         private readonly CancellationTokenRegistration _shutdownCallback;
         private readonly ConcurrentDictionary<string, SessionInfo> _activeConnections
             = new(StringComparer.OrdinalIgnoreCase);
+
+        // Per play-session watch-time accumulator: sums actual played span (pause/seek-excluded) from progress reports.
+        private readonly ConcurrentDictionary<string, (DateTime DateStarted, long StartPositionTicks, long AccumulatedPlayedTicks, long LastPositionTicks, DateTime LastEventUtc, bool WasPlaying)> _playbackStartState
+            = new(StringComparer.Ordinal);
 
         private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, string>> _activeLiveStreamSessions
             = new(StringComparer.OrdinalIgnoreCase);
@@ -89,6 +97,7 @@ namespace Emby.Server.Implementations.Session
         /// <param name="deviceManager">Instance of <see cref="IDeviceManager"/> interface.</param>
         /// <param name="mediaSourceManager">Instance of <see cref="IMediaSourceManager"/> interface.</param>
         /// <param name="hostApplicationLifetime">Instance of <see cref="IHostApplicationLifetime"/> interface.</param>
+        /// <param name="playbackHistoryManager">Instance of <see cref="IPlaybackHistoryManager"/> interface.</param>
         public SessionManager(
             ILogger<SessionManager> logger,
             IEventManager eventManager,
@@ -102,7 +111,8 @@ namespace Emby.Server.Implementations.Session
             IServerApplicationHost appHost,
             IDeviceManager deviceManager,
             IMediaSourceManager mediaSourceManager,
-            IHostApplicationLifetime hostApplicationLifetime)
+            IHostApplicationLifetime hostApplicationLifetime,
+            IPlaybackHistoryManager playbackHistoryManager)
         {
             _logger = logger;
             _eventManager = eventManager;
@@ -116,6 +126,7 @@ namespace Emby.Server.Implementations.Session
             _appHost = appHost;
             _deviceManager = deviceManager;
             _mediaSourceManager = mediaSourceManager;
+            _playbackHistoryManager = playbackHistoryManager;
             _shutdownCallback = hostApplicationLifetime.ApplicationStopping.Register(OnApplicationStopping);
 
             _deviceManager.DeviceOptionsUpdated += OnDeviceManagerDeviceOptionsUpdated;
@@ -762,6 +773,14 @@ namespace Emby.Server.Implementations.Session
                 }
             }
 
+            // Seed the accurate watch-time accumulator for this play session.
+            if (!string.IsNullOrEmpty(info.PlaySessionId))
+            {
+                var startPosition = info.PositionTicks ?? 0;
+                var now = DateTime.UtcNow;
+                _playbackStartState[info.PlaySessionId] = (now, startPosition, 0, startPosition, now, true);
+            }
+
             if (!string.IsNullOrEmpty(info.LiveStreamId))
             {
                 UpdateLiveStreamActiveSessionMappings(info.LiveStreamId, info.SessionId, info.PlaySessionId);
@@ -894,6 +913,13 @@ namespace Emby.Server.Implementations.Session
                 {
                     OnPlaybackProgress(user, libraryItem, info);
                 }
+            }
+
+            // Fold this report into the accurate watch-time accumulator (pause/seek-excluded).
+            if (!string.IsNullOrEmpty(info.PlaySessionId)
+                && _playbackStartState.TryGetValue(info.PlaySessionId, out var progressState))
+            {
+                _playbackStartState[info.PlaySessionId] = AccumulatePlayed(progressState, info.PositionTicks ?? 0, info.IsPaused, DateTime.UtcNow);
             }
 
             if (!string.IsNullOrEmpty(info.LiveStreamId))
@@ -1087,6 +1113,13 @@ namespace Emby.Server.Implementations.Session
                 {
                     playedToCompletion = OnPlaybackStopped(user, libraryItem, info.PositionTicks, info.Failed);
                 }
+
+                // Record the session into the playback-history store for the primary user.
+                var primaryUser = users.FirstOrDefault();
+                if (primaryUser is not null)
+                {
+                    await RecordPlaybackHistoryAsync(session, primaryUser, libraryItem, info, playedToCompletion).ConfigureAwait(false);
+                }
             }
 
             if (!string.IsNullOrEmpty(info.LiveStreamId))
@@ -1139,6 +1172,228 @@ namespace Emby.Server.Implementations.Session
             _userDataManager.SaveUserData(user, item, data, UserDataSaveReason.PlaybackFinished, CancellationToken.None);
 
             return playedToCompletion;
+        }
+
+        /// <summary>
+        /// Folds one progress/stop report into the running watch-time accumulator. While playing, it adds the
+        /// smaller of the position advance and the wall-clock elapsed, which excludes seeks (large jumps) and
+        /// pauses, and is robust to missed progress reports.
+        /// </summary>
+        private static (DateTime DateStarted, long StartPositionTicks, long AccumulatedPlayedTicks, long LastPositionTicks, DateTime LastEventUtc, bool WasPlaying) AccumulatePlayed(
+            (DateTime DateStarted, long StartPositionTicks, long AccumulatedPlayedTicks, long LastPositionTicks, DateTime LastEventUtc, bool WasPlaying) state,
+            long positionTicks,
+            bool isPaused,
+            DateTime nowUtc)
+        {
+            var accumulated = state.AccumulatedPlayedTicks;
+            if (state.WasPlaying)
+            {
+                var positionDelta = Math.Max(0, positionTicks - state.LastPositionTicks);
+                var wallDelta = Math.Max(0, (nowUtc - state.LastEventUtc).Ticks);
+                accumulated += Math.Min(positionDelta, wallDelta);
+            }
+
+            return (state.DateStarted, state.StartPositionTicks, accumulated, positionTicks, nowUtc, !isPaused);
+        }
+
+        /// <summary>
+        /// Maps a <see cref="MediaStream"/> to a history stream-info, keeping only attributes relevant to its type.
+        /// </summary>
+        private static PlaybackHistoryStreamInfo MapStream(MediaStream stream, PlaybackHistoryStreamOrigin origin)
+        {
+            var streamType = stream.Type switch
+            {
+                MediaStreamType.Video => PlaybackHistoryStreamType.Video,
+                MediaStreamType.Audio => PlaybackHistoryStreamType.Audio,
+                _ => PlaybackHistoryStreamType.Subtitle
+            };
+
+            var isVideo = stream.Type == MediaStreamType.Video;
+            var isAudio = stream.Type == MediaStreamType.Audio;
+            var isSubtitle = stream.Type == MediaStreamType.Subtitle;
+
+            return new PlaybackHistoryStreamInfo
+            {
+                StreamType = streamType,
+                Origin = origin,
+                Width = isVideo ? stream.Width : null,
+                Height = isVideo ? stream.Height : null,
+                VideoRange = isVideo && stream.VideoRangeType != VideoRangeType.Unknown ? stream.VideoRangeType.ToString() : null,
+                Codec = stream.Codec,
+                Bitrate = isSubtitle ? null : stream.BitRate,
+                Channels = isAudio ? stream.Channels : null,
+                Language = isAudio || isSubtitle ? stream.Language : null,
+                IsForced = isSubtitle ? stream.IsForced : null,
+                IsHearingImpaired = isSubtitle ? stream.IsHearingImpaired : null
+            };
+        }
+
+        /// <summary>
+        /// Captures the selected source streams and the delivered streams (post-transcode) for a session.
+        /// For direct play, delivered mirrors source.
+        /// </summary>
+        private static IReadOnlyList<PlaybackHistoryStreamInfo> CaptureStreams(SessionInfo session, PlaybackStopInfo info)
+        {
+            var mediaStreams = info.Item?.MediaStreams;
+            if (mediaStreams is null)
+            {
+                return Array.Empty<PlaybackHistoryStreamInfo>();
+            }
+
+            var playState = session.PlayState;
+            var transcoding = session.TranscodingInfo;
+
+            var selectedVideo = mediaStreams
+                .Where(s => s.Type == MediaStreamType.Video)
+                .OrderByDescending(s => s.IsDefault)
+                .FirstOrDefault();
+
+            MediaStream selectedAudio = null;
+            var audioStreams = mediaStreams.Where(s => s.Type == MediaStreamType.Audio).ToList();
+            if (audioStreams.Count > 0)
+            {
+                var audioIndex = playState?.AudioStreamIndex;
+                selectedAudio = audioIndex.HasValue
+                    ? audioStreams.Find(s => s.Index == audioIndex.Value)
+                    : null;
+                selectedAudio ??= audioStreams.Find(s => s.IsDefault) ?? audioStreams[0];
+            }
+
+            MediaStream selectedSubtitle = null;
+            var subtitleIndex = playState?.SubtitleStreamIndex;
+            if (subtitleIndex.HasValue && subtitleIndex.Value >= 0)
+            {
+                selectedSubtitle = mediaStreams.FirstOrDefault(s => s.Type == MediaStreamType.Subtitle && s.Index == subtitleIndex.Value);
+            }
+
+            var selected = new[] { selectedVideo, selectedAudio, selectedSubtitle };
+            var streams = new List<PlaybackHistoryStreamInfo>();
+
+            foreach (var stream in selected)
+            {
+                if (stream is null)
+                {
+                    continue;
+                }
+
+                streams.Add(MapStream(stream, PlaybackHistoryStreamOrigin.Source));
+
+                // Delivered: same as source unless that track was transcoded.
+                var delivered = MapStream(stream, PlaybackHistoryStreamOrigin.Delivered);
+                if (transcoding is not null)
+                {
+                    if (stream.Type == MediaStreamType.Video && !transcoding.IsVideoDirect)
+                    {
+                        delivered.Width = transcoding.Width ?? delivered.Width;
+                        delivered.Height = transcoding.Height ?? delivered.Height;
+                        delivered.Codec = transcoding.VideoCodec ?? delivered.Codec;
+                        delivered.VideoRange = null; // output range isn't tracked on TranscodingInfo
+                        delivered.Bitrate = null; // per-stream output bitrate isn't tracked on TranscodingInfo
+                    }
+                    else if (stream.Type == MediaStreamType.Audio && !transcoding.IsAudioDirect)
+                    {
+                        delivered.Codec = transcoding.AudioCodec ?? delivered.Codec;
+                        delivered.Channels = transcoding.AudioChannels ?? delivered.Channels;
+                        delivered.Bitrate = null; // per-stream output bitrate isn't tracked on TranscodingInfo
+                    }
+                }
+
+                streams.Add(delivered);
+            }
+
+            return streams;
+        }
+
+        /// <summary>
+        /// Determines the session's network throughput (bits/sec): the transcode output bitrate when transcoding,
+        /// otherwise the source file bitrate, falling back to the sum of selected source stream bitrates.
+        /// </summary>
+        private static int? ComputeNetworkBitrate(TranscodingInfo transcoding, PlaybackStopInfo info, IReadOnlyList<PlaybackHistoryStreamInfo> streams)
+        {
+            if (transcoding?.Bitrate is int transcodeBitrate && transcodeBitrate > 0)
+            {
+                return transcodeBitrate;
+            }
+
+            var source = info.Item?.MediaSources?
+                .FirstOrDefault(m => string.Equals(m.Id, info.MediaSourceId, StringComparison.OrdinalIgnoreCase));
+            if (source?.Bitrate is int sourceBitrate && sourceBitrate > 0)
+            {
+                return sourceBitrate;
+            }
+
+            var summed = streams
+                .Where(s => s.Origin == PlaybackHistoryStreamOrigin.Source && s.Bitrate.HasValue)
+                .Sum(s => s.Bitrate!.Value);
+            return summed > 0 ? summed : null;
+        }
+
+        /// <summary>
+        /// Records a stopped session into the playback-history store, with accurate watch time, stream
+        /// characteristics, and network bitrate. Honors a minimum-view threshold.
+        /// </summary>
+        private async Task RecordPlaybackHistoryAsync(SessionInfo session, User user, BaseItem item, PlaybackStopInfo info, bool playedToCompletion)
+        {
+            if (info.Failed)
+            {
+                return;
+            }
+
+            var dateStopped = DateTime.UtcNow;
+            var stopPositionTicks = info.PositionTicks ?? 0;
+
+            DateTime dateStarted;
+            long startPositionTicks;
+            long playedDurationTicks;
+            if (!string.IsNullOrEmpty(info.PlaySessionId)
+                && _playbackStartState.TryRemove(info.PlaySessionId, out var startState))
+            {
+                dateStarted = startState.DateStarted;
+                startPositionTicks = startState.StartPositionTicks;
+                playedDurationTicks = AccumulatePlayed(startState, stopPositionTicks, false, dateStopped).AccumulatedPlayedTicks;
+            }
+            else
+            {
+                dateStarted = dateStopped;
+                startPositionTicks = stopPositionTicks;
+                playedDurationTicks = 0;
+            }
+
+            // Minimum-view threshold: skip noise unless the session played to completion.
+            if (!playedToCompletion && playedDurationTicks < MinRecordedSpanTicks)
+            {
+                return;
+            }
+
+            var streams = CaptureStreams(session, info);
+
+            var historyInfo = new PlaybackHistoryInfo
+            {
+                DateStarted = dateStarted,
+                DateStopped = dateStopped,
+                StartPositionTicks = startPositionTicks,
+                StopPositionTicks = stopPositionTicks,
+                RunTimeTicks = item.RunTimeTicks,
+                PlayedDurationTicks = playedDurationTicks,
+                PlayedToCompletion = playedToCompletion,
+                PlaySessionId = info.PlaySessionId,
+                MediaSourceId = info.MediaSourceId,
+                Transcoded = session.TranscodingInfo is not null,
+                Bitrate = ComputeNetworkBitrate(session.TranscodingInfo, info, streams),
+                DeviceId = session.DeviceId,
+                DeviceName = session.DeviceName,
+                ClientName = session.Client,
+                Streams = streams
+            };
+
+            try
+            {
+                await _playbackHistoryManager.RecordPlaybackAsync(user, item, historyInfo).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error recording playback history for item {ItemId}", item.Id);
+            }
         }
 
         /// <summary>

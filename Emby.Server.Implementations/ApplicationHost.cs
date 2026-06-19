@@ -517,6 +517,8 @@ namespace Emby.Server.Implementations
 
             serviceCollection.AddSingleton<IUserDataManager, UserDataManager>();
 
+            serviceCollection.AddSingleton<IPlaybackHistoryManager, PlaybackHistoryManager>();
+
             serviceCollection.AddSingleton<BaseItemRepository>();
             serviceCollection.AddSingleton<IItemRepository>(sp => sp.GetRequiredService<BaseItemRepository>());
             serviceCollection.AddSingleton<IItemQueryHelpers>(sp => sp.GetRequiredService<BaseItemRepository>());

@@ -160,6 +160,7 @@ namespace Jellyfin.Server
 
             services.AddSingleton<IActionResultExecutor<ObservableBlobActionResult>, ObservableBlobResultExecutor>();
             services.AddSingleton<IStreamObserverService, StreamObserverService>();
+            services.AddHostedService<PlaybackBandwidthRecorder>();
         }
 
         /// <summary>
