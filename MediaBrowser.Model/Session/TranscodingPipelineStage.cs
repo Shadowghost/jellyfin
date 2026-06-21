@@ -1,3 +1,5 @@
+using Jellyfin.Data.Enums;
+
 namespace MediaBrowser.Model.Session;
 
 /// <summary>
@@ -44,4 +46,17 @@ public class TranscodingPipelineStage
     /// filter graph when available.
     /// </summary>
     public string? EdgeLabel { get; set; }
+
+    /// <summary>
+    /// Gets or sets the video bit depth of the frames at this stage (for example <c>8</c> or
+    /// <c>10</c>). Only set on the video decode (source) and encode (output) stages.
+    /// </summary>
+    public int? VideoBitDepth { get; set; }
+
+    /// <summary>
+    /// Gets or sets the video range (<c>SDR</c>, <c>HDR10</c>, Dolby Vision, ...) of the frames at
+    /// this stage. Only set on the video decode (source) and encode (output) stages; comparing the
+    /// two reveals whether tone mapping (for example HDR10 -> SDR) takes place.
+    /// </summary>
+    public VideoRangeType? VideoRange { get; set; }
 }
