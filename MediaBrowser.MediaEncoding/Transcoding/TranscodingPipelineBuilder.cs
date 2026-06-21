@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Model.Session;
 
@@ -199,7 +200,9 @@ public static partial class TranscodingPipelineBuilder
             Framework = framework,
             Name = name,
             Detail = GetCodecDisplayName(sourceCodec),
-            IsHardware = framework != HardwareFramework.Software
+            IsHardware = framework != HardwareFramework.Software,
+            VideoBitDepth = state.VideoStream?.BitDepth,
+            VideoRange = state.VideoStream?.VideoRangeType
         });
     }
 
@@ -312,7 +315,9 @@ public static partial class TranscodingPipelineBuilder
                     Detail = GetCodecDisplayName(videoDecoder),
                     IsHardware = framework != HardwareFramework.Software,
                     // The data leaving the decoder is the first main-path filter's input pad.
-                    EdgeLabel = GetSeedInputLabel(orderedFilters, videoDecoderId)
+                    EdgeLabel = GetSeedInputLabel(orderedFilters, videoDecoderId),
+                    VideoBitDepth = state.VideoStream?.BitDepth,
+                    VideoRange = state.VideoStream?.VideoRangeType
                 });
             }
 
@@ -352,7 +357,9 @@ public static partial class TranscodingPipelineBuilder
                 Framework = encoderFramework,
                 Name = videoEncoder,
                 Detail = GetCodecDisplayName(state.ActualOutputVideoCodec) ?? GetCodecDisplayName(videoEncoder),
-                IsHardware = encoderFramework != HardwareFramework.Software
+                IsHardware = encoderFramework != HardwareFramework.Software,
+                VideoBitDepth = GetTargetVideoBitDepth(state),
+                VideoRange = GetTargetVideoRange(state, stages)
             });
         }
 
@@ -578,7 +585,9 @@ public static partial class TranscodingPipelineBuilder
             Framework = framework,
             Name = encoder,
             Detail = GetCodecDisplayName(state.ActualOutputVideoCodec),
-            IsHardware = framework != HardwareFramework.Software
+            IsHardware = framework != HardwareFramework.Software,
+            VideoBitDepth = GetTargetVideoBitDepth(state),
+            VideoRange = GetTargetVideoRange(state, stages)
         });
     }
 
@@ -712,6 +721,31 @@ public static partial class TranscodingPipelineBuilder
         }
 
         return null;
+    }
+
+    private static int? GetTargetVideoBitDepth(EncodingJobInfo state)
+        => (state.BaseRequest is null ? null : state.GetRequestedVideoBitDepth(state.ActualOutputVideoCodec))
+            ?? state.VideoStream?.BitDepth;
+
+    // The negotiated output range, sent as-is - the client decides how to present it (Unknown is
+    // simply not displayed). Requires a BaseRequest to resolve. When the request doesn't pin an
+    // explicit output range (the common case), it is inferred from the pipeline: a tone map collapses
+    // HDR to SDR, otherwise the source range is preserved.
+    private static VideoRangeType? GetTargetVideoRange(EncodingJobInfo state, IEnumerable<TranscodingPipelineStage> stages)
+    {
+        if (state.BaseRequest is null)
+        {
+            return null;
+        }
+
+        var requested = state.TargetVideoRangeType;
+        if (requested != VideoRangeType.Unknown)
+        {
+            return requested;
+        }
+
+        var tonemapped = stages.Any(s => s.Type == TranscodeStageType.ToneMap);
+        return tonemapped ? VideoRangeType.SDR : state.VideoStream?.VideoRangeType;
     }
 
     private static string? GetToneMapDetail(string filterArgs)

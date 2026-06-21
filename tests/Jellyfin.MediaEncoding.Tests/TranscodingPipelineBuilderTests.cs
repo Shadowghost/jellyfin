@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.MediaEncoding.Transcoding;
 using MediaBrowser.Model.Entities;
@@ -141,6 +142,70 @@ public class TranscodingPipelineBuilderTests
         var stages = result.Stages!.ToList();
         Assert.DoesNotContain(stages, s => s.Type == TranscodeStageType.HardwareUpload);
         Assert.DoesNotContain(stages, s => s.Type == TranscodeStageType.HardwareDownload);
+    }
+
+    [Fact]
+    public void Build_SurfacesSourceVideoRangeAndBitDepth_OnDecodeAndEncodeStages()
+    {
+        var state = CreateVideoState("hevc", "hevc");
+        // A 4K HEVC HDR10 10-bit source (HDR10 is derived from the SMPTE 2084 transfer).
+        state.VideoStream!.BitDepth = 10;
+        state.VideoStream!.ColorTransfer = "smpte2084";
+
+        var result = TranscodingPipelineBuilder.Build(state, "-c:v hevc -i input.mkv -c:v hevc_qsv out.ts");
+
+        Assert.NotNull(result);
+        var stages = result.Stages!.ToList();
+
+        // The decode stage reports the source format so the graph can show "10-bit HDR10".
+        var decode = stages.Single(s => s.Type == TranscodeStageType.Decode);
+        Assert.Equal(10, decode.VideoBitDepth);
+        Assert.Equal(VideoRangeType.HDR10, decode.VideoRange);
+
+        // With no requested bit-depth cap the encode keeps the source depth (ffmpeg preserves it).
+        var encode = stages.Single(s => s.Type == TranscodeStageType.Encode);
+        Assert.Equal(10, encode.VideoBitDepth);
+    }
+
+    [Fact]
+    public void Build_InfersSdrOutputRange_WhenToneMapping()
+    {
+        var state = new EncodingJobInfo(TranscodingJobType.Progressive)
+        {
+            VideoStream = new MediaStream { Type = MediaStreamType.Video, Codec = "hevc", BitDepth = 10, ColorTransfer = "smpte2084" },
+            OutputVideoCodec = "hevc",
+            BaseRequest = new BaseEncodingJobOptions()
+        };
+
+        // HDR10 source tone mapped down to SDR via an OpenCL tone map filter.
+        const string Args = "-hwaccel qsv -c:v hevc_qsv -i input.mkv "
+            + "-vf \"vpp_qsv=w=640:h=360,tonemap_opencl=tonemap=hable:format=nv12\" -c:v hevc_qsv out.ts";
+
+        var result = TranscodingPipelineBuilder.Build(state, Args);
+
+        Assert.NotNull(result);
+        var stages = result.Stages!.ToList();
+
+        Assert.Equal(VideoRangeType.HDR10, stages.Single(s => s.Type == TranscodeStageType.Decode).VideoRange);
+        Assert.Equal(VideoRangeType.SDR, stages.Single(s => s.Type == TranscodeStageType.Encode).VideoRange);
+    }
+
+    [Fact]
+    public void Build_PreservesSourceOutputRange_WhenNotToneMapping()
+    {
+        var state = new EncodingJobInfo(TranscodingJobType.Progressive)
+        {
+            VideoStream = new MediaStream { Type = MediaStreamType.Video, Codec = "hevc", BitDepth = 10, ColorTransfer = "smpte2084" },
+            OutputVideoCodec = "hevc",
+            BaseRequest = new BaseEncodingJobOptions()
+        };
+
+        // A plain scale (no tone map) keeps the HDR10 range on the output.
+        var result = TranscodingPipelineBuilder.Build(state, "-c:v hevc -i input.mkv -vf \"scale=1280:720\" -c:v hevc_qsv out.ts");
+
+        Assert.NotNull(result);
+        var encode = result.Stages!.Single(s => s.Type == TranscodeStageType.Encode);
+        Assert.Equal(VideoRangeType.HDR10, encode.VideoRange);
     }
 
     [Fact]
