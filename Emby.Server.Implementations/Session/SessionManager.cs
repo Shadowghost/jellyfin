@@ -1102,6 +1102,9 @@ namespace Emby.Server.Implementations.Session
 
             session.PlaylistItemId = info.PlaylistItemId;
 
+            var transcodingInfo = session.TranscodingInfo;
+            var capturedStreams = CaptureStreams(session, info);
+
             RemoveNowPlayingItem(session);
 
             var users = GetUsers(session);
@@ -1118,7 +1121,7 @@ namespace Emby.Server.Implementations.Session
                 var primaryUser = users.FirstOrDefault();
                 if (primaryUser is not null)
                 {
-                    await RecordPlaybackHistoryAsync(session, primaryUser, libraryItem, info, playedToCompletion).ConfigureAwait(false);
+                    await RecordPlaybackHistoryAsync(session, primaryUser, libraryItem, info, playedToCompletion, transcodingInfo, capturedStreams).ConfigureAwait(false);
                 }
             }
 
@@ -1287,14 +1290,14 @@ namespace Emby.Server.Implementations.Session
                         delivered.Width = transcoding.Width ?? delivered.Width;
                         delivered.Height = transcoding.Height ?? delivered.Height;
                         delivered.Codec = transcoding.VideoCodec ?? delivered.Codec;
-                        delivered.VideoRange = null; // output range isn't tracked on TranscodingInfo
-                        delivered.Bitrate = null; // per-stream output bitrate isn't tracked on TranscodingInfo
+                        delivered.VideoRange = GetDeliveredVideoRange(transcoding) ?? delivered.VideoRange;
+                        delivered.Bitrate = transcoding.VideoBitrate ?? delivered.Bitrate;
                     }
                     else if (stream.Type == MediaStreamType.Audio && !transcoding.IsAudioDirect)
                     {
                         delivered.Codec = transcoding.AudioCodec ?? delivered.Codec;
                         delivered.Channels = transcoding.AudioChannels ?? delivered.Channels;
-                        delivered.Bitrate = null; // per-stream output bitrate isn't tracked on TranscodingInfo
+                        delivered.Bitrate = transcoding.AudioBitrate ?? delivered.Bitrate;
                     }
                 }
 
@@ -1302,6 +1305,20 @@ namespace Emby.Server.Implementations.Session
             }
 
             return streams;
+        }
+
+        /// <summary>
+        /// Gets the delivered video range (post-transcode) from the transcoding pipeline's video encode
+        /// stage, as the enum member name to match the source stream's <see cref="VideoRangeType"/>.
+        /// </summary>
+        private static string GetDeliveredVideoRange(TranscodingInfo transcoding)
+        {
+            var range = transcoding.Pipeline?.Stages?
+                .FirstOrDefault(s => s.Type == TranscodeStageType.Encode
+                    && string.Equals(s.MediaType, "Video", StringComparison.Ordinal))?
+                .VideoRange;
+            // Mirror the source side (MapStream), which stores null rather than the Unknown sentinel.
+            return range is null or VideoRangeType.Unknown ? null : range.Value.ToString();
         }
 
         /// <summary>
@@ -1332,7 +1349,7 @@ namespace Emby.Server.Implementations.Session
         /// Records a stopped session into the playback-history store, with accurate watch time, stream
         /// characteristics, and network bitrate. Honors a minimum-view threshold.
         /// </summary>
-        private async Task RecordPlaybackHistoryAsync(SessionInfo session, User user, BaseItem item, PlaybackStopInfo info, bool playedToCompletion)
+        private async Task RecordPlaybackHistoryAsync(SessionInfo session, User user, BaseItem item, PlaybackStopInfo info, bool playedToCompletion, TranscodingInfo transcodingInfo, IReadOnlyList<PlaybackHistoryStreamInfo> streams)
         {
             if (info.Failed)
             {
@@ -1365,8 +1382,6 @@ namespace Emby.Server.Implementations.Session
                 return;
             }
 
-            var streams = CaptureStreams(session, info);
-
             var historyInfo = new PlaybackHistoryInfo
             {
                 DateStarted = dateStarted,
@@ -1378,8 +1393,8 @@ namespace Emby.Server.Implementations.Session
                 PlayedToCompletion = playedToCompletion,
                 PlaySessionId = info.PlaySessionId,
                 MediaSourceId = info.MediaSourceId,
-                Transcoded = session.TranscodingInfo is not null,
-                Bitrate = ComputeNetworkBitrate(session.TranscodingInfo, info, streams),
+                Transcoded = transcodingInfo is not null,
+                Bitrate = ComputeNetworkBitrate(transcodingInfo, info, streams),
                 DeviceId = session.DeviceId,
                 DeviceName = session.DeviceName,
                 ClientName = session.Client,
