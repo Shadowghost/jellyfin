@@ -88,9 +88,11 @@ public class BackfillPlaybackHistory : IAsyncMigrationRoutine
             }
 
             // Title/runtime snapshots for the involved items (missing => deleted item).
+            // WhereOneOrMany binds the id set as a single json_each parameter; a raw Contains on this
+            // (potentially library-sized) list would emit one SQL variable per id and overflow SQLite's limit.
             var itemIdList = itemIds.ToList();
             var baseInfo = (await dbContext.BaseItems
-                    .Where(b => itemIdList.Contains(b.Id))
+                    .WhereOneOrMany(itemIdList, b => b.Id)
                     .Select(b => new { b.Id, b.Name, b.RunTimeTicks, b.Type })
                     .ToListAsync(cancellationToken)
                     .ConfigureAwait(false))
