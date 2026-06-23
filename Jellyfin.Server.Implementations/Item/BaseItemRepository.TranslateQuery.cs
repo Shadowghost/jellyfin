@@ -923,8 +923,9 @@ public sealed partial class BaseItemRepository
         {
             if (filter.IsUnaired.Value)
             {
+                // An unaired item is one whose air date is still in the future.
                 baseQuery = baseQuery
-                    .Where(e => e.PremiereDate >= now);
+                    .Where(e => e.PremiereDate > now);
             }
             else
             {
