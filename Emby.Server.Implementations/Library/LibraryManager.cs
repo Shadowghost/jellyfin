@@ -89,6 +89,8 @@ namespace Emby.Server.Implementations.Library
         private readonly FastConcurrentLru<Guid, BaseItem> _cache;
         private readonly DotIgnoreIgnoreRule _dotIgnoreIgnoreRule;
         private readonly IMediaStreamRepository _mediaStreamRepository;
+        private readonly Lazy<IExternalDataManager> _externalDataManagerFactory;
+        private readonly Lazy<IVideoVersionManager> _videoVersionManagerFactory;
 
         /// <summary>
         /// The _root folder sync lock.
@@ -132,6 +134,8 @@ namespace Emby.Server.Implementations.Library
         /// <param name="pathManager">The path manager.</param>
         /// <param name="dotIgnoreIgnoreRule">The .ignore rule handler.</param>
         /// <param name="mediaStreamRepository">The media stream repository.</param>
+        /// <param name="externalDataManagerFactory">The external data manager (lazy, to break the DI cycle through ChapterManager).</param>
+        /// <param name="videoVersionManagerFactory">The video version manager (lazy, to break the DI cycle through LibraryManager).</param>
         public LibraryManager(
             IServerApplicationHost appHost,
             ILoggerFactory loggerFactory,
@@ -155,7 +159,9 @@ namespace Emby.Server.Implementations.Library
             IPeopleRepository peopleRepository,
             IPathManager pathManager,
             DotIgnoreIgnoreRule dotIgnoreIgnoreRule,
-            IMediaStreamRepository mediaStreamRepository)
+            IMediaStreamRepository mediaStreamRepository,
+            Lazy<IExternalDataManager> externalDataManagerFactory,
+            Lazy<IVideoVersionManager> videoVersionManagerFactory)
         {
             _appHost = appHost;
             _logger = loggerFactory.CreateLogger<LibraryManager>();
@@ -186,6 +192,8 @@ namespace Emby.Server.Implementations.Library
             _configurationManager.ConfigurationUpdated += ConfigurationUpdated;
 
             _mediaStreamRepository = mediaStreamRepository;
+            _externalDataManagerFactory = externalDataManagerFactory;
+            _videoVersionManagerFactory = videoVersionManagerFactory;
 
             RecordConfigurationValues(_configurationManager.Configuration);
         }
@@ -396,6 +404,12 @@ namespace Emby.Server.Implementations.Library
                 }
             }
 
+            var externalDataManager = _externalDataManagerFactory.Value;
+            foreach (var (item, _, _) in pathMaps)
+            {
+                externalDataManager.DeleteExternalItemFiles(item);
+            }
+
             _persistenceService.DeleteItem([.. pathMaps.Select(f => f.Item.Id)]);
         }
 
@@ -504,17 +518,9 @@ namespace Emby.Server.Implementations.Library
 
                     newPrimary.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, CancellationToken.None).GetAwaiter().GetResult();
 
-                    // Re-route playlist/collection references from deleted primary to new primary
-                    RerouteLinkedChildReferencesAsync(video.Id, newPrimary.Id).GetAwaiter().GetResult();
-
-                    // Update remaining alternates to point to new primary
-                    foreach (var alternate in alternateVersions.Skip(1))
-                    {
-                        alternate.SetPrimaryVersionId(newPrimary.Id);
-                        // Only set OwnerId for local alternates; linked alternates are independent items
-                        alternate.OwnerId = localAlternateIds.Contains(alternate.Id) ? newPrimary.Id : Guid.Empty;
-                        alternate.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, CancellationToken.None).GetAwaiter().GetResult();
-                    }
+                    // Re-point the remaining alternates at the new primary and re-route
+                    // playlist/collection references from the deleted primary.
+                    _videoVersionManagerFactory.Value.ReassignAlternatesAsync(video, newPrimary, CancellationToken.None).GetAwaiter().GetResult();
                 }
             }
             else if (item is Video alternateVideo && alternateVideo.PrimaryVersionId.HasValue)
@@ -575,6 +581,13 @@ namespace Emby.Server.Implementations.Library
             }
 
             item.SetParent(null);
+
+            var externalDataManager = _externalDataManagerFactory.Value;
+            externalDataManager.DeleteExternalItemFiles(item);
+            foreach (var child in children)
+            {
+                externalDataManager.DeleteExternalItemFiles(child);
+            }
 
             _persistenceService.DeleteItem([item.Id, .. children.Select(f => f.Id)]);
             _cache.TryRemove(item.Id, out _);
@@ -1987,7 +2000,8 @@ namespace Emby.Server.Implementations.Library
                 query.TopParentIds.Length == 0 &&
                 string.IsNullOrEmpty(query.AncestorWithPresentationUniqueKey) &&
                 string.IsNullOrEmpty(query.SeriesPresentationUniqueKey) &&
-                query.ItemIds.Length == 0)
+                query.ItemIds.Length == 0 &&
+                query.OwnerIds.Length == 0)
             {
                 var userViews = UserViewManager.GetUserViews(new UserViewQuery
                 {
@@ -2198,10 +2212,13 @@ namespace Emby.Server.Implementations.Library
         {
             ArgumentNullException.ThrowIfNull(video);
 
-            var linkedIds = _linkedChildrenService.GetLinkedChildrenIds(video.Id, (int)MediaBrowser.Controller.Entities.LinkedChildType.LinkedAlternateVersion);
+            var linkedIds = _linkedChildrenService.GetLinkedChildrenIds(video.Id, (int)MediaBrowser.Controller.Entities.LinkedChildType.LinkedAlternateVersion)
+                .Concat(_linkedChildrenService.GetLinkedChildrenIds(video.Id, (int)MediaBrowser.Controller.Entities.LinkedChildType.AutoLinkedAlternateVersion))
+                .ToList();
             if (linkedIds.Count > 0)
             {
                 return linkedIds
+                    .Distinct()
                     .Select(id => GetItemById(id))
                     .Where(i => i is not null)
                     .OfType<Video>()
@@ -2432,8 +2449,14 @@ namespace Emby.Server.Implementations.Library
             var outdated = forceUpdate
                 ? item.ImageInfos.Where(i => i.Path is not null).ToArray()
                 : item.ImageInfos.Where(ImageNeedsRefresh).ToArray();
-            // Skip image processing if current or live tv source
-            if (outdated.Length == 0 || item.SourceType != SourceType.Library)
+
+            var parentItem = item.GetParent();
+            var isLiveTvShow = item.SourceType != SourceType.Library &&
+                               parentItem is not null &&
+                               parentItem.SourceType != SourceType.Library; // not a channel
+
+            // Skip image processing if current or live tv show
+            if (outdated.Length == 0 || isLiveTvShow)
             {
                 RegisterItem(item);
                 return;
@@ -3392,6 +3415,12 @@ namespace Emby.Server.Implementations.Library
         public IReadOnlyList<string> GetPeopleNames(InternalPeopleQuery query)
         {
             return _peopleRepository.GetPeopleNames(query);
+        }
+
+        /// <inheritdoc/>
+        public IReadOnlyDictionary<Guid, IReadOnlyList<string>> GetPeopleNamesByItems(IReadOnlyList<Guid> itemIds, IReadOnlyList<string> personTypes)
+        {
+            return _peopleRepository.GetPeopleNamesByItems(itemIds, personTypes);
         }
 
         public void UpdatePeople(BaseItem item, List<PersonInfo> people)

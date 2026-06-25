@@ -2,6 +2,7 @@ using System.IO;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Api.Helpers.DynamicStreamObserver;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Extensions;
 using MediaBrowser.Common.Net;
@@ -109,7 +110,7 @@ public class AudioHelper
 
             var liveStream = new ProgressiveFileStream(liveStreamInfo.GetStream());
             // TODO (moved from MediaBrowser.Api): Don't hardcode contentType
-            return new FileStreamResult(liveStream, MimeTypes.GetMimeType("file.ts"));
+            return new ObservableBlobActionResult(liveStream, MimeTypes.GetMimeType("file.ts"), streamingRequest.Id);
         }
 
         // Static remote stream
@@ -134,12 +135,13 @@ public class AudioHelper
             if (state.MediaSource.IsInfiniteStream)
             {
                 var stream = new ProgressiveFileStream(state.MediaPath, null, _transcodeManager);
-                return new FileStreamResult(stream, contentType);
+                return new ObservableBlobActionResult(stream, contentType, streamingRequest.Id);
             }
 
             return FileStreamResponseHelpers.GetStaticFileResult(
                 state.MediaPath,
-                contentType);
+                contentType,
+                streamingRequest.Id);
         }
 
         // Need to start ffmpeg (because media can't be returned directly)

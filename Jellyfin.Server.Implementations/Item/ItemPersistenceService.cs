@@ -520,7 +520,9 @@ public class ItemPersistenceService : IItemPersistenceService
             if (item.Item is Video video)
             {
                 var existingLinkedChildren = (allLinkedChildrenByParent.GetValueOrDefault(video.Id) ?? new List<LinkedChildEntity>())
-                    .Where(e => (int)e.ChildType == 2 || (int)e.ChildType == 3)
+                    .Where(e => e.ChildType == DbLinkedChildType.LocalAlternateVersion
+                        || e.ChildType == DbLinkedChildType.LinkedAlternateVersion
+                        || e.ChildType == DbLinkedChildType.AutoLinkedAlternateVersion)
                     .ToList();
 
                 var newLinkedChildren = new List<(Guid ChildId, LinkedChildType Type)>();
@@ -552,14 +554,19 @@ public class ItemPersistenceService : IItemPersistenceService
                     {
                         if (linkedChild.ItemId.HasValue && !linkedChild.ItemId.Value.IsEmpty())
                         {
-                            newLinkedChildren.Add((linkedChild.ItemId.Value, LinkedChildType.LinkedAlternateVersion));
+                            var linkType = linkedChild.Type == LinkedChildType.AutoLinkedAlternateVersion
+                                ? LinkedChildType.AutoLinkedAlternateVersion
+                                : LinkedChildType.LinkedAlternateVersion;
+                            newLinkedChildren.Add((linkedChild.ItemId.Value, linkType));
                         }
                     }
                 }
 
+                // Deduplicate; local (file-based) relationships take priority over linked (user-merged)
+                // ones, matching the LinkedChildren migration.
                 newLinkedChildren = newLinkedChildren
                     .GroupBy(c => c.ChildId)
-                    .Select(g => g.Last())
+                    .Select(g => g.OrderBy(c => c.Type == LinkedChildType.LocalAlternateVersion ? 0 : 1).First())
                     .ToList();
 
                 var childIdsToCheck = newLinkedChildren.Select(c => c.ChildId).ToList();

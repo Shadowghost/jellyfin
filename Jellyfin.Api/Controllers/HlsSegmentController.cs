@@ -69,7 +69,7 @@ public class HlsSegmentController : BaseJellyfinApiController
             return BadRequest("Invalid segment.");
         }
 
-        return FileStreamResponseHelpers.GetStaticFileResult(file, MimeTypes.GetMimeType(file));
+        return FileStreamResponseHelpers.GetStaticFileResult(file, MimeTypes.GetMimeType(file), Guid.Empty);
     }
 
     /// <summary>
@@ -96,7 +96,7 @@ public class HlsSegmentController : BaseJellyfinApiController
             return BadRequest("Invalid segment.");
         }
 
-        return GetFileResult(file, file);
+        return GetFileResult(file, file, Guid.Empty);
     }
 
     /// <summary>
@@ -170,10 +170,10 @@ public class HlsSegmentController : BaseJellyfinApiController
 
         return playlistPath is null
             ? NotFound("Hls segment not found.")
-            : GetFileResult(file, playlistPath);
+            : GetFileResult(file, playlistPath, Guid.Empty);
     }
 
-    private ActionResult GetFileResult(string path, string playlistPath)
+    private ActionResult GetFileResult(string path, string playlistPath, Guid itemId)
     {
         var transcodingJob = _transcodeManager.OnTranscodeBeginRequest(playlistPath, TranscodingJobType.Hls);
 
@@ -187,6 +187,6 @@ public class HlsSegmentController : BaseJellyfinApiController
             return Task.CompletedTask;
         });
 
-        return FileStreamResponseHelpers.GetStaticFileResult(path, MimeTypes.GetMimeType(path));
+        return FileStreamResponseHelpers.GetStaticFileResult(path, MimeTypes.GetMimeType(path), itemId);
     }
 }

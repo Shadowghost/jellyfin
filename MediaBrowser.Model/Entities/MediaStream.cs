@@ -644,13 +644,32 @@ namespace MediaBrowser.Model.Entities
             }
         }
 
+        [JsonIgnore]
+        public bool IsVobSubSubtitleStream
+        {
+            get
+            {
+                if (Type != MediaStreamType.Subtitle)
+                {
+                    return false;
+                }
+
+                if (string.IsNullOrEmpty(Codec) && !IsExternal)
+                {
+                    return false;
+                }
+
+                return IsVobSubFormat(Codec);
+            }
+        }
+
         /// <summary>
         /// Gets a value indicating whether this is a subtitle steam that is extractable by ffmpeg.
         /// All text-based and pgs subtitles can be extracted.
         /// </summary>
         /// <value><c>true</c> if this is a extractable subtitle steam otherwise, <c>false</c>.</value>
         [JsonIgnore]
-        public bool IsExtractableSubtitleStream => IsTextSubtitleStream || IsPgsSubtitleStream;
+        public bool IsExtractableSubtitleStream => IsTextSubtitleStream || IsPgsSubtitleStream || IsVobSubSubtitleStream;
 
         /// <summary>
         /// Gets or sets a value indicating whether [supports external stream].
@@ -682,7 +701,11 @@ namespace MediaBrowser.Model.Entities
         /// <value><c>true</c> if this instance is anamorphic; otherwise, <c>false</c>.</value>
         public bool? IsAnamorphic { get; set; }
 
-        internal string GetResolutionText()
+        /// <summary>
+        /// Gets a standard resolution label (e.g. 720p, 1080p, 4K) derived from the stream dimensions.
+        /// </summary>
+        /// <returns>The resolution label, or <c>null</c> if the dimensions are unknown.</returns>
+        public string GetResolutionText()
         {
             if (!Width.HasValue || !Height.HasValue)
             {
@@ -728,6 +751,7 @@ namespace MediaBrowser.Model.Entities
             return codec.Contains("microdvd", StringComparison.OrdinalIgnoreCase)
                    || (!codec.Contains("pgs", StringComparison.OrdinalIgnoreCase)
                        && !codec.Contains("dvdsub", StringComparison.OrdinalIgnoreCase)
+                       && !codec.Contains("vobsub", StringComparison.OrdinalIgnoreCase)
                        && !codec.Contains("dvbsub", StringComparison.OrdinalIgnoreCase)
                        && !string.Equals(codec, "sup", StringComparison.OrdinalIgnoreCase)
                        && !string.Equals(codec, "sub", StringComparison.OrdinalIgnoreCase));
@@ -739,6 +763,14 @@ namespace MediaBrowser.Model.Entities
 
             return codec.Contains("pgs", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(codec, "sup", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool IsVobSubFormat(string format)
+        {
+            string codec = format ?? string.Empty;
+
+            return codec.Contains("dvdsub", StringComparison.OrdinalIgnoreCase)
+                   || codec.Contains("vobsub", StringComparison.OrdinalIgnoreCase);
         }
 
         public bool SupportsSubtitleConversionTo(string toCodec)
