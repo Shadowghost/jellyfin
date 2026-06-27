@@ -354,6 +354,10 @@ namespace Emby.Server.Implementations.Session
                     _activeLiveStreamSessions.TryRemove(liveStreamId, out _);
                 }
             }
+            else
+            {
+                liveStreamNeedsToBeClosed = true;
+            }
 
             if (liveStreamNeedsToBeClosed)
             {
