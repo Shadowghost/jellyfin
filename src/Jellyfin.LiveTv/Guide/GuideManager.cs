@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
@@ -27,6 +29,7 @@ public class GuideManager : IGuideManager
     private const int MaxGuideDays = 14;
     private const string EtagKey = "ProgramEtag";
     private const string ExternalServiceTag = "ExternalServiceId";
+    private const int ChannelSaveBatchSize = 100;
 
     private static readonly ParallelOptions _cacheParallelOptions = new() { MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, 10) };
 
@@ -40,6 +43,7 @@ public class GuideManager : IGuideManager
     private readonly IRecordingsManager _recordingsManager;
     private readonly ISchedulesDirectService _schedulesDirectService;
     private readonly LiveTvDtoService _tvDtoService;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     /// <summary>
     /// Amount of days images are pre-cached from external sources.
@@ -59,6 +63,7 @@ public class GuideManager : IGuideManager
     /// <param name="recordingsManager">The <see cref="IRecordingsManager"/>.</param>
     /// <param name="schedulesDirectService">The <see cref="ISchedulesDirectService"/>.</param>
     /// <param name="tvDtoService">The <see cref="LiveTvDtoService"/>.</param>
+    /// <param name="httpClientFactory">The <see cref="IHttpClientFactory"/>.</param>
     public GuideManager(
         ILogger<GuideManager> logger,
         IConfigurationManager config,
@@ -69,7 +74,8 @@ public class GuideManager : IGuideManager
         ITunerHostManager tunerHostManager,
         IRecordingsManager recordingsManager,
         ISchedulesDirectService schedulesDirectService,
-        LiveTvDtoService tvDtoService)
+        LiveTvDtoService tvDtoService,
+        IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
         _config = config;
@@ -81,6 +87,7 @@ public class GuideManager : IGuideManager
         _recordingsManager = recordingsManager;
         _schedulesDirectService = schedulesDirectService;
         _tvDtoService = tvDtoService;
+        _httpClientFactory = httpClientFactory;
     }
 
     /// <inheritdoc />
@@ -181,6 +188,8 @@ public class GuideManager : IGuideManager
             .ToList();
 
         var list = new List<LiveTvChannel>();
+        var channelSources = new List<(LiveTvChannel Channel, ChannelInfo Info)>();
+        var changedChannels = new HashSet<Guid>();
 
         var numComplete = 0;
         var parentFolder = _liveTvManager.GetInternalLiveTvFolder(cancellationToken);
@@ -191,9 +200,14 @@ public class GuideManager : IGuideManager
 
             try
             {
-                var item = await GetChannel(channelInfo.Item2, channelInfo.Item1, parentFolder, cancellationToken).ConfigureAwait(false);
+                var (item, changed) = await GetChannel(channelInfo.Item2, channelInfo.Item1, parentFolder, cancellationToken).ConfigureAwait(false);
 
                 list.Add(item);
+                channelSources.Add((item, channelInfo.Item2));
+                if (changed)
+                {
+                    changedChannels.Add(item.Id);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -211,11 +225,53 @@ public class GuideManager : IGuideManager
             progress.Report((5 * percent) + 10);
         }
 
+        // Detect and apply channel icon changes in parallel.
+        var iconChanged = new ConcurrentBag<Guid>();
+        var iconOptions = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, 6),
+            CancellationToken = cancellationToken
+        };
+
+        await Parallel.ForEachAsync(
+            channelSources,
+            iconOptions,
+            async (source, ct) =>
+            {
+                try
+                {
+                    if (await LiveTvChannelImageHelper.UpdateChannelImageIfNeededAsync(
+                            source.Channel,
+                            source.Info.ImagePath,
+                            source.Info.ImageUrl,
+                            _httpClientFactory,
+                            _logger,
+                            ct).ConfigureAwait(false))
+                    {
+                        iconChanged.Add(source.Channel.Id);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error updating icon for channel {Name}", source.Channel.Name);
+                }
+            }).ConfigureAwait(false);
+
+        foreach (var id in iconChanged)
+        {
+            changedChannels.Add(id);
+        }
+
         progress.Report(15);
 
         numComplete = 0;
         var programIds = new List<Guid>();
         var channels = new List<Guid>();
+        var channelsToSave = new List<BaseItem>();
 
         var guideDays = GetGuideDays();
 
@@ -296,6 +352,12 @@ public class GuideManager : IGuideManager
                     await PreCacheImages(updatedPrograms, maxCacheDate).ConfigureAwait(false);
                 }
 
+                var flagsChanged = currentChannel.IsMovie != isMovie
+                    || currentChannel.IsNews != isNews
+                    || currentChannel.IsSports != isSports
+                    || currentChannel.IsSeries != isSeries
+                    || (isKids && !currentChannel.Tags.Contains("Kids", StringComparer.OrdinalIgnoreCase));
+
                 currentChannel.IsMovie = isMovie;
                 currentChannel.IsNews = isNews;
                 currentChannel.IsSports = isSports;
@@ -306,13 +368,22 @@ public class GuideManager : IGuideManager
                     currentChannel.AddTag("Kids");
                 }
 
-                await currentChannel.UpdateToRepositoryAsync(ItemUpdateType.MetadataImport, cancellationToken).ConfigureAwait(false);
-                await currentChannel.RefreshMetadata(
-                    new MetadataRefreshOptions(new DirectoryService(_fileSystem))
-                    {
-                        ForceSave = true
-                    },
-                    cancellationToken).ConfigureAwait(false);
+                // Persisting the channel and re-running metadata providers is expensive, so only do it when needed.
+                if (changedChannels.Contains(currentChannel.Id))
+                {
+                    // The channel metadata or its icon changed: run a full refresh.
+                    await currentChannel.RefreshMetadata(
+                        new MetadataRefreshOptions(new DirectoryService(_fileSystem))
+                        {
+                            ForceSave = true
+                        },
+                        cancellationToken).ConfigureAwait(false);
+                }
+                else if (flagsChanged)
+                {
+                    // Only the derived category flags changed.
+                    channelsToSave.Add(currentChannel);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -323,14 +394,47 @@ public class GuideManager : IGuideManager
                 _logger.LogError(ex, "Error getting programs for channel {Name}", currentChannel.Name);
             }
 
+            if (channelsToSave.Count >= ChannelSaveBatchSize)
+            {
+                await FlushChannelUpdatesAsync(channelsToSave, parentFolder, cancellationToken).ConfigureAwait(false);
+            }
+
             numComplete++;
             double percent = numComplete / (double)allChannelsList.Count;
 
             progress.Report((85 * percent) + 15);
         }
 
+        // Flush any channels left over from the last, partial batch.
+        await FlushChannelUpdatesAsync(channelsToSave, parentFolder, cancellationToken).ConfigureAwait(false);
+
         progress.Report(100);
         return new Tuple<List<Guid>, List<Guid>>(channels, programIds);
+    }
+
+    private async Task FlushChannelUpdatesAsync(List<BaseItem> channelsToSave, BaseItem parentFolder, CancellationToken cancellationToken)
+    {
+        if (channelsToSave.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await _libraryManager.UpdateItemsAsync(channelsToSave, parentFolder, ItemUpdateType.MetadataImport, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error saving {Count} updated Live TV channels", channelsToSave.Count);
+        }
+        finally
+        {
+            channelsToSave.Clear();
+        }
     }
 
     private void CleanDatabase(Guid[] currentIdList, BaseItemKind[] validTypes, IProgress<double> progress, CancellationToken cancellationToken)
@@ -377,7 +481,7 @@ public class GuideManager : IGuideManager
         }
     }
 
-    private async Task<LiveTvChannel> GetChannel(
+    private async Task<(LiveTvChannel Item, bool Changed)> GetChannel(
         ChannelInfo channelInfo,
         string serviceName,
         BaseItem parentFolder,
@@ -449,11 +553,6 @@ public class GuideManager : IGuideManager
 
         item.Name = channelInfo.Name;
 
-        if (LiveTvChannelImageHelper.UpdateChannelImageIfNeeded(item, channelInfo.ImagePath, channelInfo.ImageUrl))
-        {
-            forceUpdate = true;
-        }
-
         if (isNew)
         {
             _libraryManager.CreateItem(item, parentFolder);
@@ -463,7 +562,7 @@ public class GuideManager : IGuideManager
             await _libraryManager.UpdateItemAsync(item, parentFolder, ItemUpdateType.MetadataImport, cancellationToken).ConfigureAwait(false);
         }
 
-        return item;
+        return (item, isNew || forceUpdate);
     }
 
     private (LiveTvProgram Item, bool IsNew, bool IsUpdated) GetProgram(

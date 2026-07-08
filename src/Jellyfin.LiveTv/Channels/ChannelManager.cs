@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -52,6 +53,7 @@ namespace Jellyfin.LiveTv.Channels
         private readonly IFileSystem _fileSystem;
         private readonly IProviderManager _providerManager;
         private readonly IMemoryCache _memoryCache;
+        private readonly IHttpClientFactory _httpClientFactory;
         private readonly AsyncNonKeyedLocker _resourcePool = new(1);
         private readonly JsonSerializerOptions _jsonOptions = JsonDefaults.Options;
         private bool _disposed = false;
@@ -68,6 +70,7 @@ namespace Jellyfin.LiveTv.Channels
         /// <param name="userDataManager">The user data manager.</param>
         /// <param name="providerManager">The provider manager.</param>
         /// <param name="memoryCache">The memory cache.</param>
+        /// <param name="httpClientFactory">The HTTP client factory.</param>
         /// <param name="channels">The channels.</param>
         public ChannelManager(
             IUserManager userManager,
@@ -79,6 +82,7 @@ namespace Jellyfin.LiveTv.Channels
             IUserDataManager userDataManager,
             IProviderManager providerManager,
             IMemoryCache memoryCache,
+            IHttpClientFactory httpClientFactory,
             IEnumerable<IChannel> channels)
         {
             _userManager = userManager;
@@ -90,6 +94,7 @@ namespace Jellyfin.LiveTv.Channels
             _userDataManager = userDataManager;
             _providerManager = providerManager;
             _memoryCache = memoryCache;
+            _httpClientFactory = httpClientFactory;
             Channels = channels.ToArray();
         }
 
@@ -1110,7 +1115,13 @@ namespace Jellyfin.LiveTv.Channels
                 item.Path = mediaSource?.Path;
             }
 
-            if (LiveTvChannelImageHelper.UpdateChannelImageIfNeeded(item, null, info.ImageUrl))
+            if (await LiveTvChannelImageHelper.UpdateChannelImageIfNeededAsync(
+                    item,
+                    null,
+                    info.ImageUrl,
+                    _httpClientFactory,
+                    _logger,
+                    cancellationToken).ConfigureAwait(false))
             {
                 _logger.LogDebug("Forcing update due to ImageUrl {0}", item.Name);
                 forceUpdate = true;
