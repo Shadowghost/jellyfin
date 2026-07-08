@@ -605,6 +605,10 @@ namespace MediaBrowser.Providers.Manager
                             cancellationToken).ConfigureAwait(false);
                     }
 
+                    // Record the source and its HTTP cache validators so later refreshes can detect
+                    // content changes without re-downloading. Singular images are saved at index 0.
+                    SetRemoteImageMetadata(item.GetImageInfo(type, 0), url, response);
+
                     result.UpdateType |= ItemUpdateType.ImageUpdate;
                     return true;
                 }
@@ -737,6 +741,9 @@ namespace MediaBrowser.Providers.Manager
                             cancellationToken).ConfigureAwait(false);
                     }
 
+                    // Multi-images are appended, so the just-saved image is the last of its type.
+                    SetRemoteImageMetadata(item.GetImages(imageType).LastOrDefault(), url, response);
+
                     result.UpdateType |= ItemUpdateType.ImageUpdate;
                 }
                 catch (HttpRequestException)
@@ -744,6 +751,18 @@ namespace MediaBrowser.Providers.Manager
                     break;
                 }
             }
+        }
+
+        private static void SetRemoteImageMetadata(ItemImageInfo image, string url, HttpResponseMessage response)
+        {
+            if (image is null)
+            {
+                return;
+            }
+
+            image.Source = url;
+            image.ETag = response.Headers.ETag?.ToString();
+            image.SourceLastModified = response.Content.Headers.LastModified?.UtcDateTime;
         }
     }
 }

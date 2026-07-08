@@ -248,6 +248,16 @@ namespace MediaBrowser.Providers.Manager
                         type,
                         imageIndex,
                         cancellationToken).ConfigureAwait(false);
+
+                    // Record the source and its HTTP cache validators so later refreshes can detect
+                    // content changes without re-downloading.
+                    var saved = item.GetImageInfo(type, imageIndex ?? 0);
+                    if (saved is not null)
+                    {
+                        saved.Source = url;
+                        saved.ETag = response.Headers.ETag?.ToString();
+                        saved.SourceLastModified = response.Content.Headers.LastModified?.UtcDateTime;
+                    }
                 }
             }
         }
