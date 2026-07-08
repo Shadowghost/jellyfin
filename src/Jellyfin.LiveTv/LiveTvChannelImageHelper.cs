@@ -17,20 +17,16 @@ namespace Jellyfin.LiveTv;
 internal static class LiveTvChannelImageHelper
 {
     /// <summary>
-    /// Provider id used to remember the icon source and its HTTP cache validators between refreshes.
-    /// The value is an opaque, newline-separated triple of <c>source</c>, <c>ETag</c> and
-    /// <c>Last-Modified</c>; it is stored in a single key to keep the exposed metadata surface small.
-    /// </summary>
-    internal const string ImageCacheKey = "ChannelImageCache";
-
-    private static readonly char[] _cacheSeparator = ['\n'];
-
-    /// <summary>
     /// Applies the channel icon from guide or tuner metadata when it actually changed.
     /// </summary>
     /// <remarks>
     /// Re-applying the icon resets the primary image to the (possibly remote) source, which forces the
-    /// following metadata refresh to re-download and re-encode it.
+    /// following metadata refresh to re-download and re-encode it. Doing that unconditionally on every
+    /// guide refresh made refreshes take hours on large channel lists (see issue #17259). For remote
+    /// icons the picon file on the server can change while the URL stays the same, so a conditional
+    /// request is used to detect real changes cheaply instead of always re-downloading. The source URL
+    /// and its HTTP cache validators are stored on the image itself. This method only mutates
+    /// <paramref name="item"/>, so it is safe to call concurrently for distinct channels.
     /// </remarks>
     /// <param name="item">The channel item.</param>
     /// <param name="imagePath">The local image path from the tuner, if any.</param>
@@ -61,14 +57,12 @@ internal static class LiveTvChannelImageHelper
             && (newImageSource.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
                 || newImageSource.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
 
-        var (cachedSource, cachedETag, cachedLastModified) = ReadCache(item);
+        var primary = item.GetImageInfo(ImageType.Primary, 0);
 
         // Apply unconditionally when the channel has no primary image yet or the source path/URL changed.
-        if (!item.HasImage(ImageType.Primary) || !string.Equals(cachedSource, newImageSource, StringComparison.Ordinal))
+        if (primary is null || !string.Equals(primary.Source, newImageSource, StringComparison.Ordinal))
         {
-            ApplySource(item, newImageSource);
-            // Reset validators; they are recorded on the next refresh once the icon has been downloaded.
-            WriteCache(item, newImageSource, null, null);
+            ApplySource(item, newImageSource, etag: null, lastModified: null);
             return true;
         }
 
@@ -79,28 +73,41 @@ internal static class LiveTvChannelImageHelper
         }
 
         // Same remote URL: only re-apply (and re-download) when the picon content actually changed.
-        var probe = await ProbeRemoteAsync(newImageSource, cachedETag, cachedLastModified, httpClientFactory, logger, cancellationToken).ConfigureAwait(false);
-        if (probe.StoreValidators)
-        {
-            WriteCache(item, newImageSource, probe.ETag, probe.LastModified);
-        }
+        var probe = await ProbeRemoteAsync(newImageSource, primary.ETag, primary.SourceLastModified, httpClientFactory, logger, cancellationToken).ConfigureAwait(false);
 
         if (probe.Changed)
         {
-            ApplySource(item, newImageSource);
+            ApplySource(item, newImageSource, probe.ETag, probe.LastModified);
             return true;
+        }
+
+        if (probe.StoreValidators)
+        {
+            primary.ETag = probe.ETag;
+            primary.SourceLastModified = probe.LastModified;
         }
 
         return false;
     }
 
-    private static void ApplySource(BaseItem item, string source)
-        => item.SetImagePath(ImageType.Primary, source);
+    private static void ApplySource(BaseItem item, string source, string? etag, DateTime? lastModified)
+    {
+        item.SetImagePath(ImageType.Primary, source);
+
+        // SetImagePath preserves fields it does not know about, so update the source/validators explicitly.
+        var image = item.GetImageInfo(ImageType.Primary, 0);
+        if (image is not null)
+        {
+            image.Source = source;
+            image.ETag = etag;
+            image.SourceLastModified = lastModified;
+        }
+    }
 
     private static async Task<RemoteProbeResult> ProbeRemoteAsync(
         string url,
         string? storedETag,
-        string? storedLastModified,
+        DateTime? storedLastModified,
         IHttpClientFactory httpClientFactory,
         ILogger logger,
         CancellationToken cancellationToken)
@@ -113,9 +120,11 @@ internal static class LiveTvChannelImageHelper
                 request.Headers.TryAddWithoutValidation("If-None-Match", storedETag);
             }
 
-            if (!string.IsNullOrEmpty(storedLastModified))
+            if (storedLastModified.HasValue)
             {
-                request.Headers.TryAddWithoutValidation("If-Modified-Since", storedLastModified);
+                request.Headers.TryAddWithoutValidation(
+                    "If-Modified-Since",
+                    storedLastModified.Value.ToUniversalTime().ToString("R", CultureInfo.InvariantCulture));
             }
 
             var client = httpClientFactory.CreateClient(NamedClient.Default);
@@ -138,10 +147,10 @@ internal static class LiveTvChannelImageHelper
             }
 
             var newETag = response.Headers.ETag?.ToString();
-            var newLastModified = response.Content.Headers.LastModified?.ToString("R", CultureInfo.InvariantCulture);
+            var newLastModified = response.Content.Headers.LastModified?.UtcDateTime;
 
-            var hadValidators = !string.IsNullOrEmpty(storedETag) || !string.IsNullOrEmpty(storedLastModified);
-            var hasValidators = !string.IsNullOrEmpty(newETag) || !string.IsNullOrEmpty(newLastModified);
+            var hadValidators = !string.IsNullOrEmpty(storedETag) || storedLastModified.HasValue;
+            var hasValidators = !string.IsNullOrEmpty(newETag) || newLastModified.HasValue;
 
             if (!hasValidators)
             {
@@ -164,8 +173,7 @@ internal static class LiveTvChannelImageHelper
             }
             else
             {
-                unchanged = !string.IsNullOrEmpty(newLastModified)
-                    && string.Equals(newLastModified, storedLastModified, StringComparison.Ordinal);
+                unchanged = newLastModified.HasValue && newLastModified == storedLastModified;
             }
 
             return new RemoteProbeResult(!unchanged, true, newETag, newLastModified);
@@ -182,26 +190,5 @@ internal static class LiveTvChannelImageHelper
         }
     }
 
-    private static (string? Source, string? ETag, string? LastModified) ReadCache(BaseItem item)
-    {
-        var raw = item.GetProviderId(ImageCacheKey);
-        if (string.IsNullOrEmpty(raw))
-        {
-            return (null, null, null);
-        }
-
-        var parts = raw.Split(_cacheSeparator);
-        return (
-            parts.Length > 0 ? NullIfEmpty(parts[0]) : null,
-            parts.Length > 1 ? NullIfEmpty(parts[1]) : null,
-            parts.Length > 2 ? NullIfEmpty(parts[2]) : null);
-    }
-
-    private static void WriteCache(BaseItem item, string source, string? etag, string? lastModified)
-        => item.SetProviderId(ImageCacheKey, string.Join('\n', source, etag ?? string.Empty, lastModified ?? string.Empty));
-
-    private static string? NullIfEmpty(string value)
-        => string.IsNullOrEmpty(value) ? null : value;
-
-    private readonly record struct RemoteProbeResult(bool Changed, bool StoreValidators, string? ETag, string? LastModified);
+    private readonly record struct RemoteProbeResult(bool Changed, bool StoreValidators, string? ETag, DateTime? LastModified);
 }

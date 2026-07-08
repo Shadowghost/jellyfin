@@ -104,6 +104,7 @@ public class LiveTvChannelImageHelperTests
             CancellationToken.None);
 
         Assert.True(updated);
+        Assert.Equal("\"new\"", channel.GetImageInfo(ImageType.Primary, 0)!.ETag);
     }
 
     [Fact]
@@ -111,7 +112,7 @@ public class LiveTvChannelImageHelperTests
     {
         // A stable strong ETag is authoritative even if Last-Modified differs (common on CDNs).
         var channel = new LiveTvChannel { Name = "Test Channel" };
-        SeedCachedIcon(channel, IconUrl, etag: "\"stable\"", lastModified: "Mon, 01 Jan 2024 00:00:00 GMT");
+        SeedCachedIcon(channel, IconUrl, etag: "\"stable\"", lastModified: new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
 
         var updated = await LiveTvChannelImageHelper.UpdateChannelImageIfNeededAsync(
             channel,
@@ -177,14 +178,20 @@ public class LiveTvChannelImageHelperTests
         Assert.False(updated);
     }
 
-    private static void SeedCachedIcon(LiveTvChannel channel, string source, string? etag = null, string? lastModified = null)
+    private static void SeedCachedIcon(LiveTvChannel channel, string source, string? etag = null, DateTime? lastModified = null)
     {
         // Set the image directly (SetImagePath would resolve local paths against the static file system,
         // which is not initialized in unit tests).
-        channel.SetImage(new ItemImageInfo { Path = source, Type = ImageType.Primary }, 0);
-        channel.SetProviderId(
-            LiveTvChannelImageHelper.ImageCacheKey,
-            string.Join('\n', source, etag ?? string.Empty, lastModified ?? string.Empty));
+        channel.SetImage(
+            new ItemImageInfo
+            {
+                Path = source,
+                Type = ImageType.Primary,
+                Source = source,
+                ETag = etag,
+                SourceLastModified = lastModified
+            },
+            0);
     }
 
     private static HttpResponseMessage CreateResponse(string? etag = null, string? lastModified = null)

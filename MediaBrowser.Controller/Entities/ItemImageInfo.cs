@@ -36,6 +36,22 @@ namespace MediaBrowser.Controller.Entities
         /// <value>The blurhash.</value>
         public string? BlurHash { get; set; }
 
+        /// <summary>
+        /// Gets or sets the remote URL this image was fetched from, if any.
+        /// Used to detect when the source of a cached image changes.
+        /// </summary>
+        public string? Source { get; set; }
+
+        /// <summary>
+        /// Gets or sets the HTTP ETag of the remote source, used to detect content changes on refresh.
+        /// </summary>
+        public string? ETag { get; set; }
+
+        /// <summary>
+        /// Gets or sets the HTTP Last-Modified value of the remote source, used to detect content changes on refresh.
+        /// </summary>
+        public DateTime? SourceLastModified { get; set; }
+
         [JsonIgnore]
         public bool IsLocalFile => !Path.StartsWith("http", StringComparison.OrdinalIgnoreCase);
     }
