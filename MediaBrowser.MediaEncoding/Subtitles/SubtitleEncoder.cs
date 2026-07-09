@@ -163,9 +163,11 @@ namespace MediaBrowser.MediaEncoding.Subtitles
             return (stream, fileInfo);
         }
 
-        private async Task<Stream> GetSubtitleStream(SubtitleInfo fileInfo, CancellationToken cancellationToken)
+        internal async Task<Stream> GetSubtitleStream(SubtitleInfo fileInfo, CancellationToken cancellationToken)
         {
-            if (fileInfo.Protocol == MediaProtocol.Http)
+            if (fileInfo.IsExternal
+                && !MediaStream.IsPgsFormat(fileInfo.Format)
+                && !MediaStream.IsVobSubFormat(fileInfo.Format))
             {
                 var result = await DetectCharset(fileInfo.Path, fileInfo.Protocol, cancellationToken).ConfigureAwait(false);
                 var detected = result.Detected;
@@ -174,9 +176,11 @@ namespace MediaBrowser.MediaEncoding.Subtitles
                 {
                     _logger.LogDebug("charset {CharSet} detected for {Path}", detected.EncodingName, fileInfo.Path);
 
-                    using var stream = await _httpClientFactory.CreateClient(NamedClient.Default)
-                        .GetStreamAsync(new Uri(fileInfo.Path), cancellationToken)
-                        .ConfigureAwait(false);
+                    var stream = fileInfo.Protocol == MediaProtocol.Http
+                        ? await _httpClientFactory.CreateClient(NamedClient.Default)
+                            .GetStreamAsync(new Uri(fileInfo.Path), cancellationToken)
+                            .ConfigureAwait(false)
+                        : AsyncFile.OpenRead(fileInfo.Path);
 
                     await using (stream.ConfigureAwait(false))
                     {
