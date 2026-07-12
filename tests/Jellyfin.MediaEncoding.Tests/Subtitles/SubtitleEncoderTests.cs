@@ -207,6 +207,11 @@ namespace Jellyfin.MediaEncoding.Subtitles.Tests
                 };
 
                 using var stream = await subtitleEncoder.GetSubtitleStream(fileInfo, cancellationToken);
+
+                // An already-UTF-8 file must be short-circuited and served directly from disk,
+                // not read into memory and re-encoded (which would produce a MemoryStream).
+                Assert.IsNotType<MemoryStream>(stream);
+
                 using var reader = new StreamReader(stream, new UTF8Encoding(false));
                 var text = await reader.ReadToEndAsync(cancellationToken);
 
