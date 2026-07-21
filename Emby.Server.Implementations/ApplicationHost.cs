@@ -39,6 +39,8 @@ using Emby.Server.Implementations.SyncPlay;
 using Emby.Server.Implementations.TV;
 using Emby.Server.Implementations.Updates;
 using Jellyfin.Api.Helpers;
+using Jellyfin.Data;
+using Jellyfin.Database.Implementations.Enums;
 using Jellyfin.Drawing;
 using Jellyfin.MediaEncoding.Hls.Playlist;
 using Jellyfin.Networking.Manager;
@@ -417,6 +419,8 @@ namespace Emby.Server.Implementations
         {
             Logger.LogInformation("Running startup tasks");
 
+            EnsureStartupWizardIntegrity();
+
             Resolve<ITaskManager>().AddTasks(GetExports<IScheduledTask>(false));
 
             ConfigurationManager.ConfigurationUpdated += OnConfigurationUpdated;
@@ -434,6 +438,24 @@ namespace Emby.Server.Implementations
             CoreStartupHasCompleted = true;
 
             return Task.CompletedTask;
+        }
+
+        private void EnsureStartupWizardIntegrity()
+        {
+            if (ConfigurationManager.CommonConfiguration.IsStartupWizardCompleted)
+            {
+                return;
+            }
+
+            var hasConfiguredAdministrator = Resolve<IUserManager>().GetUsers()
+                .Any(user => user.HasPermission(PermissionKind.IsAdministrator) && !string.IsNullOrEmpty(user.Password));
+
+            if (hasConfiguredAdministrator)
+            {
+                Logger.LogWarning("The startup wizard is marked incomplete but a configured administrator already exists. Marking setup as completed to prevent the unauthenticated setup endpoints from being reachable.");
+                ConfigurationManager.Configuration.IsStartupWizardCompleted = true;
+                ConfigurationManager.SaveConfiguration();
+            }
         }
 
         /// <inheritdoc/>
@@ -552,7 +574,9 @@ namespace Emby.Server.Implementations
             serviceCollection.AddTransient(provider => new Lazy<IProviderManager>(provider.GetRequiredService<IProviderManager>));
             serviceCollection.AddTransient(provider => new Lazy<IUserViewManager>(provider.GetRequiredService<IUserViewManager>));
             serviceCollection.AddTransient(provider => new Lazy<IExternalDataManager>(provider.GetRequiredService<IExternalDataManager>));
+            serviceCollection.AddTransient(provider => new Lazy<IVideoVersionManager>(provider.GetRequiredService<IVideoVersionManager>));
             serviceCollection.AddSingleton<ILibraryManager, LibraryManager>();
+            serviceCollection.AddSingleton<IVideoVersionManager, VideoVersionManager>();
             serviceCollection.AddSingleton<NamingOptions>();
             serviceCollection.AddSingleton<VideoListResolver>();
 
@@ -682,6 +706,7 @@ namespace Emby.Server.Implementations
             BaseItem.MediaSourceManager = Resolve<IMediaSourceManager>();
             BaseItem.ProviderManager = Resolve<IProviderManager>();
             BaseItem.UserDataManager = Resolve<IUserDataManager>();
+            BaseItem.VideoVersionManager = Resolve<IVideoVersionManager>();
             CollectionFolder.XmlSerializer = _xmlSerializer;
             CollectionFolder.ApplicationHost = this;
             Folder.UserViewManager = Resolve<IUserViewManager>();
