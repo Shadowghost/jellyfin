@@ -1998,7 +1998,7 @@ public class DynamicHlsController : BaseJellyfinApiController
             return Task.CompletedTask;
         });
 
-        return FileStreamResponseHelpers.GetStaticFileResult(segmentPath, MimeTypes.GetMimeType(segmentPath));
+        return FileStreamResponseHelpers.GetStaticFileResult(segmentPath, MimeTypes.GetMimeType(segmentPath), state.BaseRequest.Id);
     }
 
     private int? GetCurrentTranscodingIndex(string playlist, string segmentExtension)
