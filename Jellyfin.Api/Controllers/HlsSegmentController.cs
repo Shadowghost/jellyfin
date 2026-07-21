@@ -66,7 +66,7 @@ public class HlsSegmentController : BaseJellyfinApiController
             return BadRequest("Invalid segment.");
         }
 
-        return FileStreamResponseHelpers.GetStaticFileResult(file, MimeTypes.GetMimeType(file));
+        return FileStreamResponseHelpers.GetStaticFileResult(file, MimeTypes.GetMimeType(file), Guid.Empty);
     }
 
     /// <summary>
@@ -189,6 +189,6 @@ public class HlsSegmentController : BaseJellyfinApiController
             return Task.CompletedTask;
         });
 
-        return FileStreamResponseHelpers.GetStaticFileResult(path, MimeTypes.GetMimeType(path));
+        return FileStreamResponseHelpers.GetStaticFileResult(path, MimeTypes.GetMimeType(path), Guid.Empty);
     }
 }
