@@ -1557,6 +1557,19 @@ namespace MediaBrowser.Controller.Entities
 
                 i.OwnerId = ownerId;
                 i.ParentId = Guid.Empty;
+
+                // Extras (e.g. trailers) frequently have no reliable date metadata of their own and
+                // would otherwise fall back to the file's container creation date. Inherit the owner's
+                // year/premiere date when the extra doesn't have one, so it stays consistent with the
+                // media it belongs to. Setting it before the refresh means the media info provider
+                // won't overwrite it from the file creation date.
+                if (!i.ProductionYear.HasValue && item.ProductionYear.HasValue)
+                {
+                    i.ProductionYear = item.ProductionYear;
+                    i.PremiereDate ??= item.PremiereDate;
+                    subOptions.ForceSave = true;
+                }
+
                 return RefreshMetadataForOwnedItem(i, true, subOptions, cancellationToken);
             });
 
