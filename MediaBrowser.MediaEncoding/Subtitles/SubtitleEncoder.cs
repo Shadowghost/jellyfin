@@ -165,9 +165,7 @@ namespace MediaBrowser.MediaEncoding.Subtitles
 
         internal async Task<Stream> GetSubtitleStream(SubtitleInfo fileInfo, CancellationToken cancellationToken)
         {
-            if (fileInfo.IsExternal
-                && !MediaStream.IsPgsFormat(fileInfo.Format)
-                && !MediaStream.IsVobSubFormat(fileInfo.Format))
+            if (fileInfo.IsExternal && !MediaStream.IsTextFormat(fileInfo.Format))
             {
                 var result = await DetectCharset(fileInfo.Path, cancellationToken).ConfigureAwait(false);
                 var detected = result.Detected;
