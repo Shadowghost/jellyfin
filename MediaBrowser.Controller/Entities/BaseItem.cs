@@ -1563,7 +1563,7 @@ namespace MediaBrowser.Controller.Entities
                 // year/premiere date when the extra doesn't have one, so it stays consistent with the
                 // media it belongs to. Setting it before the refresh means the media info provider
                 // won't overwrite it from the file creation date.
-                if (!i.ProductionYear.HasValue && item.ProductionYear.HasValue)
+                if (i.ProductionYear is null && item.ProductionYear is not null)
                 {
                     i.ProductionYear = item.ProductionYear;
                     i.PremiereDate ??= item.PremiereDate;
