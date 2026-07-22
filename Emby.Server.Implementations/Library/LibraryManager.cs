@@ -3195,11 +3195,11 @@ namespace Emby.Server.Implementations.Library
                     }
                 }
 
-                if (!episode.ProductionYear.HasValue)
+                if (episode.ProductionYear is null)
                 {
                     episode.ProductionYear = episodeInfo.Year;
 
-                    if (episode.ProductionYear.HasValue)
+                    if (episode.ProductionYear is not null)
                     {
                         changed = true;
                     }

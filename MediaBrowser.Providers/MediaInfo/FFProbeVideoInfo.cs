@@ -432,9 +432,9 @@ namespace MediaBrowser.Providers.MediaInfo
                 }
             }
 
-            if (data.ProductionYear.HasValue)
+            if (data.ProductionYear is not null)
             {
-                if (!video.ProductionYear.HasValue || replaceData)
+                if (video.ProductionYear is null || replaceData)
                 {
                     video.ProductionYear = data.ProductionYear;
                 }
@@ -482,7 +482,7 @@ namespace MediaBrowser.Providers.MediaInfo
             }
 
             // If we don't have a ProductionYear try and get it from PremiereDate
-            if (video.PremiereDate.HasValue && !video.ProductionYear.HasValue)
+            if (video.PremiereDate is not null && video.ProductionYear is null)
             {
                 video.ProductionYear = video.PremiereDate.Value.ToLocalTime().Year;
             }
