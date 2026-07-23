@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -52,8 +53,89 @@ namespace MediaBrowser.Providers.Plugins.AudioDb
         public int Order => 1;
 
         /// <inheritdoc />
-        public Task<IEnumerable<RemoteSearchResult>> GetSearchResults(ArtistInfo searchInfo, CancellationToken cancellationToken)
-            => Task.FromResult(Enumerable.Empty<RemoteSearchResult>());
+        public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(ArtistInfo searchInfo, CancellationToken cancellationToken)
+        {
+            // Prefer a known TheAudioDB artist id.
+            var audioDbId = searchInfo.GetProviderId(MetadataProvider.AudioDbArtist);
+            if (!string.IsNullOrWhiteSpace(audioDbId))
+            {
+                var artists = await FetchArtists(BaseUrl + "/artist.php?i=" + audioDbId, cancellationToken).ConfigureAwait(false);
+                return artists.Select(ToRemoteSearchResult);
+            }
+
+            // Fall back to the MusicBrainz artist id, reusing the on-disk cache also used by GetMetadata.
+            var musicBrainzId = searchInfo.GetMusicBrainzArtistId();
+            if (!string.IsNullOrWhiteSpace(musicBrainzId))
+            {
+                await EnsureArtistInfo(musicBrainzId, cancellationToken).ConfigureAwait(false);
+
+                var path = GetArtistInfoPath(_config.ApplicationPaths, musicBrainzId);
+
+                FileStream jsonStream = AsyncFile.OpenRead(path);
+                await using (jsonStream.ConfigureAwait(false))
+                {
+                    var obj = await JsonSerializer.DeserializeAsync<RootObject>(jsonStream, _jsonOptions, cancellationToken).ConfigureAwait(false);
+
+                    if (obj is not null && obj.artists is not null)
+                    {
+                        return obj.artists.Select(ToRemoteSearchResult);
+                    }
+                }
+
+                return Enumerable.Empty<RemoteSearchResult>();
+            }
+
+            // Finally, search by name.
+            if (!string.IsNullOrWhiteSpace(searchInfo.Name))
+            {
+                var artists = await FetchArtists(BaseUrl + "/search.php?s=" + Uri.EscapeDataString(searchInfo.Name), cancellationToken).ConfigureAwait(false);
+                return artists.Select(ToRemoteSearchResult);
+            }
+
+            return Enumerable.Empty<RemoteSearchResult>();
+        }
+
+        private async Task<List<Artist>> FetchArtists(string url, CancellationToken cancellationToken)
+        {
+            using var response = await _httpClientFactory.CreateClient(NamedClient.Default).GetAsync(url, cancellationToken).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+
+            var jsonStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            await using (jsonStream.ConfigureAwait(false))
+            {
+                var obj = await JsonSerializer.DeserializeAsync<RootObject>(jsonStream, _jsonOptions, cancellationToken).ConfigureAwait(false);
+
+                return obj?.artists ?? [];
+            }
+        }
+
+        private RemoteSearchResult ToRemoteSearchResult(Artist artist)
+        {
+            var result = new RemoteSearchResult
+            {
+                Name = artist.strArtist,
+                ImageUrl = artist.strArtistThumb,
+                SearchProviderName = Name,
+                Overview = (artist.strBiographyEN ?? string.Empty).StripHtml()
+            };
+
+            if (!string.IsNullOrEmpty(artist.idArtist))
+            {
+                result.SetProviderId(MetadataProvider.AudioDbArtist, artist.idArtist);
+            }
+
+            if (!string.IsNullOrEmpty(artist.strMusicBrainzID))
+            {
+                result.SetProviderId(MetadataProvider.MusicBrainzArtist, artist.strMusicBrainzID);
+            }
+
+            if (int.TryParse(artist.intFormedYear, NumberStyles.Integer, CultureInfo.InvariantCulture, out var formedYear))
+            {
+                result.ProductionYear = formedYear;
+            }
+
+            return result;
+        }
 
         /// <inheritdoc />
         public async Task<MetadataResult<MusicArtist>> GetMetadata(ArtistInfo info, CancellationToken cancellationToken)
