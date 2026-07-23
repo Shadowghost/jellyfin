@@ -110,7 +110,6 @@ internal class MigrateLinkedChildren : IDatabaseMigrationRoutine
                     continue;
                 }
 
-                var isPlaylist = item.Type == "MediaBrowser.Controller.Playlists.Playlist";
                 var sortOrder = 0;
                 foreach (var childElement in linkedChildrenElement.EnumerateArray())
                 {
@@ -175,7 +174,7 @@ internal class MigrateLinkedChildren : IDatabaseMigrationRoutine
                         ParentId = item.Id,
                         ChildId = childId.Value,
                         ChildType = childType,
-                        SortOrder = isPlaylist ? sortOrder : null
+                        SortOrder = sortOrder
                     });
 
                     sortOrder++;

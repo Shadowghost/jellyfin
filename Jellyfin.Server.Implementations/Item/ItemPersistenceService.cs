@@ -428,106 +428,100 @@ public class ItemPersistenceService : IItemPersistenceService
 
         foreach (var item in tuples)
         {
-            if (item.Item is Folder folder)
+            if (item.Item is Folder or Video
+                && allLinkedChildrenByParent.TryGetValue(item.Item.Id, out var existingLinks)
+                && existingLinks.Count > 0)
             {
-                var existingLinkedChildren = allLinkedChildrenByParent.GetValueOrDefault(item.Item.Id)?.ToList() ?? new List<LinkedChildEntity>();
-                if (folder.LinkedChildren.Length > 0)
-                {
+                context.LinkedChildren.RemoveRange(existingLinks);
+            }
+        }
+
+        context.SaveChanges();
+
+        foreach (var item in tuples)
+        {
+            if (item.Item is Folder folder && folder.LinkedChildren.Length > 0)
+            {
 #pragma warning disable CS0618 // Type or member is obsolete - legacy path resolution for old data
-                    var pathsToResolve = folder.LinkedChildren
-                        .Where(lc => (!lc.ItemId.HasValue || lc.ItemId.Value.IsEmpty()) && !string.IsNullOrEmpty(lc.Path))
-                        .Select(lc => lc.Path)
-                        .Distinct()
-                        .ToList();
+                var pathsToResolve = folder.LinkedChildren
+                    .Where(lc => (!lc.ItemId.HasValue || lc.ItemId.Value.IsEmpty()) && !string.IsNullOrEmpty(lc.Path))
+                    .Select(lc => lc.Path)
+                    .Distinct()
+                    .ToList();
 
-                    var pathToIdMap = pathsToResolve.Count > 0
-                        ? context.BaseItems
-                            .Where(e => e.Path != null && pathsToResolve.Contains(e.Path))
-                            .Select(e => new { e.Path, e.Id })
-                            .GroupBy(e => e.Path!)
-                            .ToDictionary(g => g.Key, g => g.First().Id)
-                        : [];
+                var pathToIdMap = pathsToResolve.Count > 0
+                    ? context.BaseItems
+                        .Where(e => e.Path != null && pathsToResolve.Contains(e.Path))
+                        .Select(e => new { e.Path, e.Id })
+                        .GroupBy(e => e.Path!)
+                        .ToDictionary(g => g.Key, g => g.First().Id)
+                    : [];
 
-                    var resolvedChildren = new List<(LinkedChild Child, Guid ChildId)>();
-                    foreach (var linkedChild in folder.LinkedChildren)
+                var resolvedChildren = new List<(LinkedChild Child, Guid ChildId)>();
+                foreach (var linkedChild in folder.LinkedChildren)
+                {
+                    var childItemId = linkedChild.ItemId;
+                    if (!childItemId.HasValue || childItemId.Value.IsEmpty())
                     {
-                        var childItemId = linkedChild.ItemId;
-                        if (!childItemId.HasValue || childItemId.Value.IsEmpty())
+                        if (!string.IsNullOrEmpty(linkedChild.Path) && pathToIdMap.TryGetValue(linkedChild.Path, out var resolvedId))
                         {
-                            if (!string.IsNullOrEmpty(linkedChild.Path) && pathToIdMap.TryGetValue(linkedChild.Path, out var resolvedId))
-                            {
-                                childItemId = resolvedId;
-                            }
-                        }
-#pragma warning restore CS0618
-
-                        if (childItemId.HasValue && !childItemId.Value.IsEmpty())
-                        {
-                            resolvedChildren.Add((linkedChild, childItemId.Value));
+                            childItemId = resolvedId;
                         }
                     }
+#pragma warning restore CS0618
 
+                    if (childItemId.HasValue && !childItemId.Value.IsEmpty())
+                    {
+                        resolvedChildren.Add((linkedChild, childItemId.Value));
+                    }
+                }
+
+                // Playlists may legitimately contain the same item multiple times (e.g. a song repeated
+                // in an .m3u file). Every other container type keeps a single entry per child.
+                var isPlaylist = folder is Playlist;
+                if (!isPlaylist)
+                {
                     resolvedChildren = resolvedChildren
                         .GroupBy(c => c.ChildId)
                         .Select(g => g.Last())
                         .ToList();
-
-                    var childIdsToCheck = resolvedChildren.Select(c => c.ChildId).ToList();
-                    var existingChildIds = childIdsToCheck.Count > 0
-                        ? context.BaseItems
-                            .Where(e => childIdsToCheck.Contains(e.Id))
-                            .Select(e => e.Id)
-                            .ToHashSet()
-                        : [];
-
-                    var isPlaylist = folder is Playlist;
-                    var sortOrder = 0;
-                    foreach (var (linkedChild, childId) in resolvedChildren)
-                    {
-                        if (!existingChildIds.Contains(childId))
-                        {
-                            _logger.LogWarning(
-                                "Skipping LinkedChild for parent {ParentName} ({ParentId}): child item {ChildId} does not exist in database",
-                                item.Item.Name,
-                                item.Item.Id,
-                                childId);
-                            continue;
-                        }
-
-                        var existingLink = existingLinkedChildren.FirstOrDefault(e => e.ChildId == childId);
-                        if (existingLink is null)
-                        {
-                            context.LinkedChildren.Add(new LinkedChildEntity()
-                            {
-                                ParentId = item.Item.Id,
-                                ChildId = childId,
-                                ChildType = (DbLinkedChildType)linkedChild.Type,
-                                SortOrder = isPlaylist ? sortOrder : null
-                            });
-                        }
-                        else
-                        {
-                            existingLink.SortOrder = isPlaylist ? sortOrder : null;
-                            existingLink.ChildType = (DbLinkedChildType)linkedChild.Type;
-                            existingLinkedChildren.Remove(existingLink);
-                        }
-
-                        sortOrder++;
-                    }
                 }
 
-                if (existingLinkedChildren.Count > 0)
+                var childIdsToCheck = resolvedChildren.Select(c => c.ChildId).Distinct().ToList();
+                var existingChildIds = childIdsToCheck.Count > 0
+                    ? context.BaseItems
+                        .Where(e => childIdsToCheck.Contains(e.Id))
+                        .Select(e => e.Id)
+                        .ToHashSet()
+                    : [];
+
+                var sortOrder = 0;
+                foreach (var (linkedChild, childId) in resolvedChildren)
                 {
-                    context.LinkedChildren.RemoveRange(existingLinkedChildren);
+                    if (!existingChildIds.Contains(childId))
+                    {
+                        _logger.LogWarning(
+                            "Skipping LinkedChild for parent {ParentName} ({ParentId}): child item {ChildId} does not exist in database",
+                            item.Item.Name,
+                            item.Item.Id,
+                            childId);
+                        continue;
+                    }
+
+                    context.LinkedChildren.Add(new LinkedChildEntity()
+                    {
+                        ParentId = item.Item.Id,
+                        ChildId = childId,
+                        ChildType = (DbLinkedChildType)linkedChild.Type,
+                        SortOrder = sortOrder
+                    });
+
+                    sortOrder++;
                 }
             }
 
             if (item.Item is Video video)
             {
-                var existingLinkedChildren = (allLinkedChildrenByParent.GetValueOrDefault(video.Id) ?? new List<LinkedChildEntity>())
-                    .Where(e => (int)e.ChildType == 2 || (int)e.ChildType == 3)
-                    .ToList();
-
                 var newLinkedChildren = new List<(Guid ChildId, LinkedChildType Type)>();
 
                 if (video.LocalAlternateVersions.Length > 0)
@@ -577,7 +571,7 @@ public class ItemPersistenceService : IItemPersistenceService
                         .ToHashSet()
                     : [];
 
-                int sortOrder = 0;
+                var sortOrder = 0;
                 foreach (var (childId, childType) in newLinkedChildren)
                 {
                     if (!existingChildIds.Contains(childId))
@@ -590,35 +584,26 @@ public class ItemPersistenceService : IItemPersistenceService
                         continue;
                     }
 
-                    var existingLink = existingLinkedChildren.FirstOrDefault(e => e.ChildId == childId);
-                    if (existingLink is null)
+                    context.LinkedChildren.Add(new LinkedChildEntity
                     {
-                        context.LinkedChildren.Add(new LinkedChildEntity
-                        {
-                            ParentId = video.Id,
-                            ChildId = childId,
-                            ChildType = (DbLinkedChildType)childType,
-                            SortOrder = sortOrder
-                        });
-                    }
-                    else
-                    {
-                        existingLink.ChildType = (DbLinkedChildType)childType;
-                        existingLink.SortOrder = sortOrder;
-                        existingLinkedChildren.Remove(existingLink);
-                    }
+                        ParentId = video.Id,
+                        ChildId = childId,
+                        ChildType = (DbLinkedChildType)childType,
+                        SortOrder = sortOrder
+                    });
 
                     sortOrder++;
                 }
 
-                if (existingLinkedChildren.Count > 0)
+                // A previously-linked LocalAlternateVersion that is no longer present becomes orphaned;
+                var previousLinkedChildren = allLinkedChildrenByParent.GetValueOrDefault(video.Id);
+                if (previousLinkedChildren is { Count: > 0 })
                 {
-                    var orphanedLocalVersionIds = existingLinkedChildren
-                        .Where(e => e.ChildType == DbLinkedChildType.LocalAlternateVersion)
+                    var newChildIds = newLinkedChildren.Select(c => c.ChildId).ToHashSet();
+                    var orphanedLocalVersionIds = previousLinkedChildren
+                        .Where(e => e.ChildType == DbLinkedChildType.LocalAlternateVersion && !newChildIds.Contains(e.ChildId))
                         .Select(e => e.ChildId)
                         .ToList();
-
-                    context.LinkedChildren.RemoveRange(existingLinkedChildren);
 
                     if (orphanedLocalVersionIds.Count > 0)
                     {
