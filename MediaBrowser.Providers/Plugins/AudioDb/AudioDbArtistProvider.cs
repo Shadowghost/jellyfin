@@ -82,7 +82,7 @@ namespace MediaBrowser.Providers.Plugins.AudioDb
                     }
                 }
 
-                return Enumerable.Empty<RemoteSearchResult>();
+                return [];
             }
 
             // Finally, search by name.
@@ -92,7 +92,7 @@ namespace MediaBrowser.Providers.Plugins.AudioDb
                 return artists.Select(ToRemoteSearchResult);
             }
 
-            return Enumerable.Empty<RemoteSearchResult>();
+            return [];
         }
 
         private async Task<List<Artist>> FetchArtists(string url, CancellationToken cancellationToken)
