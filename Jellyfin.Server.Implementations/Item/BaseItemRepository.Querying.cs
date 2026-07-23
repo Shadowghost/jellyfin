@@ -126,38 +126,61 @@ public sealed partial class BaseItemRepository
 
         if (collectionType is CollectionType.movies)
         {
-            // Group by PresentationUniqueKey, pick the newest item per group.
-            var topGroupItems = baseQuery
+            // Pick, per PresentationUniqueKey, the newest item; return the newest `limit` of those.
+            // Build up until limit by streaming through results and deduplicating on the fly.
+            var orderedIds = baseQuery
                 .Where(e => e.PresentationUniqueKey != null)
-                .GroupBy(e => e.PresentationUniqueKey)
-                .Select(g => new
+                .OrderByDescending(e => e.DateCreated)
+                .ThenByDescending(e => e.Id)
+                .Select(e => new { e.Id, e.PresentationUniqueKey });
+
+            var seenKeys = new HashSet<string>();
+            var firstIds = new List<Guid>(limit ?? 0);
+            foreach (var row in orderedIds.AsEnumerable())
+            {
+                if (seenKeys.Add(row.PresentationUniqueKey!))
                 {
-                    MaxDate = g.Max(e => e.DateCreated),
-                    FirstId = g.OrderByDescending(e => e.DateCreated).ThenByDescending(e => e.Id).Select(e => e.Id).First()
-                })
-                .OrderByDescending(g => g.MaxDate);
+                    firstIds.Add(row.Id);
+                    if (limit.HasValue && firstIds.Count >= limit.Value)
+                    {
+                        break;
+                    }
+                }
+            }
 
-            var firstIdsQuery = filter.Limit.HasValue
-                ? topGroupItems.Take(filter.Limit.Value).Select(g => g.FirstId)
-                : topGroupItems.Select(g => g.FirstId);
-
-            return LoadLatestByIds(context, firstIdsQuery, filter);
+            return LoadLatestByIds(context, firstIds, filter);
         }
 
-        // Albums whose Id is the parent of any track matching the user's filter.
-        var albumIdsWithMatchingTrack = context.AncestorIds
-            .Join(baseQuery, ai => ai.ItemId, t => t.Id, (ai, _) => ai.ParentItemId);
-
         var musicAlbumTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.MusicAlbum]!;
-        var topAlbumsQuery = context.BaseItems.AsNoTracking()
-            .Where(album => album.Type == musicAlbumTypeName)
-            .Where(album => albumIdsWithMatchingTrack.Contains(album.Id))
+        IQueryable<BaseItemEntity> topAlbumsQuery;
+
+        // When the query is scoped to whole libraries, read the newest albums directly by their own TopParentId.
+        if (filter.TopParentIds.Length > 0)
+        {
+            var topParentIds = filter.TopParentIds;
+            topAlbumsQuery = context.BaseItems.AsNoTracking()
+                .Where(album => album.Type == musicAlbumTypeName
+                    && !album.IsVirtualItem
+                    && album.TopParentId.HasValue
+                    && topParentIds.Contains(album.TopParentId.Value));
+        }
+        else
+        {
+            // Fallback (e.g. AncestorIds-scoped callers): albums that are the parent of a matching track.
+            var albumIdsWithMatchingTrack = context.AncestorIds
+                .Join(baseQuery, ai => ai.ItemId, t => t.Id, (ai, _) => ai.ParentItemId);
+            topAlbumsQuery = context.BaseItems.AsNoTracking()
+                .Where(album => album.Type == musicAlbumTypeName)
+                .Where(album => albumIdsWithMatchingTrack.Contains(album.Id));
+        }
+
+        var orderedAlbums = topAlbumsQuery
             .OrderByDescending(album => album.DateCreated)
             .ThenByDescending(album => album.Id);
 
-        var albumIdsQuery = filter.Limit.HasValue
-            ? topAlbumsQuery.Take(filter.Limit.Value).Select(a => a.Id)
-            : topAlbumsQuery.Select(a => a.Id);
+        var albumIdsQuery = limit.HasValue
+            ? orderedAlbums.Take(limit.Value).Select(a => a.Id)
+            : orderedAlbums.Select(a => a.Id);
 
         return LoadLatestByIds(context, albumIdsQuery, filter);
     }
@@ -170,6 +193,29 @@ public sealed partial class BaseItemRepository
     {
         var itemsQuery = ApplyNavigations(
             context.BaseItems.AsNoTracking().Where(e => idsQuery.Contains(e.Id)),
+            filter);
+
+        return itemsQuery
+            .OrderByDescending(e => e.DateCreated)
+            .ThenByDescending(e => e.Id)
+            .AsEnumerable()
+            .Select(w => DeserializeBaseItem(w, filter.SkipDeserialization))
+            .Where(dto => dto != null)
+            .ToArray()!;
+    }
+
+    private IReadOnlyList<BaseItemDto> LoadLatestByIds(
+        JellyfinDbContext context,
+        List<Guid> ids,
+        InternalItemsQuery filter)
+    {
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var itemsQuery = ApplyNavigations(
+            context.BaseItems.AsNoTracking().WhereOneOrMany(ids, e => e.Id),
             filter);
 
         return itemsQuery
