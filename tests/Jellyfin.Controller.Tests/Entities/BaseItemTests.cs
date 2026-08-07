@@ -253,16 +253,18 @@ public class BaseItemTests
 
         primary.PropagatePlayedState(new User("test", "default", "default"), false);
 
-        // Every alternate is fully reset to an unwatched state, mirroring MarkUnplayed: the played flag,
-        // play count, resume point and last-played date are all cleared so no watched state lingers.
+        // Every alternate reads as unwatched and loses its resume point, mirroring MarkUnplayed. The
+        // play count and last-played date survive: they are a projection of an append-only playback
+        // history, and marking something unplayed says how it should read, not that it was never played.
         Assert.Equal(2, saved.Count);
         Assert.All(saved, d =>
         {
             Assert.False(d.Played);
-            Assert.Equal(0, d.PlayCount);
+            Assert.False(d.PlayedOverride);
             Assert.Equal(0, d.PlaybackPositionTicks);
-            Assert.Null(d.LastPlayedDate);
         });
+        Assert.Equal([3, 1], saved.Select(d => d.PlayCount));
+        Assert.All(saved, d => Assert.NotNull(d.LastPlayedDate));
     }
 
     private static List<(Guid ItemId, UpdateUserItemDataDto Dto)> CaptureSaves()
