@@ -495,22 +495,29 @@ public sealed partial class BaseItemRepository
             var userId = filter.User!.Id;
             var isResumable = filter.IsResumable.Value;
 
-            // In-progress user data rows; alternate versions track their own progress.
+            // In-progress user data rows; alternate versions track their own progress. Dismissed items
+            // drop out here rather than by a separate pass, so "Remove from Continue Watching" hides
+            // them everywhere resumability is asked about while leaving the resume position intact.
             var inProgress = context.UserData
-                .Where(ud => ud.UserId == userId && ud.PlaybackPositionTicks > 0);
+                .Where(ud => ud.UserId == userId && ud.PlaybackPositionTicks > 0 && !ud.ExcludedFromResume);
 
             // Series and Seasons are resumable when a descendant is in progress, or when they hold both
             // played and unplayed descendants (partially watched). Alternate versions keep their own
             // progress, so they count towards the in-progress check but not towards the played/unplayed one.
             var leafItems = GetAccessFilteredLeafItemsQuery(context, filter.User!);
             var inProgressLeafItems = GetAccessFilteredLeafItemsQuery(context, filter.User!, includeOwnedItems: true)
-                .Where(e => e.UserData!.Any(ud => ud.UserId == userId && ud.PlaybackPositionTicks > 0));
+                .Where(e => e.UserData!.Any(ud => ud.UserId == userId && ud.PlaybackPositionTicks > 0 && !ud.ExcludedFromResume));
 
             // Every other folder kind is a container rather than one continuous piece of media
             var resumableFolderTypes = _resumableFolderKinds
                 .Select(kind => _itemTypeLookup.BaseItemKindNames.GetValueOrDefault(kind))
                 .ToArray();
+
+            // A dismissed Series or Season is checked on its own row, not its descendants': it can be
+            // resumable purely by holding a mix of played and unplayed episodes, with no descendant
+            // carrying a resume position to dismiss. Playing any episode clears it again.
             var folderIsResumableFilter = IsFolderFilter.And(e => resumableFolderTypes.Contains(e.Type))
+                .And(e => !e.UserData!.Any(ud => ud.UserId == userId && ud.ExcludedFromResume))
                 .And(BuildHasDescendantFilter(context, inProgressLeafItems)
                     .Or(BuildHasDescendantFilter(context, leafItems.Where(e => e.UserData!.Any(ud => ud.UserId == userId && ud.Played)))
                         .And(BuildHasDescendantFilter(context, leafItems.Where(e => !e.UserData!.Any(ud => ud.UserId == userId && ud.Played))))));

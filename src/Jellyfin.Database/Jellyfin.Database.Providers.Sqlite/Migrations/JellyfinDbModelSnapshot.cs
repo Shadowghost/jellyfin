@@ -1102,6 +1102,58 @@ namespace Jellyfin.Server.Implementations.Migrations
                     b.HasAnnotation("Sqlite:UseSqlReturningClause", false);
                 });
 
+            modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.PlaybackItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("DateCreated")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ItemId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MediaType")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ItemId");
+
+                    b.ToTable("PlaybackItems");
+
+                    b.HasAnnotation("Sqlite:UseSqlReturningClause", false);
+                });
+
+            modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.PlaybackItemKey", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PlaybackItemId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    b.HasIndex("PlaybackItemId");
+
+                    b.ToTable("PlaybackItemKeys");
+
+                    b.HasAnnotation("Sqlite:UseSqlReturningClause", false);
+                });
+
             modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.Preference", b =>
                 {
                     b.Property<int>("Id")
@@ -1421,6 +1473,9 @@ namespace Jellyfin.Server.Implementations.Migrations
                     b.Property<int?>("AudioStreamIndex")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("ExcludedFromResume")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("IsFavorite")
                         .HasColumnType("INTEGER");
 
@@ -1437,6 +1492,9 @@ namespace Jellyfin.Server.Implementations.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("Played")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool?>("PlayedOverride")
                         .HasColumnType("INTEGER");
 
                     b.Property<double?>("Rating")
@@ -1465,6 +1523,138 @@ namespace Jellyfin.Server.Implementations.Migrations
                     b.HasIndex("UserId", "Played", "ItemId");
 
                     b.ToTable("UserData");
+
+                    b.HasAnnotation("Sqlite:UseSqlReturningClause", false);
+                });
+
+            modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.UserPlaybackHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("ActualBytesTransferred")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Bitrate")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ClientName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("DateStarted")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("DateStopped")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeviceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeviceName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MediaSourceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PlaySessionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PlaybackItemId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("PlayedDurationTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("PlayedToCompletion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("RunTimeTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("StartPositionTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("StopPositionTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Transcoded")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DateStopped");
+
+                    b.HasIndex("PlaybackItemId", "PlayedToCompletion");
+
+                    b.HasIndex("Source", "DateStopped");
+
+                    b.HasIndex("UserId", "DateStopped");
+
+                    b.HasIndex("UserId", "PlaybackItemId", "DateStopped");
+
+                    b.ToTable("UserPlaybackHistory");
+
+                    b.HasAnnotation("Sqlite:UseSqlReturningClause", false);
+                });
+
+            modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.UserPlaybackHistoryStream", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Bitrate")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Channels")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Codec")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("HistoryId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool?>("IsForced")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool?>("IsHearingImpaired")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Language")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Origin")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("StreamType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("VideoRange")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HistoryId");
+
+                    b.HasIndex("StreamType", "Origin", "Language");
+
+                    b.HasIndex("StreamType", "Origin", "VideoRange");
+
+                    b.ToTable("UserPlaybackHistoryStreams");
 
                     b.HasAnnotation("Sqlite:UseSqlReturningClause", false);
                 });
@@ -1702,6 +1892,17 @@ namespace Jellyfin.Server.Implementations.Migrations
                         .OnDelete(DeleteBehavior.Cascade);
                 });
 
+            modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.PlaybackItemKey", b =>
+                {
+                    b.HasOne("Jellyfin.Database.Implementations.Entities.PlaybackItem", "PlaybackItem")
+                        .WithMany("Keys")
+                        .HasForeignKey("PlaybackItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PlaybackItem");
+                });
+
             modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.Preference", b =>
                 {
                     b.HasOne("Jellyfin.Database.Implementations.Entities.User", null)
@@ -1738,6 +1939,28 @@ namespace Jellyfin.Server.Implementations.Migrations
                     b.Navigation("Item");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.UserPlaybackHistory", b =>
+                {
+                    b.HasOne("Jellyfin.Database.Implementations.Entities.PlaybackItem", "PlaybackItem")
+                        .WithMany("History")
+                        .HasForeignKey("PlaybackItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PlaybackItem");
+                });
+
+            modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.UserPlaybackHistoryStream", b =>
+                {
+                    b.HasOne("Jellyfin.Database.Implementations.Entities.UserPlaybackHistory", "History")
+                        .WithMany("Streams")
+                        .HasForeignKey("HistoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("History");
                 });
 
             modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.BaseItemEntity", b =>
@@ -1788,6 +2011,13 @@ namespace Jellyfin.Server.Implementations.Migrations
                     b.Navigation("BaseItems");
                 });
 
+            modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.PlaybackItem", b =>
+                {
+                    b.Navigation("History");
+
+                    b.Navigation("Keys");
+                });
+
             modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.User", b =>
                 {
                     b.Navigation("AccessSchedules");
@@ -1801,6 +2031,11 @@ namespace Jellyfin.Server.Implementations.Migrations
                     b.Navigation("Preferences");
 
                     b.Navigation("ProfileImage");
+                });
+
+            modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.UserPlaybackHistory", b =>
+                {
+                    b.Navigation("Streams");
                 });
 #pragma warning restore 612, 618
         }

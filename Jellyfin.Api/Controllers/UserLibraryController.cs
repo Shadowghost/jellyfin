@@ -289,6 +289,41 @@ public class UserLibraryController : BaseJellyfinApiController
     }
 
     /// <summary>
+    /// Hides an item from Continue Watching without altering its resume position or played state.
+    /// Playing the item again - or, for a series, playing any of its episodes - brings it back.
+    /// </summary>
+    /// <param name="userId">User id.</param>
+    /// <param name="itemId">Item id.</param>
+    /// <response code="200">Item removed from Continue Watching.</response>
+    /// <response code="404">Item not found.</response>
+    /// <returns>An <see cref="OkResult"/> containing the <see cref="UserItemDataDto"/>.</returns>
+    [HttpPost("UserItems/{itemId}/ExcludeFromResume")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Tags("UserData")]
+    public ActionResult<UserItemDataDto> ExcludeItemFromResume(
+        [FromQuery] Guid? userId,
+        [FromRoute, Required] Guid itemId)
+        => SetExcludedFromResume(userId, itemId, true);
+
+    /// <summary>
+    /// Restores an item to Continue Watching after it was dismissed.
+    /// </summary>
+    /// <param name="userId">User id.</param>
+    /// <param name="itemId">Item id.</param>
+    /// <response code="200">Item restored to Continue Watching.</response>
+    /// <response code="404">Item not found.</response>
+    /// <returns>An <see cref="OkResult"/> containing the <see cref="UserItemDataDto"/>.</returns>
+    [HttpDelete("UserItems/{itemId}/ExcludeFromResume")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Tags("UserData")]
+    public ActionResult<UserItemDataDto> RestoreItemToResume(
+        [FromQuery] Guid? userId,
+        [FromRoute, Required] Guid itemId)
+        => SetExcludedFromResume(userId, itemId, false);
+
+    /// <summary>
     /// Unmarks item as a favorite.
     /// </summary>
     /// <param name="userId">User id.</param>
@@ -665,6 +700,39 @@ public class UserLibraryController : BaseJellyfinApiController
                 ForceSave = true
             },
             RefreshPriority.High);
+    }
+
+    /// <summary>
+    /// Sets whether an item is hidden from Continue Watching.
+    /// </summary>
+    /// <param name="userId">The user id.</param>
+    /// <param name="itemId">The item id.</param>
+    /// <param name="excluded">Whether the item should be hidden.</param>
+    private ActionResult<UserItemDataDto> SetExcludedFromResume(Guid? userId, Guid itemId, bool excluded)
+    {
+        userId = RequestHelpers.GetUserId(User, userId);
+        var user = _userManager.GetUserById(userId.Value);
+        if (user is null)
+        {
+            return NotFound();
+        }
+
+        var item = _libraryManager.GetItemById<BaseItem>(itemId, user);
+        if (item is null)
+        {
+            return NotFound();
+        }
+
+        var data = _userDataRepository.GetUserData(user, item);
+        if (data is not null)
+        {
+            // The resume position is deliberately left alone: this hides the item, it does not forget
+            // where the user got to.
+            data.ExcludedFromResume = excluded;
+            _userDataRepository.SaveUserData(user, item, data, UserDataSaveReason.UpdateUserData, CancellationToken.None);
+        }
+
+        return _userDataRepository.GetUserDataDto(item, user)!;
     }
 
     /// <summary>
