@@ -8,6 +8,7 @@ using System.Net.Mime;
 using System.Text;
 using Emby.Server.Implementations.EntryPoints;
 using Emby.Server.Implementations.Localization;
+using Jellyfin.Api.Helpers.DynamicStreamObserver;
 using Jellyfin.Api.Middleware;
 using Jellyfin.Database.Implementations;
 using Jellyfin.LiveTv.Extensions;
@@ -29,6 +30,7 @@ using MediaBrowser.XbmcMetadata;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Localization;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -170,6 +172,11 @@ namespace Jellyfin.Server
             services.AddHostedService<RecordingNotifier>();
             services.AddHostedService<DeviceAccessHost>();
             services.AddHostedService<DirectoryCacheTrimmer>();
+            services.AddHostedService<PlaybackHistorySync>();
+
+            services.AddSingleton<IActionResultExecutor<ObservableBlobActionResult>, ObservableBlobResultExecutor>();
+            services.AddSingleton<IStreamObserverService, StreamObserverService>();
+            services.AddHostedService<PlaybackBandwidthRecorder>();
         }
 
         /// <summary>

@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Jellyfin.Api.Attributes;
 using Jellyfin.Api.Extensions;
 using Jellyfin.Api.Helpers;
+using Jellyfin.Api.Helpers.DynamicStreamObserver;
 using Jellyfin.Api.ModelBinders;
 using Jellyfin.Extensions;
 using MediaBrowser.Common.Api;
@@ -449,7 +450,7 @@ public class VideosController : BaseJellyfinApiController
 
             var liveStream = new ProgressiveFileStream(liveStreamInfo.GetStream());
             // TODO (moved from MediaBrowser.Api): Don't hardcode contentType
-            return File(liveStream, MimeTypes.GetMimeType("file.ts"));
+            return new ObservableBlobActionResult(liveStream, MimeTypes.GetMimeType("file.ts"), itemId);
         }
 
         // Static remote stream
@@ -472,12 +473,13 @@ public class VideosController : BaseJellyfinApiController
             if (state.MediaSource.IsInfiniteStream)
             {
                 var liveStream = new ProgressiveFileStream(state.MediaPath, null, _transcodeManager);
-                return File(liveStream, contentType);
+                return new ObservableBlobActionResult(liveStream, contentType, itemId);
             }
 
             return FileStreamResponseHelpers.GetStaticFileResult(
                 state.MediaPath,
-                contentType);
+                contentType,
+                itemId);
         }
 
         // Need to start ffmpeg (because media can't be returned directly)

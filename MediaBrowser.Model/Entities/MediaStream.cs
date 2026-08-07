@@ -701,7 +701,11 @@ namespace MediaBrowser.Model.Entities
         /// <value><c>true</c> if this instance is anamorphic; otherwise, <c>false</c>.</value>
         public bool? IsAnamorphic { get; set; }
 
-        internal string GetResolutionText()
+        /// <summary>
+        /// Gets a standard resolution label (e.g. 720p, 1080p, 4K) derived from the stream dimensions.
+        /// </summary>
+        /// <returns>The resolution label, or <c>null</c> if the dimensions are unknown.</returns>
+        public string GetResolutionText()
         {
             if (!Width.HasValue || !Height.HasValue)
             {

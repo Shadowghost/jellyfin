@@ -46,8 +46,37 @@ public class UserData
     /// <summary>
     /// Gets or sets a value indicating whether this <see cref="UserData" /> is played.
     /// </summary>
+    /// <remarks>
+    /// A projection of the playback history, not an independent fact: it is recomputed from the
+    /// recorded sessions (or from <see cref="PlayedOverride"/> when one is set) rather than written
+    /// directly. It stays a stored column because every played/unplayed filter, sort, and folder
+    /// count in the item queries reads it, and none of them can afford an aggregate over the history.
+    /// </remarks>
     /// <value><c>true</c> if played; otherwise, <c>false</c>.</value>
     public bool Played { get; set; }
+
+    /// <summary>
+    /// Gets or sets an explicit played state that wins over the recorded history.
+    /// </summary>
+    /// <remarks>
+    /// Playback history is append-only, so "mark as unplayed" cannot be expressed by removing the
+    /// plays that happened - and "mark as played" should not invent plays that did not. Both are
+    /// recorded here instead, which keeps the history a truthful record of observed playback while
+    /// still letting a user decide what the library shows. <c>null</c> means no explicit choice has
+    /// been made and <see cref="Played"/> follows the history.
+    /// </remarks>
+    public bool? PlayedOverride { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the user has dismissed this item from Continue Watching.
+    /// </summary>
+    /// <remarks>
+    /// Purely a visibility choice: the resume position is left untouched, so the item still resumes
+    /// where it was left if it is played again. Playing it (or, for a series, playing any episode of
+    /// it) clears the dismissal, on the same principle as <see cref="PlayedOverride"/> - a fresh
+    /// observation retires an earlier choice about what the library should show.
+    /// </remarks>
+    public bool ExcludedFromResume { get; set; }
 
     /// <summary>
     /// Gets or sets the index of the audio stream.
