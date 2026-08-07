@@ -77,6 +77,12 @@ namespace Emby.Server.Implementations.Session
         private readonly ConcurrentDictionary<string, PlaybackSpan> _playbackStartState
             = new(StringComparer.Ordinal);
 
+        // Per play-session snapshot of how the stream is being delivered, kept outside the SessionInfo
+        // because that object is device-scoped and can be torn down (websocket close, re-login, a new
+        // playback on the same device) before the final stop report arrives.
+        private readonly ConcurrentDictionary<string, PlaybackDelivery> _playbackDeliveryState
+            = new(StringComparer.Ordinal);
+
         private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, string>> _activeLiveStreamSessions
             = new(StringComparer.OrdinalIgnoreCase);
 
@@ -807,12 +813,13 @@ namespace Emby.Server.Implementations.Session
                 }
             }
 
-            // Seed the accurate watch-time accumulator for this play session.
+            // Seed the accurate watch-time accumulator and the delivery snapshot for this play session.
             if (!string.IsNullOrEmpty(info.PlaySessionId))
             {
                 var startPosition = info.PositionTicks ?? 0;
                 var now = DateTime.UtcNow;
                 _playbackStartState[info.PlaySessionId] = new PlaybackSpan(now, startPosition, 0, startPosition, now, true);
+                RecordDelivery(session, info.PlaySessionId, info.AudioStreamIndex, info.SubtitleStreamIndex);
                 SweepAbandonedPlaybackState(now);
             }
 
@@ -989,10 +996,14 @@ namespace Emby.Server.Implementations.Session
             }
 
             // Fold this report into the accurate watch-time accumulator (pause/seek-excluded).
-            if (!string.IsNullOrEmpty(info.PlaySessionId)
-                && _playbackStartState.TryGetValue(info.PlaySessionId, out var progressState))
+            if (!string.IsNullOrEmpty(info.PlaySessionId))
             {
-                _playbackStartState[info.PlaySessionId] = AccumulatePlayed(progressState, info.PositionTicks ?? 0, info.IsPaused, DateTime.UtcNow);
+                if (_playbackStartState.TryGetValue(info.PlaySessionId, out var progressState))
+                {
+                    _playbackStartState[info.PlaySessionId] = AccumulatePlayed(progressState, info.PositionTicks ?? 0, info.IsPaused, DateTime.UtcNow);
+                }
+
+                RecordDelivery(session, info.PlaySessionId, info.AudioStreamIndex, info.SubtitleStreamIndex);
             }
 
             if (!string.IsNullOrEmpty(info.LiveStreamId))
@@ -1189,8 +1200,8 @@ namespace Emby.Server.Implementations.Session
 
             session.PlaylistItemId = info.PlaylistItemId;
 
-            var transcodingInfo = session.TranscodingInfo;
-            var capturedStreams = CaptureStreams(session, info);
+            var delivery = GetDelivery(session, info.PlaySessionId);
+            var capturedStreams = CaptureStreams(delivery, info);
 
             RemoveNowPlayingItem(session);
 
@@ -1217,7 +1228,7 @@ namespace Emby.Server.Implementations.Session
 
                 if (primaryUser is not null)
                 {
-                    await RecordPlaybackHistoryAsync(session, primaryUser, libraryItem, info, primaryPlayedToCompletion, transcodingInfo, capturedStreams).ConfigureAwait(false);
+                    await RecordPlaybackHistoryAsync(session, primaryUser, libraryItem, info, primaryPlayedToCompletion, delivery.TranscodingInfo, capturedStreams).ConfigureAwait(false);
 
                     // The history has just gained (or deliberately not gained) this session, so the
                     // projection is refreshed from it rather than from what the stop handler assumed.
@@ -1299,6 +1310,7 @@ namespace Emby.Server.Implementations.Session
                 if (nowUtc - state.LastEventUtc >= _playbackStateTtl)
                 {
                     _playbackStartState.TryRemove(key, out _);
+                    _playbackDeliveryState.TryRemove(key, out _);
                     _playbackHistoryManager.DiscardPendingTransfer(key);
                 }
             }
@@ -1350,7 +1362,36 @@ namespace Emby.Server.Implementations.Session
             };
         }
 
-        private static IReadOnlyList<PlaybackHistoryStreamInfo> CaptureStreams(SessionInfo session, PlaybackStopInfo info)
+        /// <summary>
+        /// Folds a start/progress report into this play session's delivery snapshot.
+        /// </summary>
+        private void RecordDelivery(SessionInfo session, string playSessionId, int? audioStreamIndex, int? subtitleStreamIndex)
+        {
+            var reported = new PlaybackDelivery(session.TranscodingInfo, audioStreamIndex, subtitleStreamIndex);
+
+            _playbackDeliveryState.AddOrUpdate(
+                playSessionId,
+                reported,
+                (_, existing) => reported with { TranscodingInfo = reported.TranscodingInfo ?? existing.TranscodingInfo });
+        }
+
+        /// <summary>
+        /// Gets this play session's delivery snapshot, falling back to the live session for clients
+        /// that report no play session id.
+        /// </summary>
+        private PlaybackDelivery GetDelivery(SessionInfo session, string playSessionId)
+        {
+            if (!string.IsNullOrEmpty(playSessionId)
+                && _playbackDeliveryState.TryGetValue(playSessionId, out var snapshot))
+            {
+                return snapshot;
+            }
+
+            var playState = session.PlayState;
+            return new PlaybackDelivery(session.TranscodingInfo, playState?.AudioStreamIndex, playState?.SubtitleStreamIndex);
+        }
+
+        private static IReadOnlyList<PlaybackHistoryStreamInfo> CaptureStreams(PlaybackDelivery delivery, PlaybackStopInfo info)
         {
             var mediaStreams = info.Item?.MediaStreams;
             if (mediaStreams is null)
@@ -1358,8 +1399,7 @@ namespace Emby.Server.Implementations.Session
                 return Array.Empty<PlaybackHistoryStreamInfo>();
             }
 
-            var playState = session.PlayState;
-            var transcoding = session.TranscodingInfo;
+            var transcoding = delivery.TranscodingInfo;
 
             var selectedVideo = mediaStreams
                 .Where(s => s.Type == MediaStreamType.Video)
@@ -1370,7 +1410,7 @@ namespace Emby.Server.Implementations.Session
             var audioStreams = mediaStreams.Where(s => s.Type == MediaStreamType.Audio).ToList();
             if (audioStreams.Count > 0)
             {
-                var audioIndex = playState?.AudioStreamIndex;
+                var audioIndex = delivery.AudioStreamIndex;
                 selectedAudio = audioIndex.HasValue
                     ? audioStreams.Find(s => s.Index == audioIndex.Value)
                     : null;
@@ -1378,7 +1418,7 @@ namespace Emby.Server.Implementations.Session
             }
 
             MediaStream selectedSubtitle = null;
-            var subtitleIndex = playState?.SubtitleStreamIndex;
+            var subtitleIndex = delivery.SubtitleStreamIndex;
             if (subtitleIndex.HasValue && subtitleIndex.Value >= 0)
             {
                 selectedSubtitle = mediaStreams.FirstOrDefault(s => s.Type == MediaStreamType.Subtitle && s.Index == subtitleIndex.Value);
@@ -1457,6 +1497,10 @@ namespace Emby.Server.Implementations.Session
             var hasPlaySession = !string.IsNullOrEmpty(info.PlaySessionId);
             PlaybackSpan startState = default;
             var haveStartState = hasPlaySession && _playbackStartState.TryRemove(info.PlaySessionId!, out startState);
+            if (hasPlaySession)
+            {
+                _playbackDeliveryState.TryRemove(info.PlaySessionId!, out _);
+            }
 
             void DiscardMeasuredBytes()
             {
@@ -2546,5 +2590,16 @@ namespace Emby.Server.Implementations.Session
             long LastPositionTicks,
             DateTime LastEventUtc,
             bool WasPlaying);
+
+        /// <summary>
+        /// How a play session is being delivered, as last reported by the client.
+        /// </summary>
+        /// <param name="TranscodingInfo">The transcode in use, or <c>null</c> for a direct play.</param>
+        /// <param name="AudioStreamIndex">The selected source audio stream index.</param>
+        /// <param name="SubtitleStreamIndex">The selected source subtitle stream index.</param>
+        private readonly record struct PlaybackDelivery(
+            TranscodingInfo TranscodingInfo,
+            int? AudioStreamIndex,
+            int? SubtitleStreamIndex);
     }
 }
