@@ -123,6 +123,9 @@ namespace Emby.Server.Implementations.Library
 
             if (userDataDto.Played.HasValue)
             {
+                // Same standing as the mark-played/unplayed toggles: an explicit choice by the caller,
+                // recorded as an override so the next projection from the history does not undo it.
+                userData.PlayedOverride = userDataDto.Played.Value;
                 userData.Played = userDataDto.Played.Value;
             }
 
@@ -154,6 +157,8 @@ namespace Emby.Server.Implementations.Library
                 PlaybackPositionTicks = dto.PlaybackPositionTicks,
                 PlayCount = dto.PlayCount,
                 Played = dto.Played,
+                PlayedOverride = dto.PlayedOverride,
+                ExcludedFromResume = dto.ExcludedFromResume,
                 Rating = dto.Rating,
                 UserId = userId,
                 SubtitleStreamIndex = dto.SubtitleStreamIndex,
@@ -172,6 +177,8 @@ namespace Emby.Server.Implementations.Library
                 PlaybackPositionTicks = dto.PlaybackPositionTicks,
                 PlayCount = dto.PlayCount,
                 Played = dto.Played,
+                PlayedOverride = dto.PlayedOverride,
+                ExcludedFromResume = dto.ExcludedFromResume,
                 Rating = dto.Rating,
                 SubtitleStreamIndex = dto.SubtitleStreamIndex,
             };
@@ -429,10 +436,44 @@ namespace Emby.Server.Implementations.Library
                 PlayCount = data.PlayCount,
                 Rating = data.Rating,
                 Played = data.Played,
+                ExcludedFromResume = data.ExcludedFromResume,
                 LastPlayedDate = data.LastPlayedDate,
                 ItemId = itemId,
                 Key = data.Key
             };
+        }
+
+        /// <inheritdoc />
+        public void ClearCache() => _cache.Clear();
+
+        /// <inheritdoc />
+        public void ApplyPlaybackStats(User user, BaseItem item, PlaybackItemStats stats)
+        {
+            ArgumentNullException.ThrowIfNull(user);
+            ArgumentNullException.ThrowIfNull(item);
+
+            var data = GetUserData(user, item) ?? throw new InvalidOperationException("UserData should not be null.");
+
+            // An observed completion settles the question, so it retires any earlier manual choice.
+            // Without this, marking something unplayed and then actually watching it would leave it
+            // stuck as unplayed for as long as the override survived.
+            if (stats.HasCompletion)
+            {
+                data.PlayedOverride = null;
+            }
+
+            data.PlayCount = stats.PlayCount;
+            data.Played = item.SupportsPlayedStatus && (data.PlayedOverride ?? stats.HasCompletion);
+
+            // Only overwritten once there is history to overwrite it with. An item can carry a played
+            // date from before the history store existed, or one set by a metadata import, and an empty
+            // aggregate is not evidence that those never happened.
+            if (stats.HasHistory)
+            {
+                data.LastPlayedDate = stats.LastPlayedDate;
+            }
+
+            SaveUserData(user, item, data, UserDataSaveReason.PlaybackFinished, CancellationToken.None);
         }
 
         /// <inheritdoc />

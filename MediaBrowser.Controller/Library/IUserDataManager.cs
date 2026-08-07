@@ -100,6 +100,31 @@ namespace MediaBrowser.Controller.Library
         bool UpdatePlayState(BaseItem item, UserItemData data, long? reportedPositionTicks);
 
         /// <summary>
+        /// Rewrites the played state, play count, and played date this user has for an item from its
+        /// recorded playback history, and saves the result.
+        /// </summary>
+        /// <remarks>
+        /// The history is the source of truth for what was played; these columns are the projection of
+        /// it that the item queries read, because a played/unplayed filter cannot afford an aggregate
+        /// over one row per play. The resume position is not part of the projection - it is mutable
+        /// state governed by the resume thresholds and has no equivalent in an append-only record.
+        /// </remarks>
+        /// <param name="user">The user.</param>
+        /// <param name="item">The item.</param>
+        /// <param name="stats">The item's totals, from <see cref="IPlaybackHistoryManager.GetUserItemStatsAsync"/>.</param>
+        void ApplyPlaybackStats(User user, BaseItem item, PlaybackItemStats stats);
+
+        /// <summary>
+        /// Drops the in-memory user data cache.
+        /// </summary>
+        /// <remarks>
+        /// Needed after the projection is rebuilt in bulk: that rewrite goes straight to the database
+        /// to avoid a transaction per item, so nothing here observes it and the cache would keep
+        /// serving the values it replaced.
+        /// </remarks>
+        void ClearCache();
+
+        /// <summary>
         /// Clears any stored audio and subtitle stream selections for the given user/item pair.
         /// Used when the user has opted out of remembering selections.
         /// </summary>

@@ -29,6 +29,26 @@ public class JellyfinDbContext(DbContextOptions<JellyfinDbContext> options, ILog
     public DbSet<AccessSchedule> AccessSchedules => Set<AccessSchedule>();
 
     /// <summary>
+    /// Gets the <see cref="DbSet{TEntity}"/> containing the playback-history logical items.
+    /// </summary>
+    public DbSet<PlaybackItem> PlaybackItems => Set<PlaybackItem>();
+
+    /// <summary>
+    /// Gets the <see cref="DbSet{TEntity}"/> containing the playback-item identity keys.
+    /// </summary>
+    public DbSet<PlaybackItemKey> PlaybackItemKeys => Set<PlaybackItemKey>();
+
+    /// <summary>
+    /// Gets the <see cref="DbSet{TEntity}"/> containing the recorded playback-history sessions.
+    /// </summary>
+    public DbSet<UserPlaybackHistory> UserPlaybackHistory => Set<UserPlaybackHistory>();
+
+    /// <summary>
+    /// Gets the <see cref="DbSet{TEntity}"/> containing the per-session playback-history streams.
+    /// </summary>
+    public DbSet<UserPlaybackHistoryStream> UserPlaybackHistoryStreams => Set<UserPlaybackHistoryStream>();
+
+    /// <summary>
     /// Gets the <see cref="DbSet{TEntity}"/> containing the activity logs.
     /// </summary>
     public DbSet<ActivityLog> ActivityLogs => Set<ActivityLog>();

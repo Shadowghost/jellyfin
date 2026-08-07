@@ -62,6 +62,12 @@ namespace MediaBrowser.Model.Dto
         public bool Played { get; set; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether the user has hidden this item from Continue Watching.
+        /// The resume position is unaffected, so playing the item again picks up where it left off.
+        /// </summary>
+        public bool ExcludedFromResume { get; set; }
+
+        /// <summary>
         /// Gets or sets the key.
         /// </summary>
         /// <value>The key.</value>

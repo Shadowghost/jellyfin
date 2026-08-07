@@ -76,6 +76,18 @@ namespace MediaBrowser.Controller.Entities
         public bool Played { get; set; }
 
         /// <summary>
+        /// Gets or sets an explicit played state that wins over the recorded playback history.
+        /// <c>null</c> when no explicit choice has been made and <see cref="Played"/> follows the history.
+        /// </summary>
+        public bool? PlayedOverride { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the user has dismissed this item from Continue
+        /// Watching. The resume position is kept, so playing it again resumes where it was left off.
+        /// </summary>
+        public bool ExcludedFromResume { get; set; }
+
+        /// <summary>
         /// Gets or sets the index of the audio stream.
         /// </summary>
         /// <value>The index of the audio stream.</value>

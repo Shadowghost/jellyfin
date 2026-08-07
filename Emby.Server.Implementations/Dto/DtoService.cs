@@ -679,6 +679,7 @@ namespace Emby.Server.Implementations.Dto
                 PlayCount = data.PlayCount,
                 Rating = data.Rating,
                 Played = data.Played,
+                ExcludedFromResume = data.ExcludedFromResume,
                 LastPlayedDate = data.LastPlayedDate,
                 ItemId = itemId,
                 Key = data.Key

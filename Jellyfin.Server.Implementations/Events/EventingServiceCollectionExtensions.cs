@@ -64,6 +64,7 @@ namespace Jellyfin.Server.Implementations.Events
             collection.AddScoped<IEventConsumer<UserCreatedEventArgs>, UserCreatedLogger>();
             collection.AddScoped<IEventConsumer<UserDeletedEventArgs>, UserDeletedLogger>();
             collection.AddScoped<IEventConsumer<UserDeletedEventArgs>, UserDeletedNotifier>();
+            collection.AddScoped<IEventConsumer<UserDeletedEventArgs>, PlaybackHistoryUserCleanup>();
             collection.AddScoped<IEventConsumer<UserLockedOutEventArgs>, UserLockedOutLogger>();
             collection.AddScoped<IEventConsumer<UserPasswordChangedEventArgs>, UserPasswordChangedLogger>();
             collection.AddScoped<IEventConsumer<UserUpdatedEventArgs>, UserUpdatedNotifier>();
