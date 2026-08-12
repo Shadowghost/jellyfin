@@ -2200,22 +2200,24 @@ namespace MediaBrowser.Controller.Entities
                 Key = GetUserDataKeys().First(),
             };
 
-            if (datePlayed.HasValue)
-            {
-                // Increment
-                data.PlayCount++;
-            }
-
-            // Ensure it's at least one
-            data.PlayCount = Math.Max(data.PlayCount, 1);
+            // Marking something played says how the library should read it; it is not a play that
+            // happened. Recording it as an override keeps the playback history a truthful record of
+            // observed playback, and leaves the play count describing plays rather than button presses.
+            data.PlayedOverride = true;
+            data.Played = true;
 
             if (resetPosition)
             {
                 data.PlaybackPositionTicks = 0;
             }
 
-            data.LastPlayedDate = datePlayed ?? data.LastPlayedDate ?? DateTime.UtcNow;
-            data.Played = true;
+            // An explicit date is the caller supplying evidence of a real play - a metadata import, a
+            // plugin syncing from elsewhere - so it is kept. Without one the played date stays whatever
+            // the history projected, because nothing here knows better.
+            if (datePlayed.HasValue)
+            {
+                data.LastPlayedDate = datePlayed;
+            }
 
             UserDataManager.SaveUserData(user, this, data, UserDataSaveReason.TogglePlayed, CancellationToken.None);
         }
@@ -2247,10 +2249,12 @@ namespace MediaBrowser.Controller.Entities
         {
             ArgumentNullException.ThrowIfNull(data);
 
-            data.PlayCount = 0;
-            data.PlaybackPositionTicks = 0;
-            data.LastPlayedDate = null;
+            // The play count and played date describe plays that happened. Playback history is
+            // append-only and marking something unplayed does not unmake them, so only the display
+            // state and the resume point are reset.
+            data.PlayedOverride = false;
             data.Played = false;
+            data.PlaybackPositionTicks = 0;
         }
 
         /// <summary>

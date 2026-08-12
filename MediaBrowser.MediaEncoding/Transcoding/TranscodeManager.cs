@@ -44,6 +44,12 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
     /// </summary>
     private static readonly TimeSpan GraphProbeTimeout = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// How long to wait after a transcode starts before probing its filter graph, so the probe
+    /// stays clear of the startup burst the client is waiting on.
+    /// </summary>
+    private static readonly TimeSpan GraphProbeDelay = TimeSpan.FromSeconds(10);
+
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<TranscodeManager> _logger;
     private readonly IFileSystem _fileSystem;
@@ -743,6 +749,28 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
             var probeArguments = TranscodingPipelineBuilder.BuildGraphProbeArguments(commandLineArguments, outputPath, probeDirectory, graphFilePath);
             if (probeArguments is null)
             {
+                return;
+            }
+
+            // Let the transcode get through its startup burst first. The probe is a second ffmpeg
+            // opening the same decoder, filters and encoder, and this is exactly the moment the
+            // real one is racing to produce the first segments with the client waiting on them -
+            // on a hardware encoder the probe also holds an encode session while it runs. Nothing
+            // about the graph is latency sensitive (it feeds a monitoring view), and waiting means
+            // a session that ends within the delay never pays for a probe at all.
+            await Task.Delay(GraphProbeDelay, cancellationToken).ConfigureAwait(false);
+
+            if (job.HasExited)
+            {
+                return;
+            }
+
+            // A seek in the same play session starts a new job; one of them may have produced the
+            // graph while this one waited.
+            var cachedSessionId = job.PlaySessionId;
+            if (!string.IsNullOrEmpty(cachedSessionId) && _pipelineGraphCache.TryGetValue(cachedSessionId, out var alreadyProbed))
+            {
+                job.Pipeline = alreadyProbed;
                 return;
             }
 
