@@ -141,7 +141,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
             {
                 remoteResult.TrySetProviderId(MetadataProvider.Imdb, series.ExternalIds.ImdbId);
 
-                remoteResult.TrySetProviderId(MetadataProvider.Tvdb, series.ExternalIds.TvdbId);
+                remoteResult.TrySetProviderId(MetadataProvider.Tvdb, series.ExternalIds.TvdbId?.ToString(CultureInfo.InvariantCulture));
             }
 
             remoteResult.PremiereDate = series.FirstAirDate?.ToUniversalTime();
@@ -312,11 +312,11 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
             if (ids is not null)
             {
                 series.TrySetProviderId(MetadataProvider.Imdb, ids.ImdbId);
-                series.TrySetProviderId(MetadataProvider.TvRage, ids.TvrageId);
-                series.TrySetProviderId(MetadataProvider.Tvdb, ids.TvdbId);
+                series.TrySetProviderId(MetadataProvider.TvRage, ids.TvrageId?.ToString(CultureInfo.InvariantCulture));
+                series.TrySetProviderId(MetadataProvider.Tvdb, ids.TvdbId?.ToString(CultureInfo.InvariantCulture));
             }
 
-            var contentRatings = seriesResult.ContentRatings?.Results ?? new List<ContentRating>();
+            var contentRatings = seriesResult.ContentRatings?.Results ?? [];
 
             var ourRelease = contentRatings.FirstOrDefault(c => string.Equals(c.Iso_3166_1, preferredCountryCode, StringComparison.OrdinalIgnoreCase));
             var usRelease = contentRatings.FirstOrDefault(c => string.Equals(c.Iso_3166_1, "US", StringComparison.OrdinalIgnoreCase));
@@ -371,9 +371,9 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
         {
             var config = Plugin.Instance.Configuration;
 
-            if (seriesResult.Credits?.Cast is not null)
+            if (seriesResult.AggregateCredits?.Cast is not null)
             {
-                IEnumerable<Cast> castQuery = seriesResult.Credits.Cast.OrderBy(a => a.Order);
+                IEnumerable<CastAggregate> castQuery = seriesResult.AggregateCredits.Cast.OrderBy(a => a.Order);
 
                 if (config.HideMissingCastMembers)
                 {
@@ -387,22 +387,39 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
                         continue;
                     }
 
-                    var personInfo = new PersonInfo
-                    {
-                        Name = actor.Name.Trim(),
-                        Role = actor.Character?.Trim() ?? string.Empty,
-                        Type = PersonKind.Actor,
-                        SortOrder = actor.Order,
-                        // NOTE: Null values are filtered out above
-                        ImageUrl = _tmdbClientManager.GetProfileUrl(actor.ProfilePath!)
-                    };
+                    // An actor playing several characters over the run gets one aggregated entry
+                    // holding every role, so each of them becomes a credit of its own here.
+                    // Their own billing puts the character they played the longest first.
+                    var characters = actor.Roles?
+                        .Where(role => !string.IsNullOrWhiteSpace(role.Character))
+                        .OrderByDescending(role => role.EpisodeCount)
+                        .Select(role => role.Character!.Trim())
+                        .ToList();
 
-                    if (actor.Id > 0)
+                    if (characters is null || characters.Count == 0)
                     {
-                        personInfo.SetProviderId(MetadataProvider.Tmdb, actor.Id.ToString(CultureInfo.InvariantCulture));
+                        characters = [string.Empty];
                     }
 
-                    yield return personInfo;
+                    foreach (var character in characters)
+                    {
+                        var personInfo = new PersonInfo
+                        {
+                            Name = actor.Name.Trim(),
+                            Role = character,
+                            Type = PersonKind.Actor,
+                            SortOrder = actor.Order,
+                            // NOTE: Null values are filtered out above
+                            ImageUrl = _tmdbClientManager.GetProfileUrl(actor.ProfilePath!)
+                        };
+
+                        if (actor.Id > 0)
+                        {
+                            personInfo.SetProviderId(MetadataProvider.Tmdb, actor.Id.ToString(CultureInfo.InvariantCulture));
+                        }
+
+                        yield return personInfo;
+                    }
                 }
             }
 

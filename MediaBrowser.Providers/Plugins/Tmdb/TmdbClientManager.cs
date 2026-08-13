@@ -137,7 +137,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
 
             await EnsureClientConfigAsync().ConfigureAwait(false);
 
-            var extraMethods = TvShowMethods.Credits | TvShowMethods.Images | TvShowMethods.ExternalIds | TvShowMethods.Videos | TvShowMethods.ContentRatings | TvShowMethods.EpisodeGroups;
+            var extraMethods = TvShowMethods.Credits | TvShowMethods.CreditsAggregate | TvShowMethods.Images | TvShowMethods.ExternalIds | TvShowMethods.Videos | TvShowMethods.ContentRatings | TvShowMethods.EpisodeGroups;
             if (!(Plugin.Instance?.Configuration.ExcludeTagsSeries).GetValueOrDefault())
             {
                 extraMethods |= TvShowMethods.Keywords;
@@ -280,7 +280,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
             episode = await _tmDbClient.GetTvEpisodeAsync(
                 tvShowId,
                 seasonNumber,
-                episodeNumber,
+                Convert.ToInt32(episodeNumber),
                 language: TmdbUtils.NormalizeLanguage(language, countryCode),
                 includeImageLanguage: imageLanguages,
                 extraMethods: TvEpisodeMethods.Credits | TvEpisodeMethods.Images | TvEpisodeMethods.ExternalIds | TvEpisodeMethods.Videos,
