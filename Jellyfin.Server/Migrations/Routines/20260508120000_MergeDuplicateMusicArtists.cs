@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Database.Implementations;
+using Jellyfin.Server.Implementations.Item;
 using Jellyfin.Server.ServerSetupApp;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Persistence;

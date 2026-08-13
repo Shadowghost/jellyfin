@@ -11,12 +11,12 @@ using MediaBrowser.Controller.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
-namespace Jellyfin.Server.Migrations.Routines;
+namespace Jellyfin.Server.Implementations.Item;
 
 /// <summary>
 /// Repoints what references a duplicate BaseItem, then deletes the duplicates.
 /// </summary>
-internal static class DuplicateItemMerge
+public static class DuplicateItemMerge
 {
     // Batched so we never issue one massive delete transaction.
     private const int DeleteBatchSize = 500;
@@ -74,6 +74,27 @@ internal static class DuplicateItemMerge
         await context.LinkedChildren
             .Where(l => l.ChildId == dupId)
             .ExecuteUpdateAsync(s => s.SetProperty(l => l.ChildId, keeperId), cancellationToken)
+            .ConfigureAwait(false);
+
+        // Nothing keys the genre or studio side of a link, so a merge has to move those rows itself or
+        // they would point at an item that is about to be deleted.
+        await context.BaseItemGenres
+            .Where(g => g.GenreItemId == dupId
+                && context.BaseItemGenres.Any(k => k.GenreItemId == keeperId && k.ItemId == g.ItemId))
+            .ExecuteDeleteAsync(cancellationToken)
+            .ConfigureAwait(false);
+        await context.BaseItemGenres
+            .Where(g => g.GenreItemId == dupId)
+            .ExecuteUpdateAsync(s => s.SetProperty(g => g.GenreItemId, keeperId), cancellationToken)
+            .ConfigureAwait(false);
+        await context.BaseItemStudios
+            .Where(g => g.StudioItemId == dupId
+                && context.BaseItemStudios.Any(k => k.StudioItemId == keeperId && k.ItemId == g.ItemId))
+            .ExecuteDeleteAsync(cancellationToken)
+            .ConfigureAwait(false);
+        await context.BaseItemStudios
+            .Where(g => g.StudioItemId == dupId)
+            .ExecuteUpdateAsync(s => s.SetProperty(g => g.StudioItemId, keeperId), cancellationToken)
             .ConfigureAwait(false);
 
         // UserData has UNIQUE(UserId, CustomDataKey); the keeper's value wins where both have one.

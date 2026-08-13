@@ -554,6 +554,7 @@ namespace Emby.Server.Implementations
             serviceCollection.AddSingleton<IItemRepository>(sp => sp.GetRequiredService<BaseItemRepository>());
             serviceCollection.AddSingleton<IItemQueryHelpers>(sp => sp.GetRequiredService<BaseItemRepository>());
             serviceCollection.AddSingleton<IItemPersistenceService, ItemPersistenceService>();
+            serviceCollection.AddSingleton<IItemMerger, ItemMerger>();
             serviceCollection.AddSingleton<INextUpService, NextUpService>();
             serviceCollection.AddSingleton<IItemCountService, ItemCountService>();
             serviceCollection.AddSingleton<ILinkedChildrenService, LinkedChildrenService>();

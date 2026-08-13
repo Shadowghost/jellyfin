@@ -5,8 +5,13 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
+using Jellyfin.Database.Implementations.Enums;
+using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.IO;
+using MediaBrowser.Model.Querying;
 using Microsoft.Extensions.Logging;
 
 namespace Emby.Server.Implementations.Library.Validators;
@@ -30,15 +35,23 @@ public class GenresValidator
     /// </summary>
     private readonly ILogger<GenresValidator> _logger;
 
+    private readonly IItemMerger _itemMerger;
+
+    private readonly IFileSystem _fileSystem;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="GenresValidator"/> class.
     /// </summary>
     /// <param name="libraryManager">The library manager.</param>
     /// <param name="logger">The logger.</param>
-    public GenresValidator(ILibraryManager libraryManager, ILogger<GenresValidator> logger)
+    /// <param name="itemMerger">The item merger.</param>
+    /// <param name="fileSystem">The file system.</param>
+    public GenresValidator(ILibraryManager libraryManager, ILogger<GenresValidator> logger, IItemMerger itemMerger, IFileSystem fileSystem)
     {
         _libraryManager = libraryManager;
         _logger = logger;
+        _itemMerger = itemMerger;
+        _fileSystem = fileSystem;
     }
 
     /// <summary>
@@ -64,9 +77,17 @@ public class GenresValidator
 
             try
             {
-                if (item.DateLastRefreshed == default)
+                // Also the ones carrying no ids: a provider that can name them gives them one, and that
+                // is what tells two names for one genre apart from two genres. Asked for in full,
+                // because a provider that reports no file change is left out of any lighter refresh.
+                if (item.DateLastRefreshed == default || item.ProviderIds.Count == 0)
                 {
-                    await item.RefreshMetadata(cancellationToken).ConfigureAwait(false);
+                    await item.RefreshMetadata(
+                        new MetadataRefreshOptions(new DirectoryService(_fileSystem))
+                        {
+                            MetadataRefreshMode = MetadataRefreshMode.FullRefresh
+                        },
+                        cancellationToken).ConfigureAwait(false);
                     refreshed++;
                 }
             }
@@ -89,6 +110,14 @@ public class GenresValidator
         }
 
         _logger.LogInformation("Refreshed metadata for {RefreshedCount} new genres out of {TotalCount} total", refreshed, count);
+
+        var merged = await ByNameProviderIdMerge
+            .MergeAsync(RefreshedInOrder(), _itemMerger, _logger, cancellationToken)
+            .ConfigureAwait(false);
+        if (merged > 0)
+        {
+            _logger.LogInformation("Merged {Count} genres that a provider gives the same id.", merged);
+        }
 
         var deadEntities = _libraryManager.GetItemList(new InternalItemsQuery
         {
@@ -125,5 +154,17 @@ public class GenresValidator
         _libraryManager.DeleteItemsUnsafeFast(deadEntities, deleteSourceFiles: true);
 
         progress.Report(100);
+    }
+
+    // Read again, because the refresh above is what learned the ids. Oldest first, so the one that
+    // survives a merge is the one resolving a name by hand picks.
+    private IReadOnlyList<BaseItem> RefreshedInOrder()
+    {
+        return _libraryManager.GetItemList(new InternalItemsQuery
+        {
+            IncludeItemTypes = [BaseItemKind.Genre],
+            OrderBy = [(ItemSortBy.DateCreated, SortOrder.Ascending)],
+            DtoOptions = new DtoOptions(true)
+        });
     }
 }
