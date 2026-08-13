@@ -2,7 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Library;
-using MediaBrowser.Controller.Persistence;
+using MediaBrowser.Model.IO;
 using Microsoft.Extensions.Logging;
 
 namespace Emby.Server.Implementations.Library.Validators;
@@ -17,22 +17,26 @@ public class GenresPostScanTask : ILibraryPostScanTask
     /// </summary>
     private readonly ILibraryManager _libraryManager;
     private readonly ILogger<GenresValidator> _logger;
-    private readonly IItemRepository _itemRepo;
+    private readonly IItemMerger _itemMerger;
+    private readonly IFileSystem _fileSystem;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="GenresPostScanTask" /> class.
     /// </summary>
     /// <param name="libraryManager">The library manager.</param>
     /// <param name="logger">The logger.</param>
-    /// <param name="itemRepo">The item repository.</param>
+    /// <param name="itemMerger">The item merger.</param>
+    /// <param name="fileSystem">The file system.</param>
     public GenresPostScanTask(
         ILibraryManager libraryManager,
         ILogger<GenresValidator> logger,
-        IItemRepository itemRepo)
+        IItemMerger itemMerger,
+        IFileSystem fileSystem)
     {
         _libraryManager = libraryManager;
         _logger = logger;
-        _itemRepo = itemRepo;
+        _itemMerger = itemMerger;
+        _fileSystem = fileSystem;
     }
 
     /// <summary>
@@ -43,6 +47,6 @@ public class GenresPostScanTask : ILibraryPostScanTask
     /// <returns>Task.</returns>
     public Task Run(IProgress<double> progress, CancellationToken cancellationToken)
     {
-        return new GenresValidator(_libraryManager, _logger, _itemRepo).Run(progress, cancellationToken);
+        return new GenresValidator(_libraryManager, _logger, _itemMerger, _fileSystem).Run(progress, cancellationToken);
     }
 }

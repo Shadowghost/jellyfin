@@ -424,6 +424,61 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
         }
 
         /// <summary>
+        /// Gets the whole movie genre vocabulary in the given language.
+        /// </summary>
+        /// <param name="language">The language to name the genres in.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>Every movie genre TMDb knows, or an empty list.</returns>
+        public Task<IReadOnlyList<Genre>> GetMovieGenresAsync(string? language, CancellationToken cancellationToken)
+        {
+            return GetGenresAsync(
+                "moviegenres",
+                language,
+                (client, normalized, token) => client.GetMovieGenresAsync(normalized, token),
+                cancellationToken);
+        }
+
+        /// <summary>
+        /// Gets the whole series genre vocabulary in the given language.
+        /// </summary>
+        /// <param name="language">The language to name the genres in.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>Every series genre TMDb knows, or an empty list.</returns>
+        public Task<IReadOnlyList<Genre>> GetTvGenresAsync(string? language, CancellationToken cancellationToken)
+        {
+            return GetGenresAsync(
+                "tvgenres",
+                language,
+                (client, normalized, token) => client.GetTvGenresAsync(normalized, token),
+                cancellationToken);
+        }
+
+        private async Task<IReadOnlyList<Genre>> GetGenresAsync(
+            string keyPrefix,
+            string? language,
+            Func<TMDbClient, string?, CancellationToken, Task<List<Genre>?>> fetch,
+            CancellationToken cancellationToken)
+        {
+            var key = $"{keyPrefix}-{language}";
+            if (_memoryCache.TryGetValue(key, out IReadOnlyList<Genre>? genres) && genres is not null)
+            {
+                return genres;
+            }
+
+            await EnsureClientConfigAsync().ConfigureAwait(false);
+
+            var result = await fetch(_tmDbClient, TmdbUtils.NormalizeLanguage(language), cancellationToken).ConfigureAwait(false);
+            if (result is null || result.Count == 0)
+            {
+                return Array.Empty<Genre>();
+            }
+
+            _memoryCache.Set(key, (IReadOnlyList<Genre>)result, TimeSpan.FromHours(CacheDurationInHours));
+
+            return result;
+        }
+
+        /// <summary>
         /// Searches for a movie based on its name using the TMDb API.
         /// </summary>
         /// <param name="name">The name of the movie.</param>
