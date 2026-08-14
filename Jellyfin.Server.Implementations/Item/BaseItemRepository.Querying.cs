@@ -44,9 +44,6 @@ public sealed partial class BaseItemRepository
         var result = new QueryResult<BaseItemDto>();
 
         using var context = _dbProvider.CreateDbContext();
-        // A split query reads each collection in its own statement, and separate statements are
-        // separate snapshots unless they share a transaction. Read-only, so it is discarded.
-        using var readTransaction = context.Database.BeginTransaction();
 
         IQueryable<BaseItemEntity> dbQuery = PrepareItemQuery(context, filter);
 
@@ -75,9 +72,6 @@ public sealed partial class BaseItemRepository
 
         using var context = _dbProvider.CreateDbContext();
         IQueryable<BaseItemEntity> dbQuery = PrepareItemQuery(context, filter);
-        // A split query reads each collection in its own statement, and separate statements are
-        // separate snapshots unless they share a transaction. Read-only, so it is discarded.
-        using var readTransaction = context.Database.BeginTransaction();
 
         dbQuery = TranslateQuery(dbQuery, context, filter);
 
@@ -123,9 +117,6 @@ public sealed partial class BaseItemRepository
 
         var limit = filter.Limit;
         using var context = _dbProvider.CreateDbContext();
-        // A split query reads each collection in its own statement, and separate statements are
-        // separate snapshots unless they share a transaction. Read-only, so it is discarded.
-        using var readTransaction = context.Database.BeginTransaction();
 
         var baseQuery = PrepareItemQuery(context, filter);
         baseQuery = TranslateQuery(baseQuery, context, filter);
@@ -536,9 +527,6 @@ public sealed partial class BaseItemRepository
         }
 
         using var context = _dbProvider.CreateDbContext();
-        // A split query reads each collection in its own statement, and separate statements are
-        // separate snapshots unless they share a transaction. Read-only, so it is discarded.
-        using var readTransaction = context.Database.BeginTransaction();
         var dbQuery = PrepareItemQuery(context, new()
         {
             DtoOptions = new()

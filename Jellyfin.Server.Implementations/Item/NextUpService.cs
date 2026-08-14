@@ -45,9 +45,6 @@ public class NextUpService : INextUpService
         ArgumentNullException.ThrowIfNull(filter.User);
 
         using var context = _dbProvider.CreateDbContext();
-        // A split query reads each collection in its own statement, and separate statements are
-        // separate snapshots unless they share a transaction. Read-only, so it is discarded.
-        using var readTransaction = context.Database.BeginTransaction();
 
         var query = context.BaseItems
             .AsNoTracking()
@@ -89,9 +86,6 @@ public class NextUpService : INextUpService
 
         _queryHelpers.PrepareFilterQuery(filter);
         using var context = _dbProvider.CreateDbContext();
-        // A split query reads each collection in its own statement, and separate statements are
-        // separate snapshots unless they share a transaction. Read-only, so it is discarded.
-        using var readTransaction = context.Database.BeginTransaction();
 
         var userId = filter.User.Id;
         var episodeTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.Episode];
