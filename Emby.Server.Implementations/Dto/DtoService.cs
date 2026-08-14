@@ -1385,24 +1385,14 @@ namespace Emby.Server.Implementations.Dto
                 }
             }
 
-            BaseItem[]? allExtras = null;
-
             if (options.ContainsField(ItemFields.SpecialFeatureCount))
             {
-                allExtras = item.GetExtras().ToArray();
-                dto.SpecialFeatureCount = allExtras.Count(i => i.ExtraType.HasValue && BaseItem.DisplayExtraTypes.Contains(i.ExtraType.Value));
+                dto.SpecialFeatureCount = item.GetExtraCount(BaseItem.DisplayExtraTypes);
             }
 
             if (options.ContainsField(ItemFields.LocalTrailerCount))
             {
-                if (item is IHasTrailers hasTrailers)
-                {
-                    dto.LocalTrailerCount = hasTrailers.LocalTrailers.Count;
-                }
-                else
-                {
-                    dto.LocalTrailerCount = (allExtras ?? item.GetExtras()).Count(i => i.ExtraType == ExtraType.Trailer);
-                }
+                dto.LocalTrailerCount = item.GetExtraCount([ExtraType.Trailer]);
             }
 
             // Add EpisodeInfo
