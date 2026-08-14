@@ -230,7 +230,7 @@ public sealed partial class BaseItemRepository
         }
 
         var query = ApplyNavigations(
-                context.BaseItems.AsNoTracking().AsSingleQuery().WhereOneOrMany(representativeIds, e => e.Id),
+                context.BaseItems.AsNoTracking().WhereOneOrMany(representativeIds, e => e.Id),
                 filter);
 
         query = ApplyOrder(query, filter, context);
