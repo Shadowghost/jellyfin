@@ -341,13 +341,6 @@ public sealed partial class BaseItemRepository
                     : orderedQuery.ThenByDescending(expression);
             }
 
-            if (firstOrdering.OrderBy is ItemSortBy.Default or ItemSortBy.SortName)
-            {
-                orderedQuery = firstOrdering.SortOrder == SortOrder.Ascending
-                    ? orderedQuery.ThenBy(e => e.Name)
-                    : orderedQuery.ThenByDescending(e => e.Name);
-            }
-
             foreach (var item in orderBy.Skip(1))
             {
                 expression = OrderMapper.MapOrderByField(item.OrderBy, filter, context);
@@ -359,7 +352,7 @@ public sealed partial class BaseItemRepository
 
         if (orderedQuery is null)
         {
-            return query.OrderBy(e => e.SortName);
+            return query.OrderBy(e => e.SortName).ThenBy(e => e.Id);
         }
 
         // Add SortName as final tiebreaker
@@ -368,7 +361,10 @@ public sealed partial class BaseItemRepository
             orderedQuery = orderedQuery.ThenBy(e => e.SortName);
         }
 
-        return orderedQuery;
+        // Id last so the order is total; every column above can tie. Keep it the only unindexed
+        // trailing term: SQLite streams one such term but falls back to sorting the whole result
+        // for two, which on a large library costs a hundredfold on the first page.
+        return orderedQuery.ThenBy(e => e.Id);
     }
 
     private IQueryable<BaseItemEntity> ApplySeriesDatePlayedOrder(
@@ -403,8 +399,8 @@ public sealed partial class BaseItemRepository
         var seriesSort = orderBy.First(o => o.OrderBy == ItemSortBy.SeriesDatePlayed);
 
         return seriesSort.SortOrder == SortOrder.Ascending
-            ? joined.OrderBy(x => x.MaxDate).ThenBy(x => x.Item.SortName).Select(x => x.Item)
-            : joined.OrderByDescending(x => x.MaxDate).ThenBy(x => x.Item.SortName).Select(x => x.Item);
+            ? joined.OrderBy(x => x.MaxDate).ThenBy(x => x.Item.SortName).ThenBy(x => x.Item.Id).Select(x => x.Item)
+            : joined.OrderByDescending(x => x.MaxDate).ThenBy(x => x.Item.SortName).ThenBy(x => x.Item.Id).Select(x => x.Item);
     }
 
     /// <summary>
