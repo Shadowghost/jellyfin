@@ -3001,6 +3001,29 @@ namespace MediaBrowser.Controller.Entities
         }
 
         /// <summary>
+        /// Gets the extras of the given types, without the per-user rows a DTO would need.
+        /// </summary>
+        /// <param name="extraTypes">The types of extras to retrieve.</param>
+        /// <returns>The matching extras.</returns>
+        /// <remarks>
+        /// For the properties that expose extras: they have no user to scope user data to, so asking
+        /// for it returns every user's rows for every extra, multiplied by every other collection
+        /// loaded alongside it. Callers wanting user data have <see cref="GetExtras(User)"/>.
+        /// </remarks>
+        protected IReadOnlyList<BaseItem> GetExtrasWithoutUserData(IReadOnlyCollection<ExtraType> extraTypes)
+        {
+            ArgumentNullException.ThrowIfNull(extraTypes);
+
+            return LibraryManager.GetItemList(new InternalItemsQuery
+            {
+                OwnerIds = GetExtraOwnerIds(),
+                ExtraTypes = extraTypes.ToArray(),
+                OrderBy = [(ItemSortBy.SortName, SortOrder.Ascending)],
+                DtoOptions = new DtoOptions(false) { EnableUserData = false }
+            });
+        }
+
+        /// <summary>
         /// Counts the extras of the given types associated with this item.
         /// </summary>
         /// <param name="extraTypes">The types of extras to count.</param>

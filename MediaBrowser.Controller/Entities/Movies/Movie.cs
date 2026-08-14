@@ -23,14 +23,14 @@ namespace MediaBrowser.Controller.Entities.Movies
     {
         /// <inheritdoc />
         [JsonIgnore]
-        public IReadOnlyList<Guid> SpecialFeatureIds => GetExtras()
+        public IReadOnlyList<Guid> SpecialFeatureIds => GetExtrasWithoutUserData([])
             .Where(extra => extra.ExtraType is not null && extra is Video)
             .Select(extra => extra.Id)
             .ToArray();
 
         /// <inheritdoc />
         [JsonIgnore]
-        public IReadOnlyList<BaseItem> LocalTrailers => GetExtras([Model.Entities.ExtraType.Trailer]).ToArray();
+        public IReadOnlyList<BaseItem> LocalTrailers => GetExtrasWithoutUserData([Model.Entities.ExtraType.Trailer]);
 
         /// <summary>
         /// Gets or sets the name of the TMDb collection.
