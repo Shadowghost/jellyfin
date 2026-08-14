@@ -223,13 +223,18 @@ public static class DescendantQueryHelper
     // Resolves the folders whose linked children lead, at any depth, to a matching item.
     private static List<Guid> ResolveLinkParents(JellyfinDbContext context, IQueryable<Guid> matchingItemIds, IQueryable<Guid> ancestorsOfMatches)
     {
-        // An alternate version is a second file for the item that links it, not a child of it, so that
-        // edge is not walked. It is also the one link a non-folder owns, and there is one per remuxed
-        // movie: walking it would swell this list from the BoxSet and Playlist count to the item count,
-        // and the list is bound into every statement the returned queryable is embedded in.
+        // Only containment is walked, so the two container types are named rather than the version types
+        // excluded: an alternate version is a second file for the item that links it, an auto-grouped one
+        // is the same edge drawn by the scan, and an exclusion is the record of a split that is not a link
+        // at all. Naming the container types also keeps a type added later out of the traversal by
+        // default, which is the safe direction here.
+        //
+        // There is one version link per remuxed movie, so walking them would swell this list from the
+        // BoxSet and Playlist count to the item count, and the list is bound into every statement the
+        // returned queryable is embedded in.
         var containerLinks = context.LinkedChildren
-            .Where(e => e.ChildType != LinkedChildType.LocalAlternateVersion
-                && e.ChildType != LinkedChildType.LinkedAlternateVersion);
+            .Where(e => e.ChildType == LinkedChildType.Manual
+                || e.ChildType == LinkedChildType.Shortcut);
 
         // A link sits above the closure and above another link alike, so the hop repeats until nothing
         // new turns up.

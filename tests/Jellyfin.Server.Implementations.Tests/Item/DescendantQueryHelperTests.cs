@@ -363,8 +363,12 @@ public sealed class DescendantQueryHelperTests : SqliteDbTestFixture
         }
     }
 
-    [Fact]
-    public void GetFolderIdsMatching_AlternateVersionLinks_AreNotWalked()
+    [Theory]
+    [InlineData(LinkedChildType.LocalAlternateVersion)]
+    [InlineData(LinkedChildType.LinkedAlternateVersion)]
+    [InlineData(LinkedChildType.AutoLinkedAlternateVersion)]
+    [InlineData(LinkedChildType.ExcludedAlternateVersion)]
+    public void GetFolderIdsMatching_AlternateVersionLinks_AreNotWalked(LinkedChildType versionLinkType)
     {
         var collections = Guid.NewGuid();
         var boxSet = Guid.NewGuid();
@@ -383,9 +387,10 @@ public sealed class DescendantQueryHelperTests : SqliteDbTestFixture
             AddAncestors(ctx, boxSet, collections);
             AddAncestors(ctx, movie, library);
             AddAncestors(ctx, alternateVersion, library);
-            // Only the second file carries the subtitles, and it hangs off the movie by an alternate
-            // version link. The movie is not a folder, so that link is not a parent-child edge.
-            AddLink(ctx, movie, alternateVersion, LinkedChildType.LocalAlternateVersion);
+            // Only the second file carries the subtitles, and it hangs off the movie by a version link of
+            // some kind. The movie is not a folder, so none of those is a parent-child edge: an auto-
+            // grouped link is the same edge the scan drew, and an exclusion is not a link at all.
+            AddLink(ctx, movie, alternateVersion, versionLinkType);
             AddLink(ctx, boxSet, movie);
             AddStream(ctx, alternateVersion, MediaStreamTypeEntity.Subtitle);
             ctx.SaveChanges();

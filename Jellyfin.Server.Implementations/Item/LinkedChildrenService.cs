@@ -82,9 +82,14 @@ public class LinkedChildrenService : ILinkedChildrenService
 
         using var dbContext = _dbProvider.CreateDbContext();
 
+        // All three link types the caller counts as a second media source. An auto-grouped link is one
+        // the scan drew rather than the user, but it still puts a second file on the item, so leaving it
+        // out reports a single source for every auto-merged version group. ExcludedAlternateVersion is
+        // the record of a split and never a version, so it stays out.
         return dbContext.LinkedChildren
             .Where(lc => lc.ChildType == DbLinkedChildType.LocalAlternateVersion
-                || lc.ChildType == DbLinkedChildType.LinkedAlternateVersion)
+                || lc.ChildType == DbLinkedChildType.LinkedAlternateVersion
+                || lc.ChildType == DbLinkedChildType.AutoLinkedAlternateVersion)
             .WhereOneOrMany(itemIds, lc => lc.ParentId)
             .Select(lc => lc.ParentId)
             .Distinct()
