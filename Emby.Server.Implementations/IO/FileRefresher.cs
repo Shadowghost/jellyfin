@@ -14,14 +14,19 @@ namespace Emby.Server.Implementations.IO
 {
     public sealed class FileRefresher : IDisposable
     {
+        // Past this, refresh the containing folder instead of tracking each file.
+        private const int MaxAffectedPaths = 1000;
+
         private readonly ILogger _logger;
         private readonly ILibraryManager _libraryManager;
         private readonly IServerConfigurationManager _configurationManager;
 
-        private readonly List<string> _affectedPaths = new();
+        private readonly HashSet<string> _affectedPaths = new(StringComparer.Ordinal);
         private readonly Lock _timerLock = new();
         private Timer? _timer;
         private bool _disposed;
+        private DateTime? _firstEventUtc;
+        private bool _collapsedToRoot;
 
         public FileRefresher(string path, IServerConfigurationManager configurationManager, ILibraryManager libraryManager, ILogger logger)
         {
@@ -42,10 +47,24 @@ namespace Emby.Server.Implementations.IO
         {
             ArgumentException.ThrowIfNullOrEmpty(path);
 
-            if (!_affectedPaths.Contains(path, StringComparer.Ordinal))
+            if (_collapsedToRoot)
             {
-                _affectedPaths.Add(path);
+                // ResetPath can move the root up.
+                _affectedPaths.Clear();
+                _affectedPaths.Add(Path);
+                return;
             }
+
+            if (_affectedPaths.Count >= MaxAffectedPaths)
+            {
+                _logger.LogDebug("Refresher for {Path} exceeded {Max} pending paths, collapsing to the folder", Path, MaxAffectedPaths);
+                _collapsedToRoot = true;
+                _affectedPaths.Clear();
+                _affectedPaths.Add(Path);
+                return;
+            }
+
+            _affectedPaths.Add(path);
         }
 
         public void AddPath(string path)
@@ -70,6 +89,15 @@ namespace Emby.Server.Implementations.IO
             lock (_timerLock)
             {
                 if (_disposed)
+                {
+                    return;
+                }
+
+                _firstEventUtc ??= DateTime.UtcNow;
+
+                // Cap the deferral: constant activity would otherwise postpone the refresh forever.
+                var maxTotalDelay = TimeSpan.FromSeconds(_configurationManager.Configuration.LibraryMonitorDelay * 5d);
+                if (_timer is not null && DateTime.UtcNow - _firstEventUtc.Value > maxTotalDelay)
                 {
                     return;
                 }
@@ -110,6 +138,9 @@ namespace Emby.Server.Implementations.IO
             lock (_timerLock)
             {
                 paths = _affectedPaths.ToList();
+                _affectedPaths.Clear();
+                _firstEventUtc = null;
+                _collapsedToRoot = false;
             }
 
             _logger.LogDebug("Timer stopped.");
