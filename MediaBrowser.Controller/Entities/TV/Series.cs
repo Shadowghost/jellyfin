@@ -51,7 +51,7 @@ namespace MediaBrowser.Controller.Entities.TV
 
         /// <inheritdoc />
         [JsonIgnore]
-        public IReadOnlyList<BaseItem> LocalTrailers => GetExtras([Model.Entities.ExtraType.Trailer]).ToArray();
+        public IReadOnlyList<BaseItem> LocalTrailers => GetExtrasWithoutUserData([Model.Entities.ExtraType.Trailer]);
 
         /// <summary>
         /// Gets or sets the display order.

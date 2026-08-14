@@ -297,6 +297,10 @@ public sealed partial class BaseItemRepository
 
         using var context = _dbProvider.CreateDbContext();
 
+        // A split query reads each collection in its own statement, and separate statements are
+        // separate snapshots unless they share a transaction. Read-only, so it is discarded.
+        using var readTransaction = context.Database.BeginTransaction();
+
         var innerQueryFilter = TranslateQuery(context.BaseItems.Where(e => e.Id != EF.Constant(PlaceholderId)), context, new InternalItemsQuery(filter.User)
         {
             ExcludeItemTypes = filter.ExcludeItemTypes,
@@ -400,7 +404,7 @@ public sealed partial class BaseItemRepository
         }
 
         var query = ApplyNavigations(
-                context.BaseItems.AsNoTracking().AsSingleQuery().WhereOneOrMany(representativeIds, e => e.Id),
+                context.BaseItems.AsNoTracking().WhereOneOrMany(representativeIds, e => e.Id),
                 filter);
 
         query = ApplyOrder(query, filter, context);

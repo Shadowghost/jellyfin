@@ -45,6 +45,9 @@ public class NextUpService : INextUpService
         ArgumentNullException.ThrowIfNull(filter.User);
 
         using var context = _dbProvider.CreateDbContext();
+        // A split query reads each collection in its own statement, and separate statements are
+        // separate snapshots unless they share a transaction. Read-only, so it is discarded.
+        using var readTransaction = context.Database.BeginTransaction();
 
         var query = context.BaseItems
             .AsNoTracking()
@@ -86,6 +89,9 @@ public class NextUpService : INextUpService
 
         _queryHelpers.PrepareFilterQuery(filter);
         using var context = _dbProvider.CreateDbContext();
+        // A split query reads each collection in its own statement, and separate statements are
+        // separate snapshots unless they share a transaction. Read-only, so it is discarded.
+        using var readTransaction = context.Database.BeginTransaction();
 
         var userId = filter.User.Id;
         var episodeTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.Episode];
@@ -165,7 +171,7 @@ public class NextUpService : INextUpService
                 .Where(e => e.ParentIndexNumber == 0)
                 .Where(e => !e.IsVirtualItem);
             specialsQuery = _queryHelpers.ApplyAccessFiltering(context, specialsQuery, filter);
-            specialsQuery = _queryHelpers.ApplyNavigations(specialsQuery, filter).AsSingleQuery();
+            specialsQuery = _queryHelpers.ApplyNavigations(specialsQuery, filter);
 
             foreach (var special in specialsQuery)
             {
@@ -300,7 +306,7 @@ public class NextUpService : INextUpService
         if (nextEpisodeIds.Count > 0)
         {
             var nextQuery = context.BaseItems.AsNoTracking().Where(e => nextEpisodeIds.Contains(e.Id));
-            nextQuery = _queryHelpers.ApplyNavigations(nextQuery, filter).AsSingleQuery();
+            nextQuery = _queryHelpers.ApplyNavigations(nextQuery, filter);
             nextEpisodes = nextQuery.ToDictionary(e => e.Id);
         }
 
