@@ -135,7 +135,7 @@ namespace Jellyfin.Server.Implementations.Users
         private static IQueryable<User> UserQuery(JellyfinDbContext dbContext)
         {
             return dbContext.Users
-                            .AsSingleQuery()
+                            .AsSplitQuery()
                             .Include(user => user.Permissions)
                             .Include(user => user.Preferences)
                             .Include(user => user.AccessSchedules)
