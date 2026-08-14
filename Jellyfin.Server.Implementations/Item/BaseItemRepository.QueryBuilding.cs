@@ -22,13 +22,14 @@ namespace Jellyfin.Server.Implementations.Item;
 
 public sealed partial class BaseItemRepository
 {
+    // A page of roughly this size or smaller is what a client shows at once. Below it the cartesian
+    // product of a few collections stays small enough that one statement beats re-reading the roots.
+    private const int SplitQueryLimit = 200;
+
     /// <inheritdoc />
     public IQueryable<BaseItemEntity> PrepareItemQuery(JellyfinDbContext context, InternalItemsQuery filter)
     {
-        IQueryable<BaseItemEntity> dbQuery = context.BaseItems.AsNoTracking();
-        dbQuery = dbQuery.AsSingleQuery();
-
-        return dbQuery;
+        return context.BaseItems.AsNoTracking();
     }
 
     private IQueryable<BaseItemEntity> ApplyQueryFilter(IQueryable<BaseItemEntity> dbQuery, JellyfinDbContext context, InternalItemsQuery filter)
@@ -248,19 +249,25 @@ public sealed partial class BaseItemRepository
     /// <inheritdoc />
     public IQueryable<BaseItemEntity> ApplyNavigations(IQueryable<BaseItemEntity> dbQuery, InternalItemsQuery filter)
     {
+        // Joining more than one collection in a single statement returns their cartesian product.
+        var collectionIncludes = 0;
+
         if (filter.TrailerTypes.Length > 0 || filter.IncludeItemTypes.Contains(BaseItemKind.Trailer))
         {
             dbQuery = dbQuery.Include(e => e.TrailerTypes);
+            collectionIncludes++;
         }
 
         if (filter.DtoOptions.ContainsField(ItemFields.ProviderIds))
         {
             dbQuery = dbQuery.Include(e => e.Provider);
+            collectionIncludes++;
         }
 
         if (filter.DtoOptions.ContainsField(ItemFields.Settings))
         {
             dbQuery = dbQuery.Include(e => e.LockedFields);
+            collectionIncludes++;
         }
 
         if (filter.DtoOptions.EnableUserData)
@@ -276,11 +283,14 @@ public sealed partial class BaseItemRepository
                 var userId = filter.User.Id;
                 dbQuery = dbQuery.Include(e => e.UserData!.Where(u => u.UserId == userId));
             }
+
+            collectionIncludes++;
         }
 
         if (filter.DtoOptions.EnableImages)
         {
             dbQuery = dbQuery.Include(e => e.Images);
+            collectionIncludes++;
         }
 
         // Include LinkedChildEntities for container types and videos that use them (BoxSet, Playlist,
@@ -298,14 +308,31 @@ public sealed partial class BaseItemRepository
             BaseItemKind.MusicVideo,
             BaseItemKind.Trailer
         };
-        if (filter.IncludeItemTypes.Length == 0 || filter.IncludeItemTypes.Any(linkedChildTypes.Contains))
+        var anyItemType = filter.IncludeItemTypes.Length == 0;
+        var unboundedFanOut = false;
+        if (anyItemType || filter.IncludeItemTypes.Any(linkedChildTypes.Contains))
         {
             dbQuery = dbQuery.Include(e => e.LinkedChildEntities);
+            collectionIncludes++;
+
+            // How many children a container holds is up to the user, so a single row can fan out
+            // arbitrarily far. Alternate versions of a video cannot.
+            unboundedFanOut = anyItemType || filter.IncludeItemTypes.Any(
+                t => t is BaseItemKind.BoxSet or BaseItemKind.Playlist or BaseItemKind.CollectionFolder);
         }
 
         if (filter.IncludeExtras)
         {
             dbQuery = dbQuery.Include(e => e.Extras);
+            collectionIncludes++;
+        }
+
+        // Splitting costs one re-read of the roots per collection, so it only pays where the product
+        // it avoids is the larger of the two: an unbounded result, a page too big to be one screenful,
+        // or a container that may hold any number of children.
+        if (collectionIncludes > 1 && (unboundedFanOut || filter.Limit is null or > SplitQueryLimit))
+        {
+            dbQuery = dbQuery.AsSplitQuery();
         }
 
         return dbQuery;
