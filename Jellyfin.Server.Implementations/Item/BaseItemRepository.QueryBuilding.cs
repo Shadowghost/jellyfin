@@ -265,7 +265,17 @@ public sealed partial class BaseItemRepository
 
         if (filter.DtoOptions.EnableUserData)
         {
-            dbQuery = dbQuery.Include(e => e.UserData);
+            // Unfiltered would return every user's rows for every item. RetrieveItem caches items
+            // across users, so that path keeps the full set.
+            if (filter.User is null)
+            {
+                dbQuery = dbQuery.Include(e => e.UserData);
+            }
+            else
+            {
+                var userId = filter.User.Id;
+                dbQuery = dbQuery.Include(e => e.UserData!.Where(u => u.UserId == userId));
+            }
         }
 
         if (filter.DtoOptions.EnableImages)
