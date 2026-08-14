@@ -3000,6 +3000,27 @@ namespace MediaBrowser.Controller.Entities
             });
         }
 
+        /// <summary>
+        /// Counts the extras of the given types associated with this item.
+        /// </summary>
+        /// <param name="extraTypes">The types of extras to count.</param>
+        /// <returns>The number of matching extras.</returns>
+        /// <remarks>
+        /// Counts in the database rather than loading the extras, which a caller that only reports a
+        /// number would otherwise hydrate in full, once per item being serialized.
+        /// </remarks>
+        public int GetExtraCount(IReadOnlyCollection<ExtraType> extraTypes)
+        {
+            ArgumentNullException.ThrowIfNull(extraTypes);
+
+            return LibraryManager.GetCount(new InternalItemsQuery
+            {
+                OwnerIds = GetExtraOwnerIds(),
+                ExtraTypes = extraTypes.ToArray(),
+                DtoOptions = new DtoOptions(false)
+            });
+        }
+
         public virtual long GetRunTimeTicksForPlayState()
         {
             return RunTimeTicks ?? 0;
