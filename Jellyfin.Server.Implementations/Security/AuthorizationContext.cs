@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Queries;
 using Jellyfin.Database.Implementations;
@@ -20,6 +21,17 @@ namespace Jellyfin.Server.Implementations.Security
 {
     public class AuthorizationContext : IAuthorizationContext
     {
+        /// <summary>
+        /// How long a device's last activity may go stale before it is written back.
+        /// </summary>
+        private static readonly TimeSpan _activityUpdateInterval = TimeSpan.FromMinutes(3);
+
+        /// <summary>
+        /// Guards the read-then-write of a device's last activity, so a burst of parallel requests
+        /// produces one database write instead of one per request.
+        /// </summary>
+        private static readonly Lock _activityLock = new();
+
         private readonly IDbContextFactory<JellyfinDbContext> _jellyfinDbProvider;
         private readonly IUserManager _userManager;
         private readonly IDeviceManager _deviceManager;
@@ -126,71 +138,78 @@ namespace Jellyfin.Server.Implementations.Security
                 return authInfo;
             }
 
-            var dbContext = await _jellyfinDbProvider.CreateDbContextAsync().ConfigureAwait(false);
-            await using (dbContext.ConfigureAwait(false))
+            var device = _deviceManager.GetDevices(
+                new DeviceQuery { AccessToken = token }).Items.FirstOrDefault();
+
+            if (device is not null)
             {
-                var device = _deviceManager.GetDevices(
-                    new DeviceQuery { AccessToken = token }).Items.FirstOrDefault();
+                authInfo.IsAuthenticated = true;
+                var updateToken = false;
 
-                if (device is not null)
+                // TODO: Remove these checks for IsNullOrWhiteSpace
+                if (string.IsNullOrWhiteSpace(authInfo.Client))
                 {
-                    authInfo.IsAuthenticated = true;
-                    var updateToken = false;
+                    authInfo.Client = device.AppName;
+                }
 
-                    // TODO: Remove these checks for IsNullOrWhiteSpace
-                    if (string.IsNullOrWhiteSpace(authInfo.Client))
-                    {
-                        authInfo.Client = device.AppName;
-                    }
+                if (string.IsNullOrWhiteSpace(authInfo.DeviceId))
+                {
+                    authInfo.DeviceId = device.DeviceId;
+                }
 
-                    if (string.IsNullOrWhiteSpace(authInfo.DeviceId))
-                    {
-                        authInfo.DeviceId = device.DeviceId;
-                    }
+                // Temporary. TODO - allow clients to specify that the token has been shared with a casting device
+                var allowTokenInfoUpdate = !authInfo.Client.Contains("chromecast", StringComparison.OrdinalIgnoreCase);
 
-                    // Temporary. TODO - allow clients to specify that the token has been shared with a casting device
-                    var allowTokenInfoUpdate = !authInfo.Client.Contains("chromecast", StringComparison.OrdinalIgnoreCase);
-
-                    if (string.IsNullOrWhiteSpace(authInfo.Device))
+                if (string.IsNullOrWhiteSpace(authInfo.Device))
+                {
+                    authInfo.Device = device.DeviceName;
+                }
+                else if (!string.Equals(authInfo.Device, device.DeviceName, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (allowTokenInfoUpdate)
                     {
-                        authInfo.Device = device.DeviceName;
-                    }
-                    else if (!string.Equals(authInfo.Device, device.DeviceName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (allowTokenInfoUpdate)
-                        {
-                            updateToken = true;
-                            device.DeviceName = authInfo.Device;
-                        }
-                    }
-
-                    if (string.IsNullOrWhiteSpace(authInfo.Version))
-                    {
-                        authInfo.Version = device.AppVersion;
-                    }
-                    else if (!string.Equals(authInfo.Version, device.AppVersion, StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (allowTokenInfoUpdate)
-                        {
-                            updateToken = true;
-                            device.AppVersion = authInfo.Version;
-                        }
-                    }
-
-                    if ((DateTime.UtcNow - device.DateLastActivity).TotalMinutes > 3)
-                    {
-                        device.DateLastActivity = DateTime.UtcNow;
                         updateToken = true;
-                    }
-
-                    authInfo.User = _userManager.GetUserById(device.UserId);
-
-                    if (updateToken)
-                    {
-                        await _deviceManager.UpdateDevice(device).ConfigureAwait(false);
+                        device.DeviceName = authInfo.Device;
                     }
                 }
-                else
+
+                if (string.IsNullOrWhiteSpace(authInfo.Version))
+                {
+                    authInfo.Version = device.AppVersion;
+                }
+                else if (!string.Equals(authInfo.Version, device.AppVersion, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (allowTokenInfoUpdate)
+                    {
+                        updateToken = true;
+                        device.AppVersion = authInfo.Version;
+                    }
+                }
+
+                // The device is the instance the manager caches.
+                lock (_activityLock)
+                {
+                    var now = DateTime.UtcNow;
+                    if (now - device.DateLastActivity > _activityUpdateInterval)
+                    {
+                        device.DateLastActivity = now;
+                        updateToken = true;
+                    }
+                }
+
+                authInfo.User = _userManager.GetUserById(device.UserId);
+
+                if (updateToken)
+                {
+                    await _deviceManager.UpdateDevice(device).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                // Only the API key branch reads from the database, so the context is created
+                // here rather than for every authenticated request.
+                var dbContext = await _jellyfinDbProvider.CreateDbContextAsync().ConfigureAwait(false);
+                await using (dbContext.ConfigureAwait(false))
                 {
                     var key = await dbContext.ApiKeys.FirstOrDefaultAsync(apiKey => apiKey.AccessToken == token).ConfigureAwait(false);
                     if (key is not null)
@@ -216,9 +235,9 @@ namespace Jellyfin.Server.Implementations.Security
                         authInfo.IsApiKey = true;
                     }
                 }
-
-                return authInfo;
             }
+
+            return authInfo;
         }
 
         /// <summary>
