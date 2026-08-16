@@ -580,38 +580,43 @@ public sealed partial class BaseItemRepository
 
         var matchingItemIds = baseQuery.Select(e => e.Id);
 
-        var years = baseQuery
-            .Where(e => e.ProductionYear != null && e.ProductionYear > 0)
-            .Select(e => e.ProductionYear!.Value)
+        var yearsAndRatings = baseQuery
+            .Select(e => new { e.ProductionYear, e.OfficialRating })
             .Distinct()
-            .OrderBy(y => y)
             .ToArray();
 
-        var officialRatings = baseQuery
-            .Where(e => e.OfficialRating != null && e.OfficialRating != string.Empty)
-            .Select(e => e.OfficialRating!)
-            .Distinct()
-            .OrderBy(r => r)
-            .ToArray();
-
+        // Ordering happens in memory: SQLite orders text by its own collation, which does not match
+        // the ordinal comparison the rest of the filter results are built with.
         var tags = context.BaseItemTags
             .Where(t => matchingItemIds.Contains(t.ItemId))
             .GroupBy(t => t.CleanValue)
             .Select(g => g.Min(t => t.Value))
-            .OrderBy(t => t)
+            .ToArray()
+            .Order(StringComparer.Ordinal)
             .ToArray();
 
         var genres = context.BaseItemGenres
             .Where(g => matchingItemIds.Contains(g.ItemId))
             .Join(context.BaseItems, g => g.GenreItemId, b => b.Id, (g, b) => b.Name!)
             .Distinct()
-            .OrderBy(g => g)
+            .ToArray()
+            .Order(StringComparer.Ordinal)
             .ToArray();
 
         return new QueryFiltersLegacy
         {
-            Years = years,
-            OfficialRatings = officialRatings,
+            Years = yearsAndRatings
+                .Where(e => e.ProductionYear > 0)
+                .Select(e => e.ProductionYear!.Value)
+                .Distinct()
+                .Order()
+                .ToArray(),
+            OfficialRatings = yearsAndRatings
+                .Where(e => !string.IsNullOrEmpty(e.OfficialRating))
+                .Select(e => e.OfficialRating!)
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToArray(),
             Tags = tags,
             Genres = genres
         };
