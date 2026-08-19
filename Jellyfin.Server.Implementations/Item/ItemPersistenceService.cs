@@ -477,7 +477,7 @@ public class ItemPersistenceService : IItemPersistenceService
                 var childIdsToCheck = resolvedChildren.Select(c => c.ChildId).Distinct().ToList();
                 var existingChildIds = childIdsToCheck.Count > 0
                     ? context.BaseItems
-                        .Where(e => childIdsToCheck.Contains(e.Id))
+                        .WhereOneOrMany(childIdsToCheck, e => e.Id)
                         .Select(e => e.Id)
                         .ToHashSet()
                     : [];
