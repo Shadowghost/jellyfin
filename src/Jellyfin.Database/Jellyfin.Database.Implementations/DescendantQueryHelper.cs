@@ -32,17 +32,30 @@ public static class DescendantQueryHelper
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        var (closureRoots, linkRoots) = ResolveLinkedRoots(context, parentId);
-
-        var hierarchyDescendants = ClosureDescendants(context, closureRoots);
-
-        var linkedDescendants = context.LinkedChildren
-            .WhereOneOrMany(linkRoots, e => e.ParentId)
-            .Select(e => e.ChildId);
-
-        return hierarchyDescendants
-            .Concat(linkedDescendants)
+        return AllDescendants(context, [parentId])
             .Where(e => !e.Equals(parentId))
+            .Distinct();
+    }
+
+    /// <summary>
+    /// Gets all descendant IDs for multiple parent items in a single traversal.
+    /// Traverses AncestorIds and LinkedChildren, like <see cref="GetAllDescendantIds"/>.
+    /// </summary>
+    /// <param name="context">Database context.</param>
+    /// <param name="parentIds">Parent item IDs.</param>
+    /// <returns>Queryable of all descendant item IDs (excluding the parent IDs themselves).</returns>
+    public static IQueryable<Guid> GetAllDescendantIdsBatch(JellyfinDbContext context, IReadOnlyList<Guid> parentIds)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(parentIds);
+
+        if (parentIds.Count == 0)
+        {
+            return Enumerable.Empty<Guid>().AsQueryable();
+        }
+
+        return AllDescendants(context, parentIds)
+            .Where(e => !parentIds.Contains(e))
             .Distinct();
     }
 
@@ -206,6 +219,19 @@ public static class DescendantQueryHelper
         return query;
     }
 
+    // Every descendant of the roots, by containment and by link. Kept as a sub-select so callers stay
+    // composable: a root's descendant set can be the whole library, far too many ids to bind per statement.
+    private static IQueryable<Guid> AllDescendants(JellyfinDbContext context, IReadOnlyList<Guid> roots)
+    {
+        var (closureRoots, linkRoots) = ResolveLinkedRoots(context, roots);
+
+        var linkedDescendants = context.LinkedChildren
+            .WhereOneOrMany(linkRoots, e => e.ParentId)
+            .Select(e => e.ChildId);
+
+        return ClosureDescendants(context, closureRoots).Concat(linkedDescendants);
+    }
+
     private static IQueryable<Guid> ClosureDescendants(JellyfinDbContext context, IReadOnlyList<Guid> roots)
     {
         var direct = context.AncestorIds
@@ -281,12 +307,12 @@ public static class DescendantQueryHelper
 
     // Resolves the roots the descendant sub-selects are anchored on: those contributing their closure,
     // and those contributing their linked children.
-    private static (List<Guid> ClosureRoots, List<Guid> LinkRoots) ResolveLinkedRoots(JellyfinDbContext context, Guid parentId)
+    private static (List<Guid> ClosureRoots, List<Guid> LinkRoots) ResolveLinkedRoots(JellyfinDbContext context, IReadOnlyList<Guid> parentIds)
     {
-        var closureRoots = new List<Guid> { parentId };
-        var linkRoots = new List<Guid> { parentId };
-        var visited = new HashSet<Guid> { parentId };
-        var frontier = new List<Guid> { parentId };
+        var visited = new HashSet<Guid>(parentIds);
+        var closureRoots = visited.ToList();
+        var linkRoots = visited.ToList();
+        var frontier = visited.ToList();
 
         while (frontier.Count != 0)
         {
