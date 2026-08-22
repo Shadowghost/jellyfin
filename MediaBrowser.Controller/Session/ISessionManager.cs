@@ -271,6 +271,13 @@ namespace MediaBrowser.Controller.Session
         /// <summary>
         /// Reports the capabilities.
         /// </summary>
+        /// <param name="sessionId">The session identifier.</param>
+        /// <param name="capabilities">The capabilities.</param>
+        void ReportCapabilities(string sessionId, ClientCapabilities capabilities);
+
+        /// <summary>
+        /// Reports the capabilities.
+        /// </summary>
         /// <param name="controllingSessionId">The controlling session identifier.</param>
         /// <param name="sessionId">The session identifier.</param>
         /// <param name="capabilities">The capabilities.</param>

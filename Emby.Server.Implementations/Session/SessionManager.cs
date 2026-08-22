@@ -2221,6 +2221,10 @@ namespace Emby.Server.Implementations.Session
             }
         }
 
+        /// <inheritdoc />
+        public void ReportCapabilities(string sessionId, ClientCapabilities capabilities)
+            => ReportCapabilities(string.Empty, sessionId, capabilities);
+
         /// <summary>
         /// Reports the capabilities.
         /// </summary>
