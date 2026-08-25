@@ -156,8 +156,6 @@ namespace Jellyfin.Providers.Tests.Manager
                 DateLastRefreshed = DateTime.UtcNow.AddDays(-60),
                 DateLastSaved = DateTime.UtcNow.AddDays(-60)
             };
-            item.PresentationUniqueKey = item.CreatePresentationUniqueKey();
-
             var stampBefore = item.DateLastRefreshed;
 
             var provider = new Mock<IRemoteMetadataProvider<Person, PersonLookupInfo>>(MockBehavior.Loose);
@@ -204,6 +202,10 @@ namespace Jellyfin.Providers.Tests.Manager
             BaseItem.MediaSourceManager = mediaSourceManager.Object;
             try
             {
+                // Only once the statics are in place: the key reads the file system to tell the
+                // person's folder from its name.
+                item.PresentationUniqueKey = item.CreatePresentationUniqueKey();
+
                 var service = new TestPersonMetadataService(libraryManager.Object, providerManager.Object, itemRepository.Object, fileSystem.Object);
 
                 await service.RefreshMetadata(
