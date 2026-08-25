@@ -95,35 +95,17 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
             result.Item.TrySetProviderId(MetadataProvider.Tvdb, seasonResult.ExternalIds?.TvdbId?.ToString(CultureInfo.InvariantCulture));
 
             var credits = seasonResult.Credits;
-            if (credits?.Cast is not null)
+
+            // Aggregated over the season's episodes, the same way the series aggregates over all of
+            // them: the flat list holds whoever was added to the season itself and writes an actor's
+            // several characters into one string.
+            var cast = seasonResult.AggregateCredits?.Cast is { Count: > 0 } aggregated
+                ? TmdbUtils.MapAggregateCast(aggregated, config, _tmdbClientManager.GetProfileUrl)
+                : TmdbUtils.MapCast(credits?.Cast, config, _tmdbClientManager.GetProfileUrl);
+
+            foreach (var actor in cast)
             {
-                var castQuery = config.HideMissingCastMembers
-                    ? credits.Cast.Where(a => !string.IsNullOrEmpty(a.ProfilePath)).OrderBy(a => a.Order)
-                    : credits.Cast.OrderBy(a => a.Order);
-
-                foreach (var actor in castQuery.Take(config.MaxCastMembers))
-                {
-                    if (string.IsNullOrWhiteSpace(actor.Name))
-                    {
-                        continue;
-                    }
-
-                    var personInfo = new PersonInfo
-                    {
-                        Name = actor.Name.Trim(),
-                        Role = actor.Character?.Trim() ?? string.Empty,
-                        Type = PersonKind.Actor,
-                        SortOrder = actor.Order,
-                        ImageUrl = _tmdbClientManager.GetProfileUrl(actor.ProfilePath)
-                    };
-
-                    if (actor.Id > 0)
-                    {
-                        personInfo.SetProviderId(MetadataProvider.Tmdb, actor.Id.ToString(CultureInfo.InvariantCulture));
-                    }
-
-                    result.AddPerson(personInfo);
-                }
+                result.AddPerson(actor);
             }
 
             if (credits?.Crew is not null)

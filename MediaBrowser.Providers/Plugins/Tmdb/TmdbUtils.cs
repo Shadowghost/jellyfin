@@ -9,6 +9,7 @@ using Jellyfin.Data.Enums;
 using MediaBrowser.Model.Entities;
 using TMDbLib.Objects.Companies;
 using TMDbLib.Objects.General;
+using TMDbLib.Objects.General.Schema;
 using TMDbLib.Objects.TvShows;
 using ItemByNameInfo = MediaBrowser.Controller.Entities.ItemByNameInfo;
 using PersonInfo = MediaBrowser.Controller.Entities.PersonInfo;
@@ -206,7 +207,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
 
                 foreach (var character in characters)
                 {
-                    yield return CreateCredit(member.Name!, member.Id, member.ProfilePath, member.Order, character, getProfileUrl);
+                    yield return CreateCredit(member.Name!, member.Id, member.ProfilePath, member.Order, character, getProfileUrl, PersonKind.Actor);
                 }
             }
         }
@@ -214,14 +215,18 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
         /// <summary>
         /// Maps a TMDb cast list whose entries hold the one character their member is credited for.
         /// </summary>
+        /// <typeparam name="T">The shape of a cast entry, the same for a movie, a season and an episode.</typeparam>
         /// <param name="cast">The cast list, or <c>null</c>.</param>
         /// <param name="config">The configuration deciding how much of the cast to keep.</param>
         /// <param name="getProfileUrl">Resolves a profile path into an absolute image url.</param>
+        /// <param name="kind">The kind of credit each entry describes.</param>
         /// <returns>One credit per cast entry.</returns>
-        internal static IEnumerable<PersonInfo> MapCast(
-            IReadOnlyList<Cast>? cast,
+        internal static IEnumerable<PersonInfo> MapCast<T>(
+            IReadOnlyList<T>? cast,
             PluginConfiguration config,
-            Func<string?, string?> getProfileUrl)
+            Func<string?, string?> getProfileUrl,
+            PersonKind kind = PersonKind.Actor)
+            where T : TmdbPersonSummary, ICastCredit
         {
             if (cast is null)
             {
@@ -236,17 +241,17 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
 
             foreach (var member in billed)
             {
-                yield return CreateCredit(member.Name!, member.Id, member.ProfilePath, member.Order, member.Character?.Trim() ?? string.Empty, getProfileUrl);
+                yield return CreateCredit(member.Name!, member.Id, member.ProfilePath, member.Order, member.Character?.Trim() ?? string.Empty, getProfileUrl, kind);
             }
         }
 
-        private static PersonInfo CreateCredit(string name, int id, string? profilePath, int? order, string role, Func<string?, string?> getProfileUrl)
+        private static PersonInfo CreateCredit(string name, int id, string? profilePath, int? order, string role, Func<string?, string?> getProfileUrl, PersonKind kind)
         {
             var personInfo = new PersonInfo
             {
                 Name = name.Trim(),
                 Role = role,
-                Type = PersonKind.Actor,
+                Type = kind,
                 SortOrder = order,
                 ImageUrl = getProfileUrl(profilePath)
             };

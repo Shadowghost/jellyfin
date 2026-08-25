@@ -209,66 +209,16 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
 
             var credits = episodeResult.Credits;
 
-            if (credits?.Cast is not null)
+            // No aggregation to prefer here: an episode is the unit TMDb aggregates a season and a
+            // series from, so its credits are the source rather than a rollup of anything.
+            foreach (var actor in TmdbUtils.MapCast(credits?.Cast, config, _tmdbClientManager.GetProfileUrl))
             {
-                var castQuery = config.HideMissingCastMembers
-                    ? credits.Cast.Where(a => !string.IsNullOrEmpty(a.ProfilePath)).OrderBy(a => a.Order)
-                    : credits.Cast.OrderBy(a => a.Order);
-
-                foreach (var actor in castQuery.Take(config.MaxCastMembers))
-                {
-                    if (string.IsNullOrWhiteSpace(actor.Name))
-                    {
-                        continue;
-                    }
-
-                    var personInfo = new PersonInfo
-                    {
-                        Name = actor.Name.Trim(),
-                        Role = actor.Character?.Trim() ?? string.Empty,
-                        Type = PersonKind.Actor,
-                        SortOrder = actor.Order,
-                        ImageUrl = _tmdbClientManager.GetProfileUrl(actor.ProfilePath)
-                    };
-
-                    if (actor.Id > 0)
-                    {
-                        personInfo.SetProviderId(MetadataProvider.Tmdb, actor.Id.ToString(CultureInfo.InvariantCulture));
-                    }
-
-                    metadataResult.AddPerson(personInfo);
-                }
+                metadataResult.AddPerson(actor);
             }
 
-            if (credits?.GuestStars is not null)
+            foreach (var guest in TmdbUtils.MapCast(credits?.GuestStars, config, _tmdbClientManager.GetProfileUrl, PersonKind.GuestStar))
             {
-                var guestQuery = config.HideMissingCastMembers
-                    ? credits.GuestStars.Where(a => !string.IsNullOrEmpty(a.ProfilePath)).OrderBy(a => a.Order)
-                    : credits.GuestStars.OrderBy(a => a.Order);
-
-                foreach (var guest in guestQuery.Take(config.MaxCastMembers))
-                {
-                    if (string.IsNullOrWhiteSpace(guest.Name))
-                    {
-                        continue;
-                    }
-
-                    var personInfo = new PersonInfo
-                    {
-                        Name = guest.Name.Trim(),
-                        Role = guest.Character?.Trim() ?? string.Empty,
-                        Type = PersonKind.GuestStar,
-                        SortOrder = guest.Order,
-                        ImageUrl = _tmdbClientManager.GetProfileUrl(guest.ProfilePath)
-                    };
-
-                    if (guest.Id > 0)
-                    {
-                        personInfo.SetProviderId(MetadataProvider.Tmdb, guest.Id.ToString(CultureInfo.InvariantCulture));
-                    }
-
-                    metadataResult.AddPerson(personInfo);
-                }
+                metadataResult.AddPerson(guest);
             }
 
             if (credits?.Crew is not null)

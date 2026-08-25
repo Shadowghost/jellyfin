@@ -267,44 +267,10 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.Movies
                 }
             }
 
-            if (movieResult.Credits?.Cast is not null)
+            // A movie has no aggregation either: TMDb only rolls episode credits up.
+            foreach (var actor in TmdbUtils.MapCast(movieResult.Credits?.Cast, config, _tmdbClientManager.GetProfileUrl))
             {
-                var castQuery = movieResult.Credits.Cast.AsEnumerable();
-
-                if (config.HideMissingCastMembers)
-                {
-                    castQuery = castQuery.Where(a => !string.IsNullOrEmpty(a.ProfilePath));
-                }
-
-                castQuery = castQuery.OrderBy(a => a.Order).Take(config.MaxCastMembers);
-
-                foreach (var actor in castQuery)
-                {
-                    if (string.IsNullOrWhiteSpace(actor.Name))
-                    {
-                        continue;
-                    }
-
-                    var personInfo = new PersonInfo
-                    {
-                        Name = actor.Name.Trim(),
-                        Role = actor.Character?.Trim() ?? string.Empty,
-                        Type = PersonKind.Actor,
-                        SortOrder = actor.Order
-                    };
-
-                    if (!string.IsNullOrWhiteSpace(actor.ProfilePath))
-                    {
-                        personInfo.ImageUrl = _tmdbClientManager.GetProfileUrl(actor.ProfilePath);
-                    }
-
-                    if (actor.Id > 0)
-                    {
-                        personInfo.SetProviderId(MetadataProvider.Tmdb, actor.Id.ToString(CultureInfo.InvariantCulture));
-                    }
-
-                    metadataResult.AddPerson(personInfo);
-                }
+                metadataResult.AddPerson(actor);
             }
 
             if (movieResult.Credits?.Crew is not null)

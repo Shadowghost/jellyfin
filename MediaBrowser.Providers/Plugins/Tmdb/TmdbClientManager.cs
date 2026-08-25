@@ -231,7 +231,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
                 seasonNumber,
                 language: TmdbUtils.NormalizeLanguage(language, countryCode),
                 includeImageLanguage: imageLanguages,
-                extraMethods: TvSeasonMethods.Credits | TvSeasonMethods.Images | TvSeasonMethods.ExternalIds | TvSeasonMethods.Videos,
+                extraMethods: TvSeasonMethods.Credits | TvSeasonMethods.CreditsAggregate | TvSeasonMethods.Images | TvSeasonMethods.ExternalIds | TvSeasonMethods.Videos,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
             if (season is not null)

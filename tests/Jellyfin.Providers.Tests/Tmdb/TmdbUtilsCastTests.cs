@@ -81,6 +81,17 @@ namespace Jellyfin.Providers.Tests.Tmdb
             Assert.Equal("Batman (voice)", person.Role);
         }
 
+        [Fact]
+        public void MapCast_GuestStars_KeepTheKindTheyAreGivenAndNotActor()
+        {
+            var guests = new List<Cast> { new() { Name = "Guest", Id = 3, Order = 0, Character = "Visitor" } };
+
+            var person = Assert.Single(TmdbUtils.MapCast(guests, _config, _ => null, PersonKind.GuestStar));
+
+            Assert.Equal(PersonKind.GuestStar, person.Type);
+            Assert.Equal("Visitor", person.Role);
+        }
+
         [Theory]
         [InlineData(true)]
         [InlineData(false)]
@@ -88,7 +99,7 @@ namespace Jellyfin.Providers.Tests.Tmdb
         {
             Assert.Empty(aggregate
                 ? TmdbUtils.MapAggregateCast(null, _config, _ => null)
-                : TmdbUtils.MapCast(null, _config, _ => null));
+                : TmdbUtils.MapCast<Cast>(null, _config, _ => null));
         }
 
         private static CastAggregate CreateAggregate(string name, int id, int order, params (string Character, int Episodes)[] roles)
