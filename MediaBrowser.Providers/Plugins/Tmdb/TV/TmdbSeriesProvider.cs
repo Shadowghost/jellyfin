@@ -371,56 +371,16 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
         {
             var config = Plugin.Instance.Configuration;
 
-            if (seriesResult.AggregateCredits?.Cast is not null)
+            // The aggregated credits are what hold an actor's several characters apart; the flat ones
+            // put them in a single string. Only the aggregated list carries the whole run, so prefer it
+            // and fall back for the rare show TMDb has no aggregation for.
+            var cast = seriesResult.AggregateCredits?.Cast is { Count: > 0 } aggregated
+                ? TmdbUtils.MapAggregateCast(aggregated, config, _tmdbClientManager.GetProfileUrl)
+                : TmdbUtils.MapCast(seriesResult.Credits?.Cast, config, _tmdbClientManager.GetProfileUrl);
+
+            foreach (var actor in cast)
             {
-                IEnumerable<CastAggregate> castQuery = seriesResult.AggregateCredits.Cast.OrderBy(a => a.Order);
-
-                if (config.HideMissingCastMembers)
-                {
-                    castQuery = castQuery.Where(a => !string.IsNullOrEmpty(a.ProfilePath));
-                }
-
-                foreach (var actor in castQuery.Take(config.MaxCastMembers))
-                {
-                    if (string.IsNullOrWhiteSpace(actor.Name))
-                    {
-                        continue;
-                    }
-
-                    // An actor playing several characters over the run gets one aggregated entry
-                    // holding every role, so each of them becomes a credit of its own here.
-                    // Their own billing puts the character they played the longest first.
-                    var characters = actor.Roles?
-                        .Where(role => !string.IsNullOrWhiteSpace(role.Character))
-                        .OrderByDescending(role => role.EpisodeCount)
-                        .Select(role => role.Character!.Trim())
-                        .ToList();
-
-                    if (characters is null || characters.Count == 0)
-                    {
-                        characters = [string.Empty];
-                    }
-
-                    foreach (var character in characters)
-                    {
-                        var personInfo = new PersonInfo
-                        {
-                            Name = actor.Name.Trim(),
-                            Role = character,
-                            Type = PersonKind.Actor,
-                            SortOrder = actor.Order,
-                            // NOTE: Null values are filtered out above
-                            ImageUrl = _tmdbClientManager.GetProfileUrl(actor.ProfilePath!)
-                        };
-
-                        if (actor.Id > 0)
-                        {
-                            personInfo.SetProviderId(MetadataProvider.Tmdb, actor.Id.ToString(CultureInfo.InvariantCulture));
-                        }
-
-                        yield return personInfo;
-                    }
-                }
+                yield return actor;
             }
 
             if (seriesResult.Credits?.Crew is not null)
