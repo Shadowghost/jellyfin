@@ -49,6 +49,15 @@ public class PeopleValidator
     /// <returns>Task.</returns>
     public async Task ValidatePeople(CancellationToken cancellationToken, IProgress<double> progress)
     {
+        // Before anything is created for them: a credit no item maps to any more stands for nothing,
+        // and linking it first would hand it a person item that the dead-person sweep below then has
+        // to find again.
+        var numOrphaned = _libraryManager.DeleteOrphanedCredits();
+        if (numOrphaned > 0)
+        {
+            _logger.LogDebug("Deleted {Amount} credits no item maps to", numOrphaned);
+        }
+
         var numLinked = LinkUnresolvedCredits(cancellationToken);
 
         // Person kinds only: an Artist credit belongs to a MusicArtist, refreshed by the music library.
@@ -128,7 +137,11 @@ public class PeopleValidator
 
         progress.Report(100);
 
-        _logger.LogInformation("People validation complete, created {Created} missing people and linked {Linked} credits", numCreated, numLinked);
+        _logger.LogInformation(
+            "People validation complete, created {Created} missing people, linked {Linked} credits and deleted {Orphaned} orphaned ones",
+            numCreated,
+            numLinked,
+            numOrphaned);
     }
 
     // Every kind, not just the Person ones refreshed below.

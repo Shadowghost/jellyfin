@@ -227,11 +227,11 @@ public sealed class PeopleRepositoryUpdatePeopleTests : SqliteDbTestFixture
         person.PersonItemId = personItemId;
         _repository.UpdatePeople(_itemId, [person]);
 
-        // Another human of the same name: never repointed, so the second one owns a row.
+        // Another human of the same name, credited elsewhere: never repointed, so it owns a row.
         var other = CreatePerson("Person A", PersonKind.Actor, "Hero");
         var otherItemId = AddPersonItem("Person A Elsewhere");
         other.PersonItemId = otherItemId;
-        _repository.UpdatePeople(_itemId, [other]);
+        _repository.UpdatePeople(AddMovie("Other Movie"), [other]);
 
         using var ctx = CreateDbContext();
         var itemIds = ctx.Peoples.Select(e => e.ItemId).ToArray();
@@ -361,6 +361,79 @@ public sealed class PeopleRepositoryUpdatePeopleTests : SqliteDbTestFixture
 
         using var ctx = CreateDbContext();
         Assert.Equal(personItemId, ctx.Peoples.Single().ItemId);
+    }
+
+    [Fact]
+    public void UpdatePeople_CreditDroppedByTheProvider_LeavesNoCreditRowBehind()
+    {
+        _repository.UpdatePeople(_itemId, [
+            CreatePerson("Person A", PersonKind.Actor, "Hero"),
+            CreatePerson("Person B", PersonKind.Actor, "Villain")
+        ]);
+
+        _repository.UpdatePeople(_itemId, [CreatePerson("Person A", PersonKind.Actor, "Hero")]);
+
+        using var ctx = CreateDbContext();
+        Assert.Equal(["Person A"], ctx.Peoples.Select(e => e.Name).ToArray());
+    }
+
+    [Fact]
+    public void UpdatePeople_CreditStillHeldByAnotherItem_IsKept()
+    {
+        _repository.UpdatePeople(_itemId, [CreatePerson("Person A", PersonKind.Actor, "Hero")]);
+        _repository.UpdatePeople(AddMovie("Other Movie"), [CreatePerson("Person A", PersonKind.Actor, "Hero")]);
+
+        _repository.UpdatePeople(_itemId, []);
+
+        using var after = CreateDbContext();
+        Assert.Single(after.Peoples);
+        Assert.Single(after.PeopleBaseItemMap);
+    }
+
+    [Fact]
+    public void DeleteOrphanedCredits_CreditNoItemMapsTo_IsDeleted()
+    {
+        _repository.UpdatePeople(_itemId, [CreatePerson("Person A", PersonKind.Actor, "Hero")]);
+        using (var ctx = CreateDbContext())
+        {
+            // The state a credit was left in before UpdatePeople cleaned up after itself.
+            ctx.PeopleBaseItemMap.RemoveRange(ctx.PeopleBaseItemMap);
+            ctx.SaveChanges();
+        }
+
+        Assert.Equal(1, _repository.DeleteOrphanedCredits());
+
+        using var after = CreateDbContext();
+        Assert.Empty(after.Peoples);
+    }
+
+    [Fact]
+    public void DeleteOrphanedCredits_CreditAnItemMapsTo_IsKept()
+    {
+        _repository.UpdatePeople(_itemId, [CreatePerson("Person A", PersonKind.Actor, "Hero")]);
+
+        Assert.Equal(0, _repository.DeleteOrphanedCredits());
+
+        using var after = CreateDbContext();
+        Assert.Single(after.Peoples);
+    }
+
+    private Guid AddMovie(string name)
+    {
+        var id = Guid.NewGuid();
+        using var ctx = CreateDbContext();
+        ctx.BaseItems.Add(new BaseItemEntity
+        {
+            Id = id,
+            Type = new ItemTypeLookup().BaseItemKindNames[BaseItemKind.Movie],
+            Name = name,
+            MediaType = "Video",
+            IsMovie = true,
+            IsFolder = false,
+            IsVirtualItem = false
+        });
+        ctx.SaveChanges();
+        return id;
     }
 
     private static PersonInfo CreatePerson(string name, PersonKind type, string role)
