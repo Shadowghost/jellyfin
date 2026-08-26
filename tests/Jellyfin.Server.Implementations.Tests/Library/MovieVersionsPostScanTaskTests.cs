@@ -291,6 +291,16 @@ public class MovieVersionsPostScanTaskTests
     }
 
     [Fact]
+    public async Task Run_QueriesMoviesThatAreAlreadyMergedIntoAnotherCopy()
+    {
+        await _task.Run(new Progress<double>(), CancellationToken.None);
+
+        _libraryManager.Verify(
+            x => x.GetItemList(It.Is<InternalItemsQuery>(q => q.IncludeItemTypes.Contains(BaseItemKind.Movie) && q.IncludeOwnedItems)),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task Run_AlternateReidentified_StaleLinkIsRemoved()
     {
         var primary = AddMovie("/Movies/Blade Runner (1982)/Blade Runner (1982).mkv", tmdbId: "78");

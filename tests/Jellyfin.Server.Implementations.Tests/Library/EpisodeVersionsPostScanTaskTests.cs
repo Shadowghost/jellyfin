@@ -172,6 +172,19 @@ public class EpisodeVersionsPostScanTaskTests
     }
 
     [Fact]
+    public async Task Run_QueriesEpisodesThatAreAlreadyMergedIntoAnotherCopy()
+    {
+        AddSeries("/Shows/Spider Noir S01 (BW)");
+        AddSeries("/Shows/Spider Noir S01 (Color)");
+
+        await _task.Run(new Progress<double>(), CancellationToken.None);
+
+        _libraryManager.Verify(
+            x => x.GetItemList(It.Is<InternalItemsQuery>(q => q.IncludeItemTypes.Contains(BaseItemKind.Episode) && q.IncludeOwnedItems)),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task Run_EpisodeNoLongerSameNumber_StaleLinkIsRemoved()
     {
         AddSeries("/Shows/Spider Noir S01 (BW)");

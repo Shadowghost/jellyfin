@@ -59,7 +59,8 @@ public class MovieVersionsPostScanTask : ILibraryPostScanTask
         {
             IncludeItemTypes = [BaseItemKind.Movie],
             GroupByPresentationUniqueKey = false,
-            IsVirtualItem = false
+            IsVirtualItem = false,
+            IncludeOwnedItems = true
         })
             .OfType<Movie>()
             .Where(m => m.OwnerId.IsEmpty() && !m.ExtraType.HasValue && !string.IsNullOrEmpty(m.Path))
