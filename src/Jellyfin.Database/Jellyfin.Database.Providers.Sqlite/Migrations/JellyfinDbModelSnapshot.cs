@@ -1734,7 +1734,7 @@ namespace Jellyfin.Server.Implementations.Migrations
             modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.BaseItemGenre", b =>
                 {
                     b.HasOne("Jellyfin.Database.Implementations.Entities.BaseItemEntity", "Item")
-                        .WithMany("ItemGenres")
+                        .WithMany()
                         .HasForeignKey("ItemId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1778,7 +1778,7 @@ namespace Jellyfin.Server.Implementations.Migrations
             modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.BaseItemStudio", b =>
                 {
                     b.HasOne("Jellyfin.Database.Implementations.Entities.BaseItemEntity", "Item")
-                        .WithMany("ItemStudios")
+                        .WithMany()
                         .HasForeignKey("ItemId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -2006,10 +2006,6 @@ namespace Jellyfin.Server.Implementations.Migrations
                     b.Navigation("Extras");
 
                     b.Navigation("Images");
-
-                    b.Navigation("ItemGenres");
-
-                    b.Navigation("ItemStudios");
 
                     b.Navigation("ItemTags");
 
