@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
@@ -39,7 +39,8 @@ public static class DescendantQueryHelper
 
     /// <summary>
     /// Gets all descendant IDs for multiple parent items in a single traversal.
-    /// Traverses AncestorIds and LinkedChildren, like <see cref="GetAllDescendantIds"/>.
+    /// Traverses AncestorIds and LinkedChildren, like <see cref="GetAllDescendantIds"/>, but resolves
+    /// the roots once for all seeds instead of once per seed.
     /// </summary>
     /// <param name="context">Database context.</param>
     /// <param name="parentIds">Parent item IDs.</param>

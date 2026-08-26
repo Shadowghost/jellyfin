@@ -2269,14 +2269,14 @@ namespace Emby.Server.Implementations.Library
             }
 
             // Optimize by querying against top level views
-            query.TopParentIds = parents.SelectMany(i => GetTopParentIdsForQuery(i, query.User)).ToArray();
-            query.AncestorIds = [];
-
-            // Prevent searching in all libraries due to empty filter
-            if (query.TopParentIds.Length == 0)
+            var topParentIds = parents.SelectMany(i => GetTopParentIdsForQuery(i, query.User)).ToArray();
+            if (topParentIds.Length == 0)
             {
-                query.TopParentIds = [Guid.NewGuid()];
+                return;
             }
+
+            query.TopParentIds = topParentIds;
+            query.AncestorIds = [];
         }
 
         public QueryResult<(BaseItem Item, ItemCounts ItemCounts)> GetAlbumArtists(InternalItemsQuery query)
@@ -2322,12 +2322,15 @@ namespace Emby.Server.Implementations.Library
             if (parents.All(i => i is ICollectionFolder || i is UserView))
             {
                 // Optimize by querying against top level views
-                query.TopParentIds = parents.SelectMany(i => GetTopParentIdsForQuery(i, query.User)).ToArray();
+                var topParentIds = parents.SelectMany(i => GetTopParentIdsForQuery(i, query.User)).ToArray();
 
-                // Prevent searching in all libraries due to empty filter
-                if (query.TopParentIds.Length == 0)
+                if (topParentIds.Length > 0)
                 {
-                    query.TopParentIds = [Guid.NewGuid()];
+                    query.TopParentIds = topParentIds;
+                }
+                else
+                {
+                    SetAncestorIds(query, parents);
                 }
             }
             else if (parents.Count == 1 && parents.First() is Folder folder
@@ -2351,17 +2354,22 @@ namespace Emby.Server.Implementations.Library
             }
             else
             {
-                // We need to be able to query from any arbitrary ancestor up the tree
-                query.AncestorIds = parents.SelectMany(i => i.GetIdsForAncestorQuery()).ToArray();
-
-                // Prevent searching in all libraries due to empty filter
-                if (query.AncestorIds.Length == 0)
-                {
-                    query.AncestorIds = [Guid.NewGuid()];
-                }
+                SetAncestorIds(query, parents);
             }
 
             query.Parent = null;
+        }
+
+        private static void SetAncestorIds(InternalItemsQuery query, IReadOnlyCollection<BaseItem> parents)
+        {
+            // We need to be able to query from any arbitrary ancestor up the tree
+            query.AncestorIds = parents.SelectMany(i => i.GetIdsForAncestorQuery()).ToArray();
+
+            // Prevent searching in all libraries due to empty filter
+            if (query.AncestorIds.Length == 0)
+            {
+                query.AncestorIds = [Guid.NewGuid()];
+            }
         }
 
         private void AddUserToQuery(InternalItemsQuery query, User user, bool allowExternalContent = true)
@@ -2879,9 +2887,15 @@ namespace Emby.Server.Implementations.Library
                     }
                 }
 
-                if (!File.Exists(image.Path))
+                if (string.IsNullOrEmpty(image.Path) || !File.Exists(image.Path))
                 {
-                    _logger.LogWarning("Image not found at {ImagePath}", image.Path);
+                    _logger.LogWarning(
+                        "{ImageType} image for {ItemName} ({ItemId}) not found at \"{ImagePath}\", source was {SourcePath}",
+                        img.Type,
+                        item.Name,
+                        item.Id,
+                        image.Path,
+                        img.Path);
                     continue;
                 }
 
@@ -3286,7 +3300,8 @@ namespace Emby.Server.Implementations.Library
                 "views",
                 _fileSystem.GetValidFilename(viewType.ToString()));
 
-            var id = GetNewItemId(path + "_namedview_" + name, typeof(UserView));
+            // The display name is localized, so it must not take part in the id.
+            var id = GetNewItemId(path + "_namedview_" + viewType.ToString(), typeof(UserView));
 
             var item = GetItemById(id) as UserView;
 
@@ -3310,6 +3325,13 @@ namespace Emby.Server.Implementations.Library
 
                 refresh = true;
             }
+            else if (!string.Equals(item.Name, name, StringComparison.Ordinal))
+            {
+                item.Name = name;
+                item.ForcedSortName = sortName;
+
+                refresh = true;
+            }
 
             if (refresh)
             {
@@ -3330,7 +3352,9 @@ namespace Emby.Server.Implementations.Library
             var parentIdString = parentId.IsEmpty()
                 ? null
                 : parentId.ToString("N", CultureInfo.InvariantCulture);
-            var idValues = "38_namedview_" + name + user.Id.ToString("N", CultureInfo.InvariantCulture) + (parentIdString ?? string.Empty) + (viewType?.ToString() ?? string.Empty);
+
+            // The name is either localized (grouped views) or the library folder's own name.
+            var idValues = "38_namedview_" + user.Id.ToString("N", CultureInfo.InvariantCulture) + (parentIdString ?? string.Empty) + (viewType?.ToString() ?? string.Empty);
 
             var id = GetNewItemId(idValues, typeof(UserView));
 
@@ -3359,6 +3383,11 @@ namespace Emby.Server.Implementations.Library
                 CreateItem(item, null);
 
                 isNew = true;
+            }
+            else if (!string.Equals(item.Name, name, StringComparison.Ordinal))
+            {
+                item.Name = name;
+                item.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, CancellationToken.None).GetAwaiter().GetResult();
             }
 
             var lastRefreshedUtc = item.DateLastRefreshed;
@@ -3461,7 +3490,7 @@ namespace Emby.Server.Implementations.Library
             var parentIdString = parentId.IsEmpty()
                 ? null
                 : parentId.ToString("N", CultureInfo.InvariantCulture);
-            var idValues = "37_namedview_" + name + (parentIdString ?? string.Empty) + (viewType?.ToString() ?? string.Empty);
+            var idValues = "37_namedview_" + (parentIdString ?? string.Empty) + (viewType?.ToString() ?? string.Empty);
             if (!string.IsNullOrEmpty(uniqueId))
             {
                 idValues += uniqueId;
@@ -3495,9 +3524,10 @@ namespace Emby.Server.Implementations.Library
                 isNew = true;
             }
 
-            if (viewType != item.ViewType)
+            if (viewType != item.ViewType || !string.Equals(item.Name, name, StringComparison.Ordinal))
             {
                 item.ViewType = viewType;
+                item.Name = name;
                 item.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, CancellationToken.None).GetAwaiter().GetResult();
             }
 
@@ -4115,7 +4145,20 @@ namespace Emby.Server.Implementations.Library
 
                     await item.UpdateToRepositoryAsync(ItemUpdateType.ImageUpdate, CancellationToken.None).ConfigureAwait(false);
 
-                    return item.GetImageInfo(image.Type, imageIndex);
+                    var localImage = item.GetImageInfo(image.Type, imageIndex);
+                    if (localImage is null)
+                    {
+                        throw new InvalidOperationException(string.Format(
+                            CultureInfo.InvariantCulture,
+                            "Downloaded {0} image {1} from {2} is not attached to {3} ({4})",
+                            image.Type,
+                            imageIndex,
+                            url,
+                            item.Name,
+                            item.Id));
+                    }
+
+                    return localImage;
                 }
                 catch (HttpRequestException ex)
                 {
@@ -4137,7 +4180,13 @@ namespace Emby.Server.Implementations.Library
                 await item.UpdateToRepositoryAsync(ItemUpdateType.ImageUpdate, CancellationToken.None).ConfigureAwait(false);
             }
 
-            throw new InvalidOperationException("Unable to convert any images to local");
+            throw new InvalidOperationException(string.Format(
+                CultureInfo.InvariantCulture,
+                "Unable to convert any {0} image url in \"{1}\" to a local file for {2} ({3})",
+                image.Type,
+                image.Path,
+                item.Name,
+                item.Id));
         }
 
         public async Task AddVirtualFolder(string name, CollectionTypeOptions? collectionType, LibraryOptions options, bool refreshLibrary)

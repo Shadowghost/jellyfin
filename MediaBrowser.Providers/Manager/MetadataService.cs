@@ -271,19 +271,38 @@ namespace MediaBrowser.Providers.Manager
             switch (lookupInfo)
             {
                 case EpisodeInfo episodeInfo:
-                    episodeInfo.SeriesProviderIds = result.ProviderIds;
+                    episodeInfo.SeriesProviderIds = GetValidProviderIds(result.ProviderIds);
                     episodeInfo.ProviderIds.Clear();
                     break;
                 case SeasonInfo seasonInfo:
-                    seasonInfo.SeriesProviderIds = result.ProviderIds;
+                    seasonInfo.SeriesProviderIds = GetValidProviderIds(result.ProviderIds);
                     seasonInfo.ProviderIds.Clear();
                     break;
                 default:
-                    lookupInfo.ProviderIds = result.ProviderIds;
+                    lookupInfo.SetProviderIds(result.ProviderIds);
                     lookupInfo.Name = result.Name;
                     lookupInfo.Year = result.ProductionYear;
                     break;
             }
+        }
+
+        private static Dictionary<string, string> GetValidProviderIds(IReadOnlyDictionary<string, string> providerIds)
+        {
+            var validProviderIds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (providerIds is null)
+            {
+                return validProviderIds;
+            }
+
+            foreach (var (name, value) in providerIds)
+            {
+                if (ProviderIdsExtensions.IsValidProviderId(name, value))
+                {
+                    validProviderIds[name] = value;
+                }
+            }
+
+            return validProviderIds;
         }
 
         protected async Task SaveItemAsync(MetadataResult<TItemType> result, ItemUpdateType reason, bool reattachUserData, CancellationToken cancellationToken)
@@ -854,6 +873,7 @@ namespace MediaBrowser.Providers.Manager
                 }
             }
 
+            var hasRemoteMetadata = false;
             var isLocalLocked = temp.Item.IsLocked;
             if (!isLocalLocked && (options.ReplaceAllMetadata || options.MetadataRefreshMode > MetadataRefreshMode.ValidationOnly))
             {
@@ -868,6 +888,7 @@ namespace MediaBrowser.Providers.Manager
 
                 var remoteResult = await ExecuteRemoteProviders(temp, logName, false, id, remoteProviders, cancellationToken).ConfigureAwait(false);
 
+                hasRemoteMetadata = remoteResult.UpdateType.HasFlag(ItemUpdateType.MetadataDownload);
                 refreshResult.UpdateType |= remoteResult.UpdateType;
                 refreshResult.ErrorMessage = remoteResult.ErrorMessage;
                 refreshResult.Failures += remoteResult.Failures;
@@ -877,10 +898,12 @@ namespace MediaBrowser.Providers.Manager
             {
                 if (refreshResult.UpdateType > ItemUpdateType.None)
                 {
-                    // A provider that failed contributed nothing, so the result is not the complete
-                    // replacement the caller asked for. Keeping the existing values stops a provider being
-                    // temporarily unreachable, or choking on a bad id, from deleting the data it owns.
-                    if (!options.RemoveOldMetadata || refreshResult.Failures > 0)
+                    // Erasing the old values is only safe when a remote provider returned something to
+                    // replace them with. If every one of them failed there is no replacement, and wiping the
+                    // item would turn a provider being temporarily unreachable into permanent data loss.
+                    // A single failure is not enough: Identify asks for the erasure precisely because the
+                    // previous match was wrong, and an unrelated provider throwing must not undo that.
+                    if (!options.RemoveOldMetadata || (refreshResult.Failures > 0 && !hasRemoteMetadata))
                     {
                         // Add existing metadata to provider result if it does not exist there
                         MergeData(metadata, temp, [], false, false);
@@ -978,7 +1001,7 @@ namespace MediaBrowser.Providers.Manager
                             taglineIsFallback |= string.IsNullOrEmpty(temp.Item.Tagline) && !string.IsNullOrEmpty(result.Item.Tagline);
                         }
 
-                        LogInvalidProviderIds(result.Item, providerName, logName);
+                        LogInvalidProviderIds(result, providerName, logName);
 
                         MergeData(result, temp, [], replaceData, false);
 
@@ -1019,18 +1042,47 @@ namespace MediaBrowser.Providers.Manager
         /// The ids are dropped when merging, this names the provider that produced them so the source of a
         /// recurring bad id can be found.
         /// </remarks>
-        private void LogInvalidProviderIds(TItemType item, string providerName, string logName)
+        private void LogInvalidProviderIds(MetadataResult<TItemType> result, string providerName, string logName)
         {
-            if (item?.ProviderIds is null || !Logger.IsEnabled(LogLevel.Debug))
+            if (!Logger.IsEnabled(LogLevel.Debug))
             {
                 return;
             }
 
-            foreach (var (key, value) in item.ProviderIds)
+            LogInvalidProviderIds(result.Item?.ProviderIds, providerName, logName, null);
+
+            if (result.People is null)
             {
-                if (!ProviderIdsExtensions.IsValidProviderId(key, value))
+                return;
+            }
+
+            foreach (var person in result.People)
+            {
+                LogInvalidProviderIds(person.ProviderIds, providerName, logName, person.Name);
+            }
+        }
+
+        private void LogInvalidProviderIds(IReadOnlyDictionary<string, string> providerIds, string providerName, string logName, string personName)
+        {
+            if (providerIds is null)
+            {
+                return;
+            }
+
+            foreach (var (key, value) in providerIds)
+            {
+                if (ProviderIdsExtensions.IsValidProviderId(key, value))
+                {
+                    continue;
+                }
+
+                if (personName is null)
                 {
                     Logger.LogDebug("Discarding {Key} id '{Value}' returned by {Provider} for {Item}", key, value, providerName, logName);
+                }
+                else
+                {
+                    Logger.LogDebug("Discarding {Key} id '{Value}' returned by {Provider} for {Person} of {Item}", key, value, providerName, personName, logName);
                 }
             }
         }
@@ -1047,8 +1099,13 @@ namespace MediaBrowser.Providers.Manager
                     continue;
                 }
 
-                // Don't replace existing Id's.
-                lookupInfo.ProviderIds.TryAdd(key, providerId.Value);
+                // Don't replace existing Id's, unless the one already there is unusable - handing that
+                // one to the providers that have yet to run is what makes them fail.
+                if (!lookupInfo.ProviderIds.TryGetValue(key, out var existingId)
+                    || !ProviderIdsExtensions.IsValidProviderId(key, existingId))
+                {
+                    lookupInfo.ProviderIds[key] = providerId.Value;
+                }
             }
         }
 
@@ -1198,6 +1255,7 @@ namespace MediaBrowser.Providers.Manager
             if (!lockedFields.Contains(MetadataField.Cast))
             {
                 RemoveInvalidProviderIds(sourceResult.People);
+                RemoveInvalidProviderIds(targetResult.People);
 
                 if (replaceData || targetResult.People is null || targetResult.People.Count == 0)
                 {
@@ -1285,15 +1343,24 @@ namespace MediaBrowser.Providers.Manager
                     continue;
                 }
 
-                // Don't replace existing Id's.
-                if (replaceData)
+                // Don't replace existing Id's, unless the stored one is unusable - that one is the bad
+                // match the refresh is meant to repair.
+                if (replaceData
+                    || !target.ProviderIds.TryGetValue(key, out var existingId)
+                    || !ProviderIdsExtensions.IsValidProviderId(key, existingId))
                 {
                     target.ProviderIds[key] = id.Value;
                 }
-                else
-                {
-                    target.ProviderIds.TryAdd(key, id.Value);
-                }
+            }
+
+            // A bad id no provider offered a replacement for still has to go, otherwise the item keeps
+            // failing the same way on every refresh.
+            foreach (var key in target.ProviderIds
+                .Where(id => !ProviderIdsExtensions.IsValidProviderId(id.Key, id.Value))
+                .Select(id => id.Key)
+                .ToArray())
+            {
+                target.ProviderIds.Remove(key);
             }
 
             if (replaceData || !target.CriticRating.HasValue)
