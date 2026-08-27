@@ -11,14 +11,14 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Jellyfin.Database.Providers.Sqlite.Migrations
 {
     [DbContext(typeof(JellyfinDbContext))]
-    [Migration("20260811195046_AddBaseItemGenreAndStudioLinks")]
-    partial class AddBaseItemGenreAndStudioLinks
+    [Migration("20260827084552_AddBaseItemTags")]
+    partial class AddBaseItemTags
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
 
             modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.AccessSchedule", b =>
                 {
@@ -440,23 +440,6 @@ namespace Jellyfin.Database.Providers.Sqlite.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.BaseItemGenre", b =>
-                {
-                    b.Property<Guid>("ItemId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("GenreItemId")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("ItemId", "GenreItemId");
-
-                    b.HasIndex("GenreItemId", "ItemId");
-
-                    b.ToTable("BaseItemGenres");
-
-                    b.HasAnnotation("Sqlite:UseSqlReturningClause", false);
-                });
-
             modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.BaseItemImageInfo", b =>
                 {
                     b.Property<Guid>("Id")
@@ -530,23 +513,6 @@ namespace Jellyfin.Database.Providers.Sqlite.Migrations
                     b.HasIndex("ProviderId", "ItemId", "ProviderValue");
 
                     b.ToTable("BaseItemProviders");
-
-                    b.HasAnnotation("Sqlite:UseSqlReturningClause", false);
-                });
-
-            modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.BaseItemStudio", b =>
-                {
-                    b.Property<Guid>("ItemId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("StudioItemId")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("ItemId", "StudioItemId");
-
-                    b.HasIndex("StudioItemId", "ItemId");
-
-                    b.ToTable("BaseItemStudios");
 
                     b.HasAnnotation("Sqlite:UseSqlReturningClause", false);
                 });
@@ -1072,6 +1038,8 @@ namespace Jellyfin.Database.Providers.Sqlite.Migrations
 
                     b.HasKey("ItemId", "StreamIndex");
 
+                    b.HasIndex("StreamType", "ItemId", "Language", "IsExternal");
+
                     b.ToTable("MediaStreamInfos");
 
                     b.HasAnnotation("Sqlite:UseSqlReturningClause", false);
@@ -1149,14 +1117,11 @@ namespace Jellyfin.Database.Providers.Sqlite.Migrations
                     b.Property<int>("Kind")
                         .HasColumnType("INTEGER");
 
-                    b.Property<Guid?>("Permission_Permissions_Guid")
-                        .HasColumnType("TEXT");
-
                     b.Property<uint>("RowVersion")
                         .IsConcurrencyToken()
                         .HasColumnType("INTEGER");
 
-                    b.Property<Guid?>("UserId")
+                    b.Property<Guid>("UserId")
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("Value")
@@ -1165,8 +1130,7 @@ namespace Jellyfin.Database.Providers.Sqlite.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("UserId", "Kind")
-                        .IsUnique()
-                        .HasFilter("[UserId] IS NOT NULL");
+                        .IsUnique();
 
                     b.ToTable("Permissions");
 
@@ -1182,14 +1146,11 @@ namespace Jellyfin.Database.Providers.Sqlite.Migrations
                     b.Property<int>("Kind")
                         .HasColumnType("INTEGER");
 
-                    b.Property<Guid?>("Preference_Preferences_Guid")
-                        .HasColumnType("TEXT");
-
                     b.Property<uint>("RowVersion")
                         .IsConcurrencyToken()
                         .HasColumnType("INTEGER");
 
-                    b.Property<Guid?>("UserId")
+                    b.Property<Guid>("UserId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Value")
@@ -1200,8 +1161,7 @@ namespace Jellyfin.Database.Providers.Sqlite.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("UserId", "Kind")
-                        .IsUnique()
-                        .HasFilter("[UserId] IS NOT NULL");
+                        .IsUnique();
 
                     b.ToTable("Preferences");
 
@@ -1596,17 +1556,6 @@ namespace Jellyfin.Database.Providers.Sqlite.Migrations
                     b.Navigation("Owner");
                 });
 
-            modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.BaseItemGenre", b =>
-                {
-                    b.HasOne("Jellyfin.Database.Implementations.Entities.BaseItemEntity", "Item")
-                        .WithMany("ItemGenres")
-                        .HasForeignKey("ItemId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Item");
-                });
-
             modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.BaseItemImageInfo", b =>
                 {
                     b.HasOne("Jellyfin.Database.Implementations.Entities.BaseItemEntity", "Item")
@@ -1633,17 +1582,6 @@ namespace Jellyfin.Database.Providers.Sqlite.Migrations
                 {
                     b.HasOne("Jellyfin.Database.Implementations.Entities.BaseItemEntity", "Item")
                         .WithMany("Provider")
-                        .HasForeignKey("ItemId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Item");
-                });
-
-            modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.BaseItemStudio", b =>
-                {
-                    b.HasOne("Jellyfin.Database.Implementations.Entities.BaseItemEntity", "Item")
-                        .WithMany("ItemStudios")
                         .HasForeignKey("ItemId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1803,7 +1741,8 @@ namespace Jellyfin.Database.Providers.Sqlite.Migrations
                     b.HasOne("Jellyfin.Database.Implementations.Entities.User", null)
                         .WithMany("Permissions")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.Preference", b =>
@@ -1811,7 +1750,8 @@ namespace Jellyfin.Database.Providers.Sqlite.Migrations
                     b.HasOne("Jellyfin.Database.Implementations.Entities.User", null)
                         .WithMany("Preferences")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Jellyfin.Database.Implementations.Entities.Security.Device", b =>
@@ -1855,10 +1795,6 @@ namespace Jellyfin.Database.Providers.Sqlite.Migrations
                     b.Navigation("Extras");
 
                     b.Navigation("Images");
-
-                    b.Navigation("ItemGenres");
-
-                    b.Navigation("ItemStudios");
 
                     b.Navigation("ItemTags");
 
