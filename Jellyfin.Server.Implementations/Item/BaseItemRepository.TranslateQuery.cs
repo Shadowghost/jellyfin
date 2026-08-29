@@ -74,16 +74,46 @@ public sealed partial class BaseItemRepository
             .Where(bound)
             .Select(v => v.PrimaryVersionId!.Value);
 
-    private static IQueryable<Guid> ArtistCreditIds(
+    // One artist can hold more than one item: the folder a library scanned and the by-name entry the
+    // metadata path carries, one per library it appears in. Which of them a credit points at depends on
+    // which existed when the credit was written, so the releases split across them. GetItemsByName
+    // collapses the group onto one representative, and the client only ever holds that one id, so a
+    // filter has to reach what is filed under the rest of the group as well.
+    private IQueryable<Guid> ArtistItemGroup(JellyfinDbContext context, IReadOnlyList<Guid> artistIds)
+    {
+        var artistType = _itemTypeLookup.BaseItemKindNames[BaseItemKind.MusicArtist];
+
+        // An item written before the key was carries none, and is then only its own group.
+        var keys = context.BaseItems
+            .WhereOneOrMany(artistIds, e => e.Id)
+            .Where(e => e.PresentationUniqueKey != null)
+            .Select(e => e.PresentationUniqueKey);
+
+        return context.BaseItems
+            .Where(e => e.Type == artistType && keys.Contains(e.PresentationUniqueKey))
+            .Select(e => e.Id);
+    }
+
+    private IQueryable<Guid> ArtistCreditIds(
         JellyfinDbContext context,
         IReadOnlyList<Guid> artistIds,
         string[] kinds)
-        => context.Peoples
-            .WhereOneOrMany(artistIds, p => p.ItemId)
-            .Where(p => kinds.Contains(p.PersonType))
-            .Select(p => p.Id);
+    {
+        var group = ArtistItemGroup(context, artistIds);
 
-    private static IQueryable<BaseItemEntity> WhereCreditedTo(
+        // Unioned rather than widened in place: both arms seek IX_Peoples_ItemId, and the ids as given
+        // keep resolving even when they name something the group query cannot reach.
+        return context.Peoples
+            .Where(p => group.Contains(p.ItemId))
+            .Where(p => kinds.Contains(p.PersonType))
+            .Select(p => p.Id)
+            .Union(context.Peoples
+                .WhereOneOrMany(artistIds, p => p.ItemId)
+                .Where(p => kinds.Contains(p.PersonType))
+                .Select(p => p.Id));
+    }
+
+    private IQueryable<BaseItemEntity> WhereCreditedTo(
         IQueryable<BaseItemEntity> baseQuery,
         JellyfinDbContext context,
         IReadOnlyList<Guid> artistIds,

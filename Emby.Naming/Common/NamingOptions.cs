@@ -203,6 +203,7 @@ namespace Emby.Naming.Common
                 "mixtapes",
                 "others",
                 "remixes",
+                "remixs",
                 "singles",
                 "soundtracks",
                 "spokenwords",

@@ -29,18 +29,24 @@ namespace Jellyfin.Server.Implementations.Tests.Item;
 /// </summary>
 public sealed class MusicArtistCreditTests : IDisposable
 {
+    private const string ArtistPresentationKey = "Artist-Miles Davis";
+
     private static readonly Guid _albumId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly Guid _artistItemId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
     private static readonly Guid _guestAlbumId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
     private static readonly Guid _unrelatedAlbumId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
     private static readonly Guid _albumArtistCreditId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
     private static readonly Guid _artistCreditId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly Guid _folderArtistItemId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+    private static readonly Guid _folderAlbumId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+    private static readonly Guid _folderCreditId = Guid.Parse("44444444-4444-4444-4444-444444444444");
 
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<JellyfinDbContext> _dbOptions;
     private readonly BaseItemRepository _repository;
     private readonly ItemCountService _countService;
     private readonly string _artistTypeName;
+    private readonly string _albumTypeName;
 
     public MusicArtistCreditTests()
     {
@@ -53,6 +59,7 @@ public sealed class MusicArtistCreditTests : IDisposable
 
         var itemTypeLookup = new ItemTypeLookup();
         _artistTypeName = itemTypeLookup.BaseItemKindNames[BaseItemKind.MusicArtist];
+        _albumTypeName = itemTypeLookup.BaseItemKindNames[BaseItemKind.MusicAlbum];
 
         using (var ctx = CreateDbContext())
         {
@@ -72,6 +79,7 @@ public sealed class MusicArtistCreditTests : IDisposable
                 Type = _artistTypeName,
                 Name = "Miles Davis",
                 CleanName = "miles davis",
+                PresentationUniqueKey = ArtistPresentationKey,
                 IsFolder = false,
                 IsVirtualItem = false
             });
@@ -342,6 +350,83 @@ public sealed class MusicArtistCreditTests : IDisposable
         });
 
         Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GetItemList_AlbumArtistIds_ReachesWhatIsFiledUnderTheArtistsOtherItem()
+    {
+        AddScannedArtistFolderOfTheSameName();
+
+        // The client only ever holds the one id GetItemsByName collapsed the group onto, and it is not
+        // the same one every release was filed under, so either has to stand for the whole artist.
+        foreach (var artistId in new[] { _artistItemId, _folderArtistItemId })
+        {
+            var result = _repository.GetItemList(MusicQuery(q => q.AlbumArtistIds = [artistId]));
+
+            Assert.Equal(
+                new[] { _albumId, _folderAlbumId }.OrderBy(e => e.ToString(), StringComparer.Ordinal).ToArray(),
+                result.Select(e => e.Id).OrderBy(e => e.ToString(), StringComparer.Ordinal).ToArray());
+        }
+    }
+
+    [Fact]
+    public void GetItemCountsForNameItem_CountsTheWholeArtistNotOneOfItsItems()
+    {
+        AddScannedArtistFolderOfTheSameName();
+
+        var counts = _countService.GetItemCountsForNameItem(
+            BaseItemKind.MusicArtist,
+            _artistItemId,
+            [BaseItemKind.MusicAlbum],
+            new InternalItemsQuery());
+
+        Assert.Equal(3, counts.AlbumCount);
+    }
+
+    // A library that holds an artist folder resolves credits to it, while credits written before it was
+    // scanned point at the by-name entry. Both items are the one artist, and share its key.
+    private void AddScannedArtistFolderOfTheSameName()
+    {
+        using var ctx = CreateDbContext();
+
+        ctx.BaseItems.Add(new BaseItemEntity
+        {
+            Id = _folderArtistItemId,
+            Type = _artistTypeName,
+            Name = "Miles Davis",
+            CleanName = "miles davis",
+            PresentationUniqueKey = ArtistPresentationKey,
+            IsFolder = true,
+            IsVirtualItem = false
+        });
+        ctx.BaseItems.Add(new BaseItemEntity
+        {
+            Id = _folderAlbumId,
+            Type = _albumTypeName,
+            Name = "Bitches Brew",
+            CleanName = "bitches brew",
+            IsFolder = true,
+            IsVirtualItem = false
+        });
+        ctx.Peoples.Add(new People
+        {
+            Id = _folderCreditId,
+            Name = "Miles Davis",
+            CleanName = "miles davis",
+            ItemId = _folderArtistItemId,
+            PersonType = nameof(PersonKind.AlbumArtist)
+        });
+        ctx.PeopleBaseItemMap.Add(new PeopleBaseItemMap
+        {
+            Item = null!,
+            ItemId = _folderAlbumId,
+            People = null!,
+            PeopleId = _folderCreditId,
+            ListOrder = 0,
+            Role = string.Empty
+        });
+
+        ctx.SaveChanges();
     }
 
     private static void AddCredit(JellyfinDbContext ctx, Guid creditId, PersonKind kind, Guid onItemId)

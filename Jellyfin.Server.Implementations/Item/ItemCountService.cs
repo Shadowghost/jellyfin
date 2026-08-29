@@ -142,11 +142,23 @@ public class ItemCountService : IItemCountService
         {
             // Both the same: a credit points at its item, and the id already says which kind that is.
             case BaseItemKind.Person:
-            case BaseItemKind.MusicArtist:
                 baseQuery = ItemsById(context, context.PeopleBaseItemMap
                     .AsNoTracking()
                     .Where(m => m.People.ItemId.Equals(id))
                     .Select(m => m.ItemId));
+                break;
+            case BaseItemKind.MusicArtist:
+                // Counted over the whole group the listing collapsed this artist into, so the count on
+                // the card matches what opening it returns.
+                var artistGroup = ArtistItemGroup(context, id);
+                baseQuery = ItemsById(context, context.PeopleBaseItemMap
+                    .AsNoTracking()
+                    .Where(m => artistGroup.Contains(m.People.ItemId))
+                    .Select(m => m.ItemId)
+                    .Union(context.PeopleBaseItemMap
+                        .AsNoTracking()
+                        .Where(m => m.People.ItemId.Equals(id))
+                        .Select(m => m.ItemId)));
                 break;
             case BaseItemKind.Genre:
             case BaseItemKind.MusicGenre:
@@ -299,6 +311,22 @@ public class ItemCountService : IItemCountService
     private static IQueryable<BaseItemEntity> ItemsById(JellyfinDbContext context, IQueryable<Guid> itemIds)
         => context.BaseItems.AsNoTracking().Where(e => itemIds.Contains(e.Id));
 
+    // The artist items GetItemsByName collapses onto one representative; see BaseItemRepository.
+    private IQueryable<Guid> ArtistItemGroup(JellyfinDbContext context, Guid artistId)
+    {
+        var artistType = _itemTypeLookup.BaseItemKindNames[BaseItemKind.MusicArtist];
+
+        var keys = context.BaseItems
+            .AsNoTracking()
+            .Where(e => e.Id.Equals(artistId) && e.PresentationUniqueKey != null)
+            .Select(e => e.PresentationUniqueKey);
+
+        return context.BaseItems
+            .AsNoTracking()
+            .Where(e => e.Type == artistType && keys.Contains(e.PresentationUniqueKey))
+            .Select(e => e.Id);
+    }
+
     /// <inheritdoc/>
     public int GetPlayedCount(InternalItemsQuery filter, Guid ancestorId)
     {
@@ -361,7 +389,7 @@ public class ItemCountService : IItemCountService
     }
 
     /// <inheritdoc/>
-    public Dictionary<Guid, int> GetChildCountBatch(IReadOnlyList<Guid> parentIds, Guid? userId)
+    public Dictionary<Guid, int> GetChildCountBatch(IReadOnlyList<Guid> parentIds, User? user)
     {
         ArgumentNullException.ThrowIfNull(parentIds);
 
@@ -374,12 +402,26 @@ public class ItemCountService : IItemCountService
 
         var parentIdsArray = parentIds.ToArray();
 
+        // Missing and unaired items are children like any other unless the user asked not to see
+        // them, so a season of episodes that have not aired does not report itself as empty.
+        var includeVirtual = user is null || user.DisplayMissingEpisodes;
+
         var hierarchicalCounts = dbContext.BaseItems
-            .Where(b => b.ParentId.HasValue)
+            .Where(b => b.ParentId.HasValue && !b.SeasonId.HasValue && (includeVirtual || !b.IsVirtualItem))
             .WhereOneOrMany(parentIdsArray, b => b.ParentId!.Value)
             .GroupBy(b => b.ParentId!.Value)
             .Select(g => new { ParentId = g.Key, Count = g.Count() })
             .ToDictionary(x => x.ParentId, x => x.Count);
+
+        // An episode is a child of its season even when it is not stored under one: with a flat
+        // structure ParentId points at the series, so counting by ParentId alone leaves the season
+        // empty and counts its episodes towards the series instead.
+        var seasonCounts = dbContext.BaseItems
+            .Where(b => b.SeasonId.HasValue && (includeVirtual || !b.IsVirtualItem))
+            .WhereOneOrMany(parentIdsArray, b => b.SeasonId!.Value)
+            .GroupBy(b => b.SeasonId!.Value)
+            .Select(g => new { SeasonId = g.Key, Count = g.Count() })
+            .ToDictionary(x => x.SeasonId, x => x.Count);
 
         var linkedCounts = dbContext.LinkedChildren
             .WhereOneOrMany(parentIdsArray, lc => lc.ParentId)
@@ -387,7 +429,7 @@ public class ItemCountService : IItemCountService
             .Select(g => new { ParentId = g.Key, Count = g.Count() })
             .ToDictionary(x => x.ParentId, x => x.Count);
 
-        var mergedChildCounts = GetMergedChildCounts(dbContext, parentIdsArray);
+        var mergedChildCounts = GetMergedChildCounts(dbContext, parentIdsArray, includeVirtual);
 
         var result = new Dictionary<Guid, int>();
         foreach (var parentId in parentIds)
@@ -398,7 +440,8 @@ public class ItemCountService : IItemCountService
                 continue;
             }
 
-            var hierarchicalCount = hierarchicalCounts.GetValueOrDefault(parentId, 0);
+            var hierarchicalCount = hierarchicalCounts.GetValueOrDefault(parentId, 0)
+                + seasonCounts.GetValueOrDefault(parentId, 0);
             var linkedCount = linkedCounts.GetValueOrDefault(parentId, 0);
 
             result[parentId] = linkedCount > 0 ? linkedCount : hierarchicalCount;
@@ -407,7 +450,7 @@ public class ItemCountService : IItemCountService
         return result;
     }
 
-    private static Dictionary<Guid, int> GetMergedChildCounts(JellyfinDbContext dbContext, IReadOnlyList<Guid> parentIds)
+    private static Dictionary<Guid, int> GetMergedChildCounts(JellyfinDbContext dbContext, IReadOnlyList<Guid> parentIds, bool includeVirtual)
     {
         var mergedGroups = GetPresentationKeyGroups(dbContext, parentIds)
             .Where(group => group.Value.Count > 1)
@@ -420,12 +463,21 @@ public class ItemCountService : IItemCountService
 
         // Only merged folders.
         var memberIds = mergedGroups.SelectMany(group => group.Value).Distinct().ToArray();
+
+        // Same attribution as the counts above: an episode counts towards its season, not towards
+        // the folder it happens to sit in.
         var children = dbContext.BaseItems
             .AsNoTracking()
-            .Where(b => b.ParentId.HasValue)
+            .Where(b => b.ParentId.HasValue && !b.SeasonId.HasValue && (includeVirtual || !b.IsVirtualItem))
             .WhereOneOrMany(memberIds, b => b.ParentId!.Value)
             .Select(b => new { ParentId = b.ParentId!.Value, b.Id, b.PresentationUniqueKey })
             .ToArray()
+            .Concat(dbContext.BaseItems
+                .AsNoTracking()
+                .Where(b => b.SeasonId.HasValue && (includeVirtual || !b.IsVirtualItem))
+                .WhereOneOrMany(memberIds, b => b.SeasonId!.Value)
+                .Select(b => new { ParentId = b.SeasonId!.Value, b.Id, b.PresentationUniqueKey })
+                .ToArray())
             .GroupBy(b => b.ParentId)
             .ToDictionary(
                 g => g.Key,

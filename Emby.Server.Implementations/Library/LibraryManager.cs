@@ -1453,7 +1453,7 @@ namespace Emby.Server.Implementations.Library
                 }
 
                 var named = FindByCleanName(kind, name);
-                var item = named.FirstOrDefault(e => e.FindConflictingProvider(info?.ProviderIds) is null);
+                var item = PickCreditTarget(named.Where(e => e.FindConflictingProvider(info?.ProviderIds) is null));
                 if (item is null && named.Count > 0)
                 {
                     // Every item of this name belongs to something else, so file this one under its own
@@ -1652,25 +1652,6 @@ namespace Emby.Server.Implementations.Library
         private T CreateItemByName<T>(Func<string, string> getPathFn, string name, DtoOptions options, string? identitySuffix = null)
             where T : BaseItem, new()
         {
-            if (typeof(T) == typeof(MusicArtist))
-            {
-                var existing = GetItemList(new InternalItemsQuery
-                {
-                    IncludeItemTypes = [BaseItemKind.MusicArtist],
-                    Name = name,
-                    UseRawName = true,
-                    DtoOptions = options
-                }).Cast<MusicArtist>()
-                .OrderBy(i => i.IsAccessedByName ? 1 : 0)
-                .Cast<T>()
-                .FirstOrDefault();
-
-                if (existing is not null)
-                {
-                    return existing;
-                }
-            }
-
             // Into the path only: the name stays what the entity is called, and the id follows the folder.
             var path = getPathFn(name + identitySuffix);
             var id = GetItemByNameId<T>(path);
@@ -2100,9 +2081,9 @@ namespace Emby.Server.Implementations.Library
             return _countService.GetItemCountsForNameItem(kind, id, relatedItemKinds, query);
         }
 
-        public Dictionary<Guid, int> GetChildCountBatch(IReadOnlyList<Guid> parentIds, Guid? userId)
+        public Dictionary<Guid, int> GetChildCountBatch(IReadOnlyList<Guid> parentIds, User? user)
         {
-            return _countService.GetChildCountBatch(parentIds, userId);
+            return _countService.GetChildCountBatch(parentIds, user);
         }
 
         /// <inheritdoc/>
@@ -4078,6 +4059,34 @@ namespace Emby.Server.Implementations.Library
         private static bool IsMusicArtistCredit(PersonKind kind)
             => kind is PersonKind.Artist or PersonKind.AlbumArtist;
 
+        /// <summary>
+        /// Whether an item is one a credit can be filed under.
+        /// </summary>
+        /// <remarks>
+        /// Only the by-name entry is. A tag names an artist, not a directory, and a directory is a poor
+        /// stand-in for one: an artist has a folder per quality or genre tree a library is split into,
+        /// and unrelated folders that happen to share a name resolve to artists of their own. Anchoring
+        /// on the by-name entry gives every writer one target per name, one that survives the library
+        /// being reorganised. The scanned folders stay browsable and keep their images; they are simply
+        /// never what a credit points at.
+        /// </remarks>
+        /// <param name="item">The item to test.</param>
+        /// <returns>Whether a credit may point at it.</returns>
+        internal static bool IsCreditTarget(BaseItem item)
+            => item is not IHasDualAccess dual || dual.IsAccessedByName;
+
+        /// <summary>
+        /// Picks the one item of a by-name entity that credits are filed under.
+        /// </summary>
+        /// <param name="candidates">The items of the name being resolved.</param>
+        /// <returns>The item to file under, or null when none of them can be one.</returns>
+        internal static BaseItem? PickCreditTarget(IEnumerable<BaseItem> candidates)
+            => candidates
+                .Where(IsCreditTarget)
+                .OrderBy(e => e.DateCreated)
+                .ThenBy(e => e.Id)
+                .FirstOrDefault();
+
         private MusicArtist? GetOrCreateArtist(string name, IReadOnlyDictionary<string, string>? providerIds)
         {
             try
@@ -4121,16 +4130,15 @@ namespace Emby.Server.Implementations.Library
                 return null;
             }
 
-            // Scoped to the kind, because a provider key is not unique across types. Oldest first, so a
-            // library holding two entries for one human resolves to a stable one.
-            return GetItemList(new InternalItemsQuery
+            // Scoped to the kind, because a provider key is not unique across types. Ranked rather than
+            // limited in the query: a scanned folder carries the artist's ids too, and a credit must
+            // land on the by-name entry whether or not the release wrote an id down.
+            return PickCreditTarget(GetItemList(new InternalItemsQuery
             {
                 IncludeItemTypes = [kind],
                 HasAnyProviderId = providerIds,
-                OrderBy = [(ItemSortBy.DateCreated, SortOrder.Ascending)],
-                Limit = 1,
                 DtoOptions = new DtoOptions(true)
-            }).FirstOrDefault();
+            }));
         }
 
         public async Task<ItemImageInfo> ConvertImageToLocal(BaseItem item, ItemImageInfo image, int imageIndex, bool removeOnFailure)
