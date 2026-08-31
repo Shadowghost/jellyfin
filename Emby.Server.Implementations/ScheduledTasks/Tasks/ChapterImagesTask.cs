@@ -22,7 +22,7 @@ namespace Emby.Server.Implementations.ScheduledTasks.Tasks;
 /// <summary>
 /// Class ChapterImagesTask.
 /// </summary>
-public class ChapterImagesTask : IScheduledTask
+public class ChapterImagesTask : IScheduledTask, IRequiresIdleLibrary
 {
     private readonly ILogger<ChapterImagesTask> _logger;
     private readonly ILibraryManager _libraryManager;

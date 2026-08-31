@@ -532,6 +532,9 @@ namespace Emby.Server.Implementations
             serviceCollection.AddSingleton(NetManager);
 
             serviceCollection.AddSingleton<ITaskManager, TaskManager>();
+            // TaskManager needs the library manager to hold back IRequiresIdleLibrary tasks during a
+            // scan, but LibraryManager takes an ITaskManager, so it can only be resolved on demand.
+            serviceCollection.AddSingleton(provider => new Lazy<ILibraryManager>(provider.GetRequiredService<ILibraryManager>));
 
             serviceCollection.AddSingleton(_xmlSerializer);
 

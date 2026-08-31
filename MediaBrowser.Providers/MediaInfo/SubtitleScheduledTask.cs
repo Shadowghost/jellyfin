@@ -20,7 +20,7 @@ using Microsoft.Extensions.Logging;
 
 namespace MediaBrowser.Providers.MediaInfo
 {
-    public class SubtitleScheduledTask : IScheduledTask
+    public class SubtitleScheduledTask : IScheduledTask, IRequiresIdleLibrary
     {
         private readonly ILibraryManager _libraryManager;
         private readonly IServerConfigurationManager _config;

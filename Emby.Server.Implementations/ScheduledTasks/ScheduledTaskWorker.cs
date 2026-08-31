@@ -323,14 +323,24 @@ public class ScheduledTaskWorker : IScheduledTaskWorker
 
         try
         {
-            if (options is not null && options.MaxRuntimeTicks.HasValue)
+            if (ScheduledTask is IRequiresIdleLibrary && ((TaskManager)_taskManager).IsLibraryScanRunning)
             {
-                CurrentCancellationTokenSource.CancelAfter(TimeSpan.FromTicks(options.MaxRuntimeTicks.Value));
+                // Walking the library while the scan is rewriting it makes both slower and invites lock
+                // timeouts. Hold this run back; the task's triggers schedule the next attempt as usual.
+                _logger.LogInformation("Skipping {Name} because a library scan is currently running.", Name);
+                status = TaskCompletionStatus.Cancelled;
             }
+            else
+            {
+                if (options is not null && options.MaxRuntimeTicks.HasValue)
+                {
+                    CurrentCancellationTokenSource.CancelAfter(TimeSpan.FromTicks(options.MaxRuntimeTicks.Value));
+                }
 
-            await ScheduledTask.ExecuteAsync(progress, CurrentCancellationTokenSource.Token).ConfigureAwait(false);
+                await ScheduledTask.ExecuteAsync(progress, CurrentCancellationTokenSource.Token).ConfigureAwait(false);
 
-            status = TaskCompletionStatus.Completed;
+                status = TaskCompletionStatus.Completed;
+            }
         }
         catch (OperationCanceledException)
         {

@@ -20,7 +20,7 @@ namespace MediaBrowser.Providers.Lyric;
 /// <summary>
 /// Task to download lyrics.
 /// </summary>
-public class LyricScheduledTask : IScheduledTask
+public class LyricScheduledTask : IScheduledTask, IRequiresIdleLibrary
 {
     private const int QueryPageLimit = 100;
 

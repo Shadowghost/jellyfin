@@ -16,7 +16,7 @@ namespace Emby.Server.Implementations.ScheduledTasks.Tasks;
 /// <summary>
 /// Task to obtain media segments.
 /// </summary>
-public class MediaSegmentExtractionTask : IScheduledTask
+public class MediaSegmentExtractionTask : IScheduledTask, IRequiresIdleLibrary
 {
     /// <summary>
     /// The library manager.

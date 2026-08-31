@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Jellyfin.Data.Events;
 using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
 
@@ -24,17 +25,23 @@ public class TaskManager : ITaskManager
     private readonly IApplicationPaths _applicationPaths;
     private readonly ILogger<TaskManager> _logger;
 
+    // Resolved lazily: LibraryManager takes an ITaskManager, so asking for it up front is a cycle.
+    private readonly Lazy<ILibraryManager> _libraryManager;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="TaskManager" /> class.
     /// </summary>
     /// <param name="applicationPaths">The application paths.</param>
     /// <param name="logger">The logger.</param>
+    /// <param name="libraryManager">The library manager, resolved on demand to avoid a dependency cycle.</param>
     public TaskManager(
         IApplicationPaths applicationPaths,
-        ILogger<TaskManager> logger)
+        ILogger<TaskManager> logger,
+        Lazy<ILibraryManager> libraryManager)
     {
         _applicationPaths = applicationPaths;
         _logger = logger;
+        _libraryManager = libraryManager;
 
         ScheduledTasks = [];
     }
@@ -47,6 +54,12 @@ public class TaskManager : ITaskManager
 
     /// <inheritdoc />
     public IReadOnlyList<IScheduledTaskWorker> ScheduledTasks { get; private set; }
+
+    /// <summary>
+    /// Gets a value indicating whether a library scan is currently running. Used by
+    /// <see cref="ScheduledTaskWorker"/> to hold back tasks marked <see cref="IRequiresIdleLibrary"/>.
+    /// </summary>
+    internal bool IsLibraryScanRunning => _libraryManager.Value.IsScanRunning;
 
     /// <inheritdoc />
     public void CancelIfRunningAndQueue<T>(TaskOptions options)

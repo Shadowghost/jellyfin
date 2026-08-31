@@ -22,7 +22,7 @@ namespace Emby.Server.Implementations.ScheduledTasks.Tasks;
 /// <summary>
 /// Class PeopleValidationTask.
 /// </summary>
-public class PeopleValidationTask : IScheduledTask, IConfigurableScheduledTask
+public class PeopleValidationTask : IScheduledTask, IConfigurableScheduledTask, IRequiresIdleLibrary
 {
     private readonly ILibraryManager _libraryManager;
     private readonly ILocalizationManager _localization;
@@ -93,14 +93,6 @@ public class PeopleValidationTask : IScheduledTask, IConfigurableScheduledTask
     /// <inheritdoc />
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
-        // People validation performs heavy database writes that contend with an active library scan.
-        // Defer it until the scan has finished; the task will run again on its next trigger.
-        if (_libraryManager.IsScanRunning)
-        {
-            _logger.LogInformation("Skipping people validation because a library scan is currently running.");
-            return;
-        }
-
         // Phase 1: Deduplicate and remove orphaned people (0-33%)
         var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using (context.ConfigureAwait(false))

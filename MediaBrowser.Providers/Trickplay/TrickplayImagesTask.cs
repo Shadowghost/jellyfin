@@ -16,7 +16,7 @@ namespace MediaBrowser.Providers.Trickplay;
 /// <summary>
 /// Class TrickplayImagesTask.
 /// </summary>
-public class TrickplayImagesTask : IScheduledTask
+public class TrickplayImagesTask : IScheduledTask, IRequiresIdleLibrary
 {
     private const int QueryPageLimit = 100;
 

@@ -21,7 +21,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
     /// the corresponding virtual items. This keeps the "Upcoming" view current for series whose local
     /// files have not changed, which an ordinary library scan would never re-examine.
     /// </summary>
-    public class TmdbUpcomingEpisodesTask : IScheduledTask
+    public class TmdbUpcomingEpisodesTask : IScheduledTask, IRequiresIdleLibrary
     {
         private const int DefaultIntervalDays = 7;
 

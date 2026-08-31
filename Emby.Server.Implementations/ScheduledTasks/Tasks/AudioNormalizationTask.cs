@@ -25,7 +25,7 @@ namespace Emby.Server.Implementations.ScheduledTasks.Tasks;
 /// <summary>
 /// The audio normalization task.
 /// </summary>
-public partial class AudioNormalizationTask : IScheduledTask
+public partial class AudioNormalizationTask : IScheduledTask, IRequiresIdleLibrary
 {
     private readonly IItemPersistenceService _persistenceService;
     private readonly ILibraryManager _libraryManager;

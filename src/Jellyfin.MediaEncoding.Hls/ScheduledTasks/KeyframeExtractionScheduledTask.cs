@@ -15,7 +15,7 @@ using MediaBrowser.Model.Tasks;
 namespace Jellyfin.MediaEncoding.Hls.ScheduledTasks;
 
 /// <inheritdoc />
-public class KeyframeExtractionScheduledTask : IScheduledTask
+public class KeyframeExtractionScheduledTask : IScheduledTask, IRequiresIdleLibrary
 {
     private const int Pagesize = 1000;
 
