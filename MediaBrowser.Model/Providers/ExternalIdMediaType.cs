@@ -76,6 +76,11 @@ namespace MediaBrowser.Model.Providers
         /// <summary>
         /// A music recording.
         /// </summary>
-        Recording = 14
+        Recording = 14,
+
+        /// <summary>
+        /// A user curated list of media.
+        /// </summary>
+        List = 15
     }
 }

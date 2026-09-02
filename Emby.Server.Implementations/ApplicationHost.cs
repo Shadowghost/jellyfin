@@ -103,6 +103,7 @@ using MediaBrowser.Providers.Manager;
 using MediaBrowser.Providers.Plugins.ListenBrainz;
 using MediaBrowser.Providers.Plugins.ListenBrainz.Api;
 using MediaBrowser.Providers.Plugins.Tmdb;
+using MediaBrowser.Providers.Plugins.Tmdb.Lists;
 using MediaBrowser.Providers.Plugins.Tmdb.Movies;
 using MediaBrowser.Providers.Plugins.Tmdb.TV;
 using MediaBrowser.Providers.Subtitles;
@@ -515,6 +516,7 @@ namespace Emby.Server.Implementations
             serviceCollection.AddScoped<ISystemManager, SystemManager>();
 
             serviceCollection.AddSingleton<TmdbClientManager>();
+            serviceCollection.AddSingleton<TmdbListSyncManager>();
             serviceCollection.AddSingleton<TmdbMovieSimilarProvider>();
             serviceCollection.AddSingleton<TmdbSeriesSimilarProvider>();
 
