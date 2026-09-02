@@ -12,6 +12,7 @@ using TMDbLib.Client;
 using TMDbLib.Objects.Collections;
 using TMDbLib.Objects.Find;
 using TMDbLib.Objects.General;
+using TMDbLib.Objects.Lists;
 using TMDbLib.Objects.Movies;
 using TMDbLib.Objects.People;
 using TMDbLib.Objects.Search;
@@ -542,6 +543,42 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
             {
                 yield return series;
             }
+        }
+
+        /// <summary>
+        /// Gets a TMDb list, including every page of its items.
+        /// </summary>
+        /// <param name="listId">The list's TMDb id.</param>
+        /// <param name="language">The list's language.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The list with all of its items, or null if the list does not exist or is not public.</returns>
+        public async Task<GenericList?> GetListAsync(int listId, string? language, CancellationToken cancellationToken)
+        {
+            var list = await _tmDbClient.GetListAsync(listId, language, 1, cancellationToken).ConfigureAwait(false);
+            if (list is null)
+            {
+                return null;
+            }
+
+            // TMDb hands out the items of a list 20 at a time, so a longer list needs one request per
+            // page. The first page carries the metadata of the whole list.
+            var items = list.Items ?? [];
+            for (var page = 2; page <= list.TotalPages; page++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var nextPage = await _tmDbClient.GetListAsync(listId, language, page, cancellationToken).ConfigureAwait(false);
+                if (nextPage?.Items is not { Count: > 0 } nextItems)
+                {
+                    break;
+                }
+
+                items.AddRange(nextItems);
+            }
+
+            list.Items = items;
+
+            return list;
         }
 
         /// <summary>
