@@ -60,6 +60,16 @@
                         <div id="missingEpisodeLibraries"></div>
                     </div>
                     <div class="verticalSection">
+                        <h2>Collections from TMDb Lists</h2>
+                        <div class="fieldDescription" style="margin-bottom:1em;">Create a local collection from a public TMDb list. The collection stays linked to the list, so entering the same list id again re-syncs it: movies and series added to the list are added to the collection, and items no longer on the list are removed from it. Only list entries that are already in your library are added.</div>
+                        <div class="inputContainer inputContainer-withDescription">
+                            <input is="emby-input" type="text" id="tmdbListId" label="TMDb list id" />
+                            <div class="fieldDescription">The numeric id of the list, or the address of the list page on themoviedb.org.</div>
+                        </div>
+                        <button is="emby-button" type="button" id="syncTmdbList" class="raised block"><span>Create or sync collection</span></button>
+                        <div id="tmdbListResult" class="fieldDescription" style="margin-top:1em;"></div>
+                    </div>
+                    <div class="verticalSection">
                         <h2>Cast & Crew Settings</h2>
                         <div class="inputContainer">
                             <input is="emby-input" type="number" id="maxCastMembers" pattern="[0-9]*" required min="0" max="1000" label="Max Cast Members" />
@@ -279,6 +289,58 @@
 
                     e.preventDefault();
                     return false;
+                });
+
+            document.querySelector('#syncTmdbList')
+                .addEventListener('click', function () {
+                    var input = document.querySelector('#tmdbListId');
+                    var resultElement = document.querySelector('#tmdbListResult');
+                    var listId = input.value.trim();
+
+                    // Accept a pasted list address as well as a bare id.
+                    var match = /list\/(\d+)/.exec(listId);
+                    if (match) {
+                        listId = match[1];
+                    }
+
+                    if (!listId) {
+                        resultElement.textContent = 'Enter a TMDb list id.';
+                        return;
+                    }
+
+                    resultElement.textContent = '';
+                    Dashboard.showLoadingMsg();
+
+                    ApiClient.fetch({
+                        url: ApiClient.getUrl('tmdb/Lists/' + encodeURIComponent(listId) + '/Collection'),
+                        dataType: 'json',
+                        type: 'POST',
+                        headers: { accept: 'application/json' }
+                    }).then(function (result) {
+                        Dashboard.hideLoadingMsg();
+
+                        resultElement.textContent = (result.Created ? 'Created the collection "' : 'Synced the collection "')
+                            + result.CollectionName + '" from TMDb list "' + result.ListName + '": '
+                            + result.ItemsAdded + ' item(s) added, '
+                            + result.ItemsRemoved + ' item(s) removed, '
+                            + result.MissingItemCount + ' of ' + result.ListItemCount + ' list entries not in the library.';
+                    }, function (error) {
+                        Dashboard.hideLoadingMsg();
+                        error.text().then(function (contents) {
+                            // The server reports the reason as a JSON string.
+                            var message = contents || error.statusText;
+                            try {
+                                var parsed = JSON.parse(contents);
+                                if (typeof parsed === 'string') {
+                                    message = parsed;
+                                }
+                            } catch (err) {
+                                // Not JSON, show it as it came.
+                            }
+
+                            resultElement.textContent = message;
+                        });
+                    });
                 });
         </script>
     </div>
