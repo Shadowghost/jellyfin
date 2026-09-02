@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Model.Dto;
@@ -265,7 +266,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
         /// <param name="countryCode">The country code, ISO 3166-1.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>The TMDb tv episode information or null if not found.</returns>
-        public async Task<TvEpisode?> GetEpisodeAsync(int tvShowId, int seasonNumber, long episodeNumber, string displayOrder, string? language, string? imageLanguages, string? countryCode, CancellationToken cancellationToken)
+        public async Task<TvEpisode?> GetEpisodeAsync(int tvShowId, int seasonNumber, int episodeNumber, string displayOrder, string? language, string? imageLanguages, string? countryCode, CancellationToken cancellationToken)
         {
             var key = $"episode-{tvShowId.ToString(CultureInfo.InvariantCulture)}-s{seasonNumber.ToString(CultureInfo.InvariantCulture)}e{episodeNumber.ToString(CultureInfo.InvariantCulture)}-{displayOrder}-{language}";
             if (_memoryCache.TryGetValue(key, out TvEpisode? episode))
@@ -508,51 +509,39 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
         }
 
         /// <summary>
-        /// Gets a single page of similar movies for a movie from the TMDb API.
+        /// Gets the movies similar to a movie from the TMDb API. The results are fetched one page of
+        /// 20 at a time, as they are consumed.
         /// </summary>
         /// <param name="tmdbId">The TMDb id of the movie.</param>
-        /// <param name="page">The page number to fetch (1-based).</param>
         /// <param name="language">The language for results.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A tuple containing the list of similar movies and the total number of pages available.</returns>
-        public async Task<(IReadOnlyList<SearchMovie> Results, int TotalPages)> GetMovieSimilarPageAsync(int tmdbId, int page, string? language, CancellationToken cancellationToken)
+        /// <returns>The similar movies.</returns>
+        public async IAsyncEnumerable<SearchMovie> GetMovieSimilarAsync(int tmdbId, string? language, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             await EnsureClientConfigAsync().ConfigureAwait(false);
 
-            var searchResults = await _tmDbClient
-                .GetMovieSimilarAsync(tmdbId, language, page, cancellationToken)
-                .ConfigureAwait(false);
-
-            if (searchResults?.Results is null || searchResults.Results.Count == 0)
+            await foreach (var movie in _tmDbClient.GetMovieSimilarAllAsync(tmdbId, language, cancellationToken).ConfigureAwait(false))
             {
-                return ([], 0);
+                yield return movie;
             }
-
-            return (searchResults.Results, searchResults.TotalPages);
         }
 
         /// <summary>
-        /// Gets a single page of similar TV shows for a series from the TMDb API.
+        /// Gets the TV shows similar to a series from the TMDb API. The results are fetched one page of
+        /// 20 at a time, as they are consumed.
         /// </summary>
         /// <param name="tmdbId">The TMDb id of the TV show.</param>
-        /// <param name="page">The page number to fetch (1-based).</param>
         /// <param name="language">The language for results.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
-        /// <returns>A tuple containing the list of similar TV shows and the total number of pages available.</returns>
-        public async Task<(IReadOnlyList<SearchTv> Results, int TotalPages)> GetSeriesSimilarPageAsync(int tmdbId, int page, string? language, CancellationToken cancellationToken)
+        /// <returns>The similar TV shows.</returns>
+        public async IAsyncEnumerable<SearchTv> GetSeriesSimilarAsync(int tmdbId, string? language, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             await EnsureClientConfigAsync().ConfigureAwait(false);
 
-            var searchResults = await _tmDbClient
-                .GetTvShowSimilarAsync(tmdbId, language, page, cancellationToken)
-                .ConfigureAwait(false);
-
-            if (searchResults?.Results is null || searchResults.Results.Count == 0)
+            await foreach (var series in _tmDbClient.GetTvShowSimilarAllAsync(tmdbId, language, cancellationToken).ConfigureAwait(false))
             {
-                return ([], 0);
+                yield return series;
             }
-
-            return (searchResults.Results, searchResults.TotalPages);
         }
 
         /// <summary>

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Configuration;
 using MediaBrowser.Model.Entities;
@@ -58,39 +59,17 @@ public class TmdbMovieSimilarProvider : IRemoteSimilarItemsProvider<Movie>
         }
 
         var providerName = MetadataProvider.Tmdb.ToString();
-        var page = 0;
-        var totalPages = 1;
+        var similarMovies = _tmdbClientManager
+            .GetMovieSimilarAsync(tmdbId, null, cancellationToken)
+            .StopOnError(ex => _logger.LogWarning(ex, "Failed to get similar movies from TMDb for {TmdbId}", tmdbId), cancellationToken);
 
-        while (page <= totalPages && !cancellationToken.IsCancellationRequested)
+        await foreach (var similar in similarMovies.ConfigureAwait(false))
         {
-            IReadOnlyList<TMDbLib.Objects.Search.SearchMovie> pageResults;
-            try
+            yield return new SimilarItemReference
             {
-                (pageResults, totalPages) = await _tmdbClientManager
-                    .GetMovieSimilarPageAsync(tmdbId, page, TmdbUtils.GetImageLanguagesParam(string.Empty), cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to get similar movies from TMDb for {TmdbId} page {Page}", tmdbId, page);
-                yield break;
-            }
-
-            if (pageResults.Count == 0)
-            {
-                yield break;
-            }
-
-            foreach (var similar in pageResults)
-            {
-                yield return new SimilarItemReference
-                {
-                    ProviderName = providerName,
-                    ProviderId = similar.Id.ToString(CultureInfo.InvariantCulture)
-                };
-            }
-
-            page++;
+                ProviderName = providerName,
+                ProviderId = similar.Id.ToString(CultureInfo.InvariantCulture)
+            };
         }
     }
 }
