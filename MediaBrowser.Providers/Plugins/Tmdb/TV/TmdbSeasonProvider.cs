@@ -56,8 +56,6 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
                 return result;
             }
 
-            var seriesId = Convert.ToInt32(seriesTmdbId, CultureInfo.InvariantCulture);
-
             // When the series is ordered by an episode group, the season number counts groups rather than TMDb
             // seasons, so the group has to be resolved instead of fetching a season that holds unrelated episodes.
             var groupCollection = await _tmdbClientManager
@@ -94,7 +92,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
             }
 
             result.Item.TrySetProviderId(MetadataProvider.Tmdb, seasonResult.Id?.ToString(CultureInfo.InvariantCulture));
-            result.Item.TrySetProviderId(MetadataProvider.Tvdb, seasonResult.ExternalIds?.TvdbId);
+            result.Item.TrySetProviderId(MetadataProvider.Tvdb, seasonResult.ExternalIds?.TvdbId?.ToString(CultureInfo.InvariantCulture));
 
             var credits = seasonResult.Credits;
             if (credits?.Cast is not null)
