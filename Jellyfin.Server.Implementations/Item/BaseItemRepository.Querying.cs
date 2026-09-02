@@ -17,6 +17,12 @@ namespace Jellyfin.Server.Implementations.Item;
 
 public sealed partial class BaseItemRepository
 {
+    /// <summary>
+    /// Share of the library a filter must keep before the item value scan is driven from ItemValues
+    /// rather than from ItemValuesMap.
+    /// </summary>
+    private const double ItemValueScanSelectivityThreshold = 0.1;
+
     /// <inheritdoc />
     public IReadOnlyList<Guid> GetItemIdsList(InternalItemsQuery filter)
     {
@@ -611,6 +617,10 @@ public sealed partial class BaseItemRepository
 
         var matchingItemIds = baseQuery.Select(e => e.Id);
 
+        var totalItemCount = context.BaseItems.Count();
+        var preferValueDrivenScan = totalItemCount > 0
+            && baseQuery.Count() >= totalItemCount * ItemValueScanSelectivityThreshold;
+
         var years = baseQuery
             .Where(e => e.ProductionYear != null && e.ProductionYear > 0)
             .Select(e => e.ProductionYear!.Value)
@@ -625,31 +635,8 @@ public sealed partial class BaseItemRepository
             .OrderBy(r => r)
             .ToArray();
 
-        var tags = context.ItemValuesMap
-            .Join(
-                context.ItemValues,
-                ivm => ivm.ItemValueId,
-                iv => iv.ItemValueId,
-                (ivm, iv) => new { ivm.ItemId, iv.Type, iv.CleanValue, iv.Value })
-            .Where(iv => iv.Type == ItemValueType.Tags)
-            .Where(iv => matchingItemIds.Contains(iv.ItemId))
-            .GroupBy(iv => iv.CleanValue)
-            .Select(g => g.Min(iv => iv.Value))
-            .OrderBy(t => t)
-            .ToArray();
-
-        var genres = context.ItemValuesMap
-            .Join(
-                context.ItemValues,
-                ivm => ivm.ItemValueId,
-                iv => iv.ItemValueId,
-                (ivm, iv) => new { ivm.ItemId, iv.Type, iv.CleanValue, iv.Value })
-            .Where(iv => iv.Type == ItemValueType.Genre)
-            .Where(iv => matchingItemIds.Contains(iv.ItemId))
-            .GroupBy(iv => iv.CleanValue)
-            .Select(g => g.Min(iv => iv.Value))
-            .OrderBy(g => g)
-            .ToArray();
+        var tags = GetItemValueDisplayNames(context, ItemValueType.Tags, matchingItemIds, preferValueDrivenScan);
+        var genres = GetItemValueDisplayNames(context, ItemValueType.Genre, matchingItemIds, preferValueDrivenScan);
 
         return new QueryFiltersLegacy
         {
@@ -658,5 +645,34 @@ public sealed partial class BaseItemRepository
             Tags = tags,
             Genres = genres
         };
+    }
+
+    private static string[] GetItemValueDisplayNames(
+        JellyfinDbContext context,
+        ItemValueType itemValueType,
+        IQueryable<Guid> matchingItemIds,
+        bool preferValueDrivenScan)
+    {
+        var groupedValues = preferValueDrivenScan
+            ? context.ItemValues
+                .Where(iv => iv.Type == itemValueType)
+                .Where(iv => context.ItemValuesMap
+                    .Join(matchingItemIds, ivm => ivm.ItemId, id => id, (ivm, id) => ivm.ItemValueId)
+                    .Any(itemValueId => itemValueId == iv.ItemValueId))
+                .Select(iv => new { iv.CleanValue, iv.Value })
+                .GroupBy(iv => iv.CleanValue)
+                .Select(g => g.Min(iv => iv.Value)!)
+            : context.ItemValuesMap
+                .Join(
+                    context.ItemValues,
+                    ivm => ivm.ItemValueId,
+                    iv => iv.ItemValueId,
+                    (ivm, iv) => new { ivm.ItemId, iv.Type, iv.CleanValue, iv.Value })
+                .Where(iv => iv.Type == itemValueType)
+                .Where(iv => matchingItemIds.Contains(iv.ItemId))
+                .GroupBy(iv => iv.CleanValue)
+                .Select(g => g.Min(iv => iv.Value)!);
+
+        return groupedValues.OrderBy(v => v).ToArray();
     }
 }

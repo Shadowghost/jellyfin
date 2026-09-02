@@ -10,6 +10,7 @@ using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Model.Configuration;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -26,15 +27,31 @@ public abstract class SqliteDbTestFixture : IDisposable
     private readonly DbContextOptions<JellyfinDbContext> _dbOptions;
 
     protected SqliteDbTestFixture()
+        : this(null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SqliteDbTestFixture"/> class, attaching an interceptor
+    /// to every context the fixture hands out. Derived fixtures that need to observe the generated SQL
+    /// pass the interceptor through a private constructor so they can keep a reference to it.
+    /// </summary>
+    /// <param name="interceptor">The interceptor to attach, or <c>null</c> for none.</param>
+    protected SqliteDbTestFixture(IInterceptor? interceptor)
     {
         ApplicationPaths = new Mock<IApplicationPaths>().Object;
 
         _connection = new SqliteConnection("Data Source=:memory:");
         _connection.Open();
 
-        _dbOptions = new DbContextOptionsBuilder<JellyfinDbContext>()
-            .UseSqlite(_connection)
-            .Options;
+        var optionsBuilder = new DbContextOptionsBuilder<JellyfinDbContext>()
+            .UseSqlite(_connection);
+        if (interceptor is not null)
+        {
+            optionsBuilder.AddInterceptors(interceptor);
+        }
+
+        _dbOptions = optionsBuilder.Options;
 
         using var context = CreateDbContext();
         context.Database.EnsureCreated();
