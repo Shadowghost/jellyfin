@@ -92,6 +92,13 @@ public class TmdbExternalUrlProvider : IExternalUrlProvider
                     yield return TmdbUtils.BaseTmdbUrl + $"collection/{externalId}";
                 }
 
+                // A collection synced from a TMDb list carries the list id instead of, or as well as,
+                // the id of a TMDb collection.
+                if (item.TryGetProviderId(TmdbUtils.ListProviderId, out var listId))
+                {
+                    yield return TmdbUtils.BaseTmdbUrl + $"list/{listId}";
+                }
+
                 break;
         }
     }

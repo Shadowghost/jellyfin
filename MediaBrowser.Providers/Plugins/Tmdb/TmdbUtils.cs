@@ -29,6 +29,13 @@ namespace MediaBrowser.Providers.Plugins.Tmdb
         public const string ProviderName = "TheMovieDb";
 
         /// <summary>
+        /// Provider id linking a local collection to the TMDb list it was created from. This is
+        /// deliberately not the TMDb provider id, which refers to a TMDb collection - a different
+        /// concept with a separate id space.
+        /// </summary>
+        public const string ListProviderId = "TmdbList";
+
+        /// <summary>
         /// API key to use when performing an API call.
         /// </summary>
         public const string ApiKey = "4219e299c89411838049ab0dab19ebd5";

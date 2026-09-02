@@ -189,5 +189,30 @@ namespace Jellyfin.Providers.Tests.ExternalId
 
             Assert.Empty(urls);
         }
+
+        [Fact]
+        public void GetExternalUrls_BoxSetWithTmdbListId_ReturnsCorrectUrl()
+        {
+            var boxSet = new BoxSet();
+            boxSet.SetProviderId(TmdbUtils.ListProviderId, "8290153");
+
+            var urls = _provider.GetExternalUrls(boxSet);
+
+            Assert.Equal([TmdbUtils.BaseTmdbUrl + "list/8290153"], urls);
+        }
+
+        [Fact]
+        public void GetExternalUrls_BoxSetWithTmdbIdAndListId_ReturnsBothUrls()
+        {
+            var boxSet = new BoxSet();
+            boxSet.SetProviderId(MetadataProvider.Tmdb, "10");
+            boxSet.SetProviderId(TmdbUtils.ListProviderId, "8290153");
+
+            var urls = _provider.GetExternalUrls(boxSet);
+
+            Assert.Equal(
+                [TmdbUtils.BaseTmdbUrl + "collection/10", TmdbUtils.BaseTmdbUrl + "list/8290153"],
+                urls);
+        }
     }
 }
