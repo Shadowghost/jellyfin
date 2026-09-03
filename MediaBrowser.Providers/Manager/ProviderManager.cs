@@ -28,6 +28,7 @@ using MediaBrowser.Controller.Lyrics;
 using MediaBrowser.Controller.MediaSegments;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Controller.Subtitles;
+using MediaBrowser.Controller.Telemetry;
 using MediaBrowser.Model.Configuration;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Extensions;
@@ -1094,6 +1095,7 @@ namespace MediaBrowser.Providers.Manager
         {
             _logger.LogDebug("OnRefreshStart {Item:N}", item.Id);
             _activeRefreshes[item.Id] = 0;
+            ProviderMetrics.OnRefreshStarted(item.Id);
             try
             {
                 RefreshStarted?.Invoke(this, new GenericEventArgs<BaseItem>(item));
@@ -1110,6 +1112,7 @@ namespace MediaBrowser.Providers.Manager
         {
             _logger.LogDebug("OnRefreshComplete {Item:N}", item.Id);
             _activeRefreshes.TryRemove(item.Id, out _);
+            ProviderMetrics.OnRefreshCompleted(item.Id, item.GetBaseItemKind());
 
             try
             {
