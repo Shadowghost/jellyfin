@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ProjectGuid is only included as a requirement for SonarQube analysis -->
+  <PropertyGroup>
+    <ProjectGuid>{3B1C8D77-9B4E-4E6E-9E9B-6C4B2F1A5D30}</ProjectGuid>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\SharedVersion.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BlurHashSharp" />
+    <PackageReference Include="NetVips" />
+  </ItemGroup>
+
+  <!--
+    The prebuilt libvips binaries are shipped per runtime identifier. Referencing every RID would add
+    hundreds of megabytes to a plain `dotnet build`, so the set below covers the platforms Jellyfin
+    publishes for and can be trimmed with `-p:JellyfinNetVipsNativeAssets=false` when the host is
+    expected to provide a system libvips instead.
+  -->
+  <PropertyGroup>
+    <JellyfinNetVipsNativeAssets Condition=" '$(JellyfinNetVipsNativeAssets)' == '' ">true</JellyfinNetVipsNativeAssets>
+  </PropertyGroup>
+
+  <ItemGroup Condition=" '$(JellyfinNetVipsNativeAssets)' == 'true' ">
+    <PackageReference Include="NetVips.Native.linux-x64" />
+    <PackageReference Include="NetVips.Native.linux-arm64" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\MediaBrowser.Model\MediaBrowser.Model.csproj" />
+    <ProjectReference Include="..\..\MediaBrowser.Controller\MediaBrowser.Controller.csproj" />
+    <ProjectReference Include="..\..\MediaBrowser.Common\MediaBrowser.Common.csproj" />
+  </ItemGroup>
+
+</Project>
