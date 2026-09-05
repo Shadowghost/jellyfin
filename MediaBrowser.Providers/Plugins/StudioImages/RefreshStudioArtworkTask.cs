@@ -136,11 +136,6 @@ public class RefreshStudioArtworkTask : IScheduledTask
 
         // Sharing one DirectoryService across all workers lets it cache directory listings between studios
         var directoryService = new DirectoryService(_fileSystem);
-        var options = new MetadataRefreshOptions(directoryService)
-        {
-            ImageRefreshMode = MetadataRefreshMode.FullRefresh,
-            ReplaceImages = [ImageType.Primary, ImageType.Thumb, ImageType.Logo]
-        };
 
         // Re-use the same concurrency rule the rest of the library scheduler does.
         var parallelism = ResolveScanConcurrency();
@@ -183,6 +178,13 @@ public class RefreshStudioArtworkTask : IScheduledTask
 
                 try
                 {
+                    // Fresh options per studio: the refresh pipeline MUTATES them.
+                    var options = new MetadataRefreshOptions(directoryService)
+                    {
+                        ImageRefreshMode = MetadataRefreshMode.FullRefresh,
+                        ReplaceImages = [ImageType.Primary, ImageType.Thumb, ImageType.Logo]
+                    };
+
                     await _providerManager.RefreshSingleItem(studio, options, ct).ConfigureAwait(false);
                     Interlocked.Increment(ref refreshed);
                 }

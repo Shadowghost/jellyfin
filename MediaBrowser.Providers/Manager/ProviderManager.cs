@@ -216,8 +216,7 @@ namespace MediaBrowser.Providers.Manager
                     }
                 }
 
-                var httpClient = _httpClientFactory.CreateClient(NamedClient.Default);
-                using var response = await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+                using var response = await GetImageResponse(item, url, cancellationToken).ConfigureAwait(false);
 
                 response.EnsureSuccessStatusCode();
 
@@ -237,8 +236,13 @@ namespace MediaBrowser.Providers.Manager
                 // some providers don't correctly report media type, extract from url if no extension found
                 if (contentType is null || contentType.Equals(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase))
                 {
-                    // Strip query parameters from url to get actual path.
-                    contentType = MimeTypes.GetMimeType(new Uri(url).GetLeftPart(UriPartial.Path));
+                    // Strip query parameters from url to get actual path. The url is not necessarily
+                    // absolute - a provider serving images off this server hands out root-relative
+                    // paths - so parse it relative to a dummy base to get at the path either way.
+                    var pathOnly = Uri.TryCreate(url, UriKind.Absolute, out var absoluteUri)
+                        ? absoluteUri.GetLeftPart(UriPartial.Path)
+                        : new Uri(new Uri("http://localhost/"), url).GetLeftPart(UriPartial.Path);
+                    contentType = MimeTypes.GetMimeType(pathOnly);
                 }
 
                 if (!contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
@@ -261,6 +265,28 @@ namespace MediaBrowser.Providers.Manager
                         cancellationToken).ConfigureAwait(false);
                 }
             }
+        }
+
+        private async Task<HttpResponseMessage> GetImageResponse(BaseItem item, string url, CancellationToken cancellationToken)
+        {
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                && (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                    || uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+            {
+                var httpClient = _httpClientFactory.CreateClient(NamedClient.Default);
+                return await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+            }
+
+            foreach (var provider in GetRemoteImageProviders(item, includeDisabled: true))
+            {
+                var offered = await GetImages(item, provider, item.GetPreferredMetadataLanguage(), true, cancellationToken).ConfigureAwait(false);
+                if (offered.Any(i => string.Equals(i.Url, url, StringComparison.Ordinal)))
+                {
+                    return await provider.GetImageResponse(url, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            throw new HttpRequestException($"No image provider offers '{url}' for this item", null, HttpStatusCode.NotFound);
         }
 
         /// <inheritdoc/>

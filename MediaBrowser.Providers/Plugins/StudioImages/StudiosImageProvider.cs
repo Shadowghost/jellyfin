@@ -1,5 +1,6 @@
 #nullable disable
 
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -22,7 +23,7 @@ namespace MediaBrowser.Providers.Plugins.StudioImages
     /// Studio image provider. Serves images from the local jellyfin-artwork bundle maintained by
     /// <see cref="RefreshStudioArtworkTask"/>; returns nothing when no local match exists.
     /// </summary>
-    public class StudiosImageProvider : IRemoteImageProvider
+    public class StudiosImageProvider : IRemoteImageProvider, IHasLocalImagePath
     {
         /// <inheritdoc />
         public string Name => "Artwork Repository";
@@ -48,6 +49,9 @@ namespace MediaBrowser.Providers.Plugins.StudioImages
             var hasLogo = StudioArtworkManager.TryGetStudioImagePath(slug, "logo", out var logoPath);
 
             // Last-resort: bundle-wide placeholders at <artworkRoot>/placeholder-<kind>.<ext>.
+            // Each kind falls back only to its own placeholder - the bundle ships no
+            // placeholder-logo, and standing in a poster-shaped placeholder-primary for a logo
+            // just puts a poster where the UI expects a wordmark.
             if (!hasPrimary && StudioArtworkManager.TryGetPlaceholderImagePath("primary", out var placeholderPrimaryPath))
             {
                 hasPrimary = true;
@@ -60,7 +64,7 @@ namespace MediaBrowser.Providers.Plugins.StudioImages
                 thumbPath = placeholderThumbPath;
             }
 
-            if (!hasLogo && StudioArtworkManager.TryGetPlaceholderImagePath("primary", out var placeholderLogoPath))
+            if (!hasLogo && StudioArtworkManager.TryGetPlaceholderImagePath("logo", out var placeholderLogoPath))
             {
                 hasLogo = true;
                 logoPath = placeholderLogoPath;
@@ -70,36 +74,53 @@ namespace MediaBrowser.Providers.Plugins.StudioImages
 
             if (hasPrimary)
             {
-                results.Add(new RemoteImageInfo { ProviderName = Name, Type = ImageType.Primary, Url = primaryPath });
+                results.Add(new RemoteImageInfo { ProviderName = Name, Type = ImageType.Primary, Url = StudioArtworkManager.ToApiPath(primaryPath) });
             }
 
             if (hasThumb)
             {
-                results.Add(new RemoteImageInfo { ProviderName = Name, Type = ImageType.Thumb, Url = thumbPath });
+                results.Add(new RemoteImageInfo { ProviderName = Name, Type = ImageType.Thumb, Url = StudioArtworkManager.ToApiPath(thumbPath) });
             }
 
             if (hasLogo)
             {
-                results.Add(new RemoteImageInfo { ProviderName = Name, Type = ImageType.Logo, Url = logoPath });
+                results.Add(new RemoteImageInfo { ProviderName = Name, Type = ImageType.Logo, Url = StudioArtworkManager.ToApiPath(logoPath) });
             }
 
             return Task.FromResult<IEnumerable<RemoteImageInfo>>(results);
         }
 
         /// <inheritdoc />
+        public bool TryGetLocalImagePath(string url, out string path)
+        {
+            path = null;
+            if (string.IsNullOrEmpty(url) || !url.StartsWith(StudioArtworkManager.ApiPathPrefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            return StudioArtworkManager.TryResolveArtworkFile(url[StudioArtworkManager.ApiPathPrefix.Length..], out path);
+        }
+
+        /// <inheritdoc />
         public async Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
         {
-            // The only URLs this provider hands out are local paths into the artwork bundle, so
-            // serve them straight from disk. Read fully into memory because the returned
-            // HttpResponseMessage outlives this method; a StreamContent wrapping a still-open
-            // FileStream would either leak the handle or be disposed too early.
-            var bytes = await File.ReadAllBytesAsync(url, cancellationToken).ConfigureAwait(false);
+            // Every URL this provider hands out is backed by a file in the artwork bundle, so serve
+            // it straight from disk instead of going back out over the network. Read fully into
+            // memory because the returned HttpResponseMessage outlives this method; a StreamContent
+            // wrapping a still-open FileStream would either leak the handle or be disposed too early.
+            if (!TryGetLocalImagePath(url, out var path))
+            {
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            }
+
+            var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
             var response = new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new ByteArrayContent(bytes)
             };
 
-            var mime = MimeTypes.GetMimeType(url);
+            var mime = MimeTypes.GetMimeType(path);
             if (!string.IsNullOrEmpty(mime))
             {
                 response.Content.Headers.ContentType = new MediaTypeHeaderValue(mime);
