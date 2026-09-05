@@ -9,6 +9,7 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Jellyfin.CodeAnalysis/Jellyfin.CodeAnalysis.csproj" />
+    <Project Path="src/Jellyfin.Drawing.NetVips/Jellyfin.Drawing.NetVips.csproj" />
     <Project Path="src/Jellyfin.Drawing.Skia/Jellyfin.Drawing.Skia.csproj" />
     <Project Path="src/Jellyfin.Drawing/Jellyfin.Drawing.csproj" />
     <Project Path="src/Jellyfin.Extensions/Jellyfin.Extensions.csproj" />
