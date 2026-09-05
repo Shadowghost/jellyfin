@@ -267,9 +267,19 @@ namespace Emby.Server.Implementations.HttpServer
         private async Task SendKeepAliveResponse()
         {
             LastKeepAliveDate = DateTime.UtcNow;
-            await SendAsync(
-                new OutboundKeepAliveMessage(),
-                CancellationToken.None).ConfigureAwait(false);
+            try
+            {
+                await SendAsync(
+                    new OutboundKeepAliveMessage(),
+                    CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (IsConnectionGone(ex))
+            {
+                // The socket was closed or torn down (e.g. on shutdown, or by the keep-alive
+                // watchdog) between receiving the keep-alive and answering it. The receive loop
+                // exits on its next state check, so this is not an error.
+                _logger.LogDebug("WS {IP} error sending keep-alive response: {Message}", RemoteEndPoint, ex.Message);
+            }
         }
 
         /// <inheritdoc />
@@ -314,7 +324,16 @@ namespace Emby.Server.Implementations.HttpServer
         {
             if (_socket.State == WebSocketState.Open)
             {
-                await _socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "System Shutdown", CancellationToken.None).ConfigureAwait(false);
+                try
+                {
+                    await _socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "System Shutdown", CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (IsConnectionGone(ex))
+                {
+                    // The connection died before the close frame could be sent; the socket is
+                    // disposed below either way.
+                    _logger.LogDebug("WS {IP} error sending close frame: {Message}", RemoteEndPoint, ex.Message);
+                }
             }
 
             _socket.Dispose();
