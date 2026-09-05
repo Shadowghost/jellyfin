@@ -87,6 +87,7 @@ namespace Emby.Server.Implementations.Library
         private readonly ExtraResolver _extraResolver;
         private readonly IPathManager _pathManager;
         private readonly ILocalizationManager _localization;
+        private readonly IDirectoryService _directoryService;
         private readonly FastConcurrentLru<Guid, BaseItem> _cache;
         private readonly DotIgnoreIgnoreRule _dotIgnoreIgnoreRule;
         private readonly IMediaStreamRepository _mediaStreamRepository;
@@ -185,6 +186,7 @@ namespace Emby.Server.Implementations.Library
             _pathManager = pathManager;
             _dotIgnoreIgnoreRule = dotIgnoreIgnoreRule;
             _localization = localization;
+            _directoryService = directoryService;
             _extraResolver = new ExtraResolver(loggerFactory.CreateLogger<ExtraResolver>(), namingOptions, directoryService);
 
             _configurationManager.ConfigurationUpdated += ConfigurationUpdated;
@@ -3781,6 +3783,9 @@ namespace Emby.Server.Implementations.Library
                         AddMediaPathInternal(name, path, false);
                     }
                 }
+
+                // The injected service is a singleton, so its listing predates this folder.
+                _directoryService.Invalidate(virtualFolderPath);
             }
             finally
             {
@@ -3963,6 +3968,7 @@ namespace Emby.Server.Implementations.Library
             try
             {
                 Directory.Delete(path, true);
+                _directoryService.Invalidate(path);
             }
             finally
             {
@@ -4032,6 +4038,7 @@ namespace Emby.Server.Implementations.Library
             if (!string.IsNullOrEmpty(shortcut))
             {
                 _fileSystem.DeleteFile(shortcut);
+                _directoryService.Invalidate(shortcut);
             }
 
             var libraryOptions = CollectionFolder.GetLibraryOptions(virtualFolderPath);
@@ -4075,6 +4082,7 @@ namespace Emby.Server.Implementations.Library
             }
 
             _fileSystem.CreateShortcut(lnk, _appHost.ReverseVirtualPath(path));
+            _directoryService.Invalidate(lnk);
             RemoveContentTypeOverrides(path);
         }
 

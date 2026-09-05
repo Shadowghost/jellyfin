@@ -34,6 +34,7 @@ namespace MediaBrowser.Providers.Subtitles
         private readonly ILibraryMonitor _monitor;
         private readonly IMediaSourceManager _mediaSourceManager;
         private readonly ILocalizationManager _localization;
+        private readonly IDirectoryService _directoryService;
         private readonly HashSet<string> _allowedSubtitleFormats;
 
         private readonly ISubtitleProvider[] _subtitleProviders;
@@ -44,6 +45,7 @@ namespace MediaBrowser.Providers.Subtitles
             ILibraryMonitor monitor,
             IMediaSourceManager mediaSourceManager,
             ILocalizationManager localizationManager,
+            IDirectoryService directoryService,
             IEnumerable<ISubtitleProvider> subtitleProviders,
             NamingOptions namingOptions)
         {
@@ -52,6 +54,7 @@ namespace MediaBrowser.Providers.Subtitles
             _monitor = monitor;
             _mediaSourceManager = mediaSourceManager;
             _localization = localizationManager;
+            _directoryService = directoryService;
             _subtitleProviders = subtitleProviders
                 .OrderBy(i => i is IHasOrder hasOrder ? hasOrder.Order : 0)
                 .ToArray();
@@ -286,6 +289,9 @@ namespace MediaBrowser.Providers.Subtitles
                             await stream.CopyToAsync(fs).ConfigureAwait(false);
                         }
 
+                        // The injected service is a singleton, so its listing of the folder is now stale.
+                        _directoryService.Invalidate(path);
+
                         return;
                     }
                     else
@@ -399,6 +405,9 @@ namespace MediaBrowser.Providers.Subtitles
             {
                 _monitor.ReportFileSystemChangeComplete(path, false);
             }
+
+            // The injected service is a singleton, so its listing would keep the deleted file.
+            _directoryService.Invalidate(path);
 
             return item.RefreshMetadata(CancellationToken.None);
         }

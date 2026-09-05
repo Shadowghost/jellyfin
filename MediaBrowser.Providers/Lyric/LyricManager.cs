@@ -33,6 +33,7 @@ public class LyricManager : ILyricManager
     private readonly IFileSystem _fileSystem;
     private readonly ILibraryMonitor _libraryMonitor;
     private readonly IMediaSourceManager _mediaSourceManager;
+    private readonly IDirectoryService _directoryService;
 
     private readonly ILyricProvider[] _lyricProviders;
     private readonly ILyricParser[] _lyricParsers;
@@ -44,6 +45,7 @@ public class LyricManager : ILyricManager
     /// <param name="fileSystem">Instance of the <see cref="IFileSystem"/> interface.</param>
     /// <param name="libraryMonitor">Instance of the <see cref="ILibraryMonitor"/> interface.</param>
     /// <param name="mediaSourceManager">Instance of the <see cref="IMediaSourceManager"/> interface.</param>
+    /// <param name="directoryService">Instance of the <see cref="IDirectoryService"/> interface.</param>
     /// <param name="lyricProviders">The list of <see cref="ILyricProvider"/>.</param>
     /// <param name="lyricParsers">The list of <see cref="ILyricParser"/>.</param>
     public LyricManager(
@@ -51,6 +53,7 @@ public class LyricManager : ILyricManager
         IFileSystem fileSystem,
         ILibraryMonitor libraryMonitor,
         IMediaSourceManager mediaSourceManager,
+        IDirectoryService directoryService,
         IEnumerable<ILyricProvider> lyricProviders,
         IEnumerable<ILyricParser> lyricParsers)
     {
@@ -58,6 +61,7 @@ public class LyricManager : ILyricManager
         _fileSystem = fileSystem;
         _libraryMonitor = libraryMonitor;
         _mediaSourceManager = mediaSourceManager;
+        _directoryService = directoryService;
         _lyricProviders = lyricProviders
             .OrderBy(i => i is IHasOrder hasOrder ? hasOrder.Order : 0)
             .ToArray();
@@ -255,6 +259,9 @@ public class LyricManager : ILyricManager
             {
                 _libraryMonitor.ReportFileSystemChangeComplete(path, false);
             }
+
+            // The injected service is a singleton, so its listing would keep the deleted file.
+            _directoryService.Invalidate(path);
         }
 
         return audio.RefreshMetadata(CancellationToken.None);
@@ -450,6 +457,9 @@ public class LyricManager : ILyricManager
                 {
                     await stream.CopyToAsync(fs).ConfigureAwait(false);
                 }
+
+                // The injected service is a singleton, so its listing of the folder is now stale.
+                _directoryService.Invalidate(savePath);
 
                 return;
             }
