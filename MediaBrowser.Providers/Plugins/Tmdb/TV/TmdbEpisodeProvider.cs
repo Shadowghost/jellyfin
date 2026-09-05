@@ -193,7 +193,7 @@ namespace MediaBrowser.Providers.Plugins.Tmdb.TV
             var externalIds = episodeResult.ExternalIds;
             item.TrySetProviderId(MetadataProvider.Tmdb, episodeResult.Id?.ToString(CultureInfo.InvariantCulture));
             item.TrySetProviderId(MetadataProvider.Tvdb, externalIds?.TvdbId?.ToString(CultureInfo.InvariantCulture));
-            item.TrySetProviderId(MetadataProvider.Imdb, externalIds?.ImdbId?.ToString(CultureInfo.InvariantCulture);
+            item.TrySetProviderId(MetadataProvider.Imdb, externalIds?.ImdbId);
             item.TrySetProviderId(MetadataProvider.TvRage, externalIds?.TvrageId?.ToString(CultureInfo.InvariantCulture));
 
             if (episodeResult.Videos?.Results is not null)
