@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -12,6 +14,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Extensions;
 using MediaBrowser.Common.Net;
+using MediaBrowser.Controller.Providers;
 using Microsoft.Extensions.Logging;
 
 namespace MediaBrowser.Providers.Plugins.StudioImages;
@@ -28,6 +31,13 @@ public static class StudioArtworkManager
 {
     private const string ReleaseAssetUrl = "https://github.com/jellyfin/jellyfin-artwork/releases/download/latest/release.zip";
     private const string UserAgent = "Jellyfin-Server";
+
+    /// <summary>
+    /// Root-relative prefix under which the bundle is exposed over the API. The provider hands these
+    /// paths out as <c>RemoteImageInfo.Url</c> so the web UI's image picker can render a preview -
+    /// a bare filesystem path would just be a broken <c>&lt;img&gt;</c>.
+    /// </summary>
+    public const string ApiPathPrefix = "/StudioImages/";
 
     // Raster first: Jellyfin's image processor (SkiaSharp) can't decode SVG, so any web-UI
     // request that asks for a resize/encode (e.g. fillHeight=240&format=webp) fails when the
@@ -160,6 +170,83 @@ public static class StudioArtworkManager
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Converts an absolute path inside the artwork bundle to the root-relative URL the provider
+    /// publishes for it.
+    /// </summary>
+    /// <param name="fullPath">An absolute path below the bundle root.</param>
+    /// <returns>The root-relative request path, e.g. <c>/StudioImages/studios/2/20th-television/thumb.webp</c>.</returns>
+    public static string ToApiPath(string fullPath)
+    {
+        var relative = Path.GetRelativePath(ArtworkRoot, fullPath);
+        var segments = relative.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
+        return ApiPathPrefix + string.Join('/', Array.ConvertAll(segments, Uri.EscapeDataString));
+    }
+
+    /// <summary>
+    /// Resolves a bundle-relative request path back to a file inside the artwork bundle.
+    /// </summary>
+    /// <param name="relativePath">The path below the bundle root, as it appears in the request.</param>
+    /// <param name="fullPath">The resolved absolute path on disk, when the file exists.</param>
+    /// <returns><c>true</c> if the path resolved to an existing artwork file, otherwise <c>false</c>.</returns>
+    public static bool TryResolveArtworkFile(string relativePath, [NotNullWhen(true)] out string? fullPath)
+    {
+        fullPath = null;
+        if (string.IsNullOrEmpty(relativePath))
+        {
+            return false;
+        }
+
+        // Only ever serve the image types the bundle actually ships. Everything else in there
+        // (studios.json, release.tag, ...) stays private even though it sits under the same root.
+        if (!_imageExtensions.Contains(Path.GetExtension(relativePath), StringComparer.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+        {
+            return false;
+        }
+
+        var root = ArtworkRoot;
+        var candidate = root;
+        foreach (var segment in segments)
+        {
+            var decoded = Uri.UnescapeDataString(segment);
+
+            // Reject traversal and absolute re-rooting before they reach Path.Combine, which would
+            // happily discard everything to its left for a rooted segment.
+            if (decoded.Length == 0
+                || decoded is "." or ".."
+                || decoded.AsSpan().IndexOfAny(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) >= 0
+                || Path.IsPathRooted(decoded))
+            {
+                return false;
+            }
+
+            candidate = Path.Combine(candidate, decoded);
+        }
+
+        // Belt and braces: canonicalise and confirm the result really is below the bundle root, so a
+        // symlink inside the bundle can't be used to read arbitrary files.
+        var resolved = Path.GetFullPath(candidate);
+        var fullRoot = Path.GetFullPath(root);
+        if (!fullRoot.EndsWith(Path.DirectorySeparatorChar))
+        {
+            fullRoot += Path.DirectorySeparatorChar;
+        }
+
+        if (!resolved.StartsWith(fullRoot, StringComparison.Ordinal) || !File.Exists(resolved))
+        {
+            return false;
+        }
+
+        fullPath = resolved;
+        return true;
     }
 
     /// <summary>
@@ -490,7 +577,15 @@ public static class StudioArtworkManager
                 // Placeholders are intentionally indexed too: their bundle slug is the only way
                 // to resolve studios whose name contains characters the slugifier cannot reduce
                 // to the ASCII subset the bundle layout uses (Polish ł, CJK glyphs, etc.).
-                var slug = StudiosImageProvider.Slugify(entry.Name);
+                //
+                // The manifest carries the authoritative slug and it is NOT always what Slugify
+                // produces - the bundle drops characters our slugifier turns into separators
+                // ("Film i Vast" -> film-i-v-st, "2x2" -> 22) and sometimes keeps a historic
+                // directory name ("Searchlight Pictures" -> fox-searchlight). Deriving it instead
+                // of reading it points ~1000 entries at directories that do not exist.
+                var slug = string.IsNullOrEmpty(entry.Slug)
+                    ? StudiosImageProvider.Slugify(entry.Name)
+                    : entry.Slug;
                 if (string.IsNullOrEmpty(slug))
                 {
                     continue;
@@ -537,6 +632,9 @@ public static class StudioArtworkManager
 
         [JsonPropertyName("placeholder")]
         public bool Placeholder { get; set; }
+
+        [JsonPropertyName("slug")]
+        public string? Slug { get; set; }
 
         [JsonPropertyName("providers")]
         public List<ManifestProvider>? Providers { get; set; }

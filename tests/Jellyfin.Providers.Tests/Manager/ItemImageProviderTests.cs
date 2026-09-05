@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
@@ -92,6 +93,39 @@ namespace Jellyfin.Providers.Tests.Manager
 
             Assert.Equal(expectedChange, actualChange);
             Assert.Equal(expectedImageCount, item.GetImages(imageType).Count());
+        }
+
+        [Theory]
+        // An item by name lives under metadata/ and has no media, so an image the server put there
+        // must stay replaceable - otherwise a leftover landscape.jpg pins the thumb forever.
+        [InlineData("/metadata/Studio/20th Television", true)]
+        // A real media folder still wins over the providers, as it always has.
+        [InlineData("/media/movies/Some Movie", false)]
+        public void MergeImages_LocalImageInFolder_OnlyPinsWhenStoredWithMedia(string containingFolder, bool stillReplaceable)
+        {
+            var configurationManager = new Mock<IServerConfigurationManager>();
+            configurationManager.SetupGet(c => c.ApplicationPaths.InternalMetadataPath).Returns("/metadata");
+            BaseItem.ConfigurationManager = configurationManager.Object;
+
+            var item = new Video { Path = containingFolder + "/movie.mkv" };
+            var images = new[]
+            {
+                new LocalImageInfo
+                {
+                    Type = ImageType.Thumb,
+                    FileInfo = new FileSystemMetadata { FullName = containingFolder + "/landscape.jpg" }
+                }
+            };
+
+            var refreshOptions = new ImageRefreshOptions(Mock.Of<IDirectoryService>())
+            {
+                ImageRefreshMode = MetadataRefreshMode.FullRefresh,
+                ReplaceImages = [ImageType.Thumb]
+            };
+
+            GetItemImageProvider(null, null).MergeImages(item, images, refreshOptions);
+
+            Assert.Equal(stillReplaceable, refreshOptions.IsReplacingImage(ImageType.Thumb));
         }
 
         [Fact]

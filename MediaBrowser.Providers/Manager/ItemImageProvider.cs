@@ -449,7 +449,9 @@ namespace MediaBrowser.Providers.Manager
                 {
                     var currentImage = item.GetImageInfo(type, 0);
                     // if image file is stored with media, don't replace that later
-                    if (item.ContainingFolderPath is not null && item.ContainingFolderPath.Contains(Path.GetDirectoryName(image.FileInfo.FullName), StringComparison.OrdinalIgnoreCase))
+                    if (item.ContainingFolderPath is not null
+                        && !IsServerManagedMetadataPath(item.ContainingFolderPath)
+                        && item.ContainingFolderPath.Contains(Path.GetDirectoryName(image.FileInfo.FullName), StringComparison.OrdinalIgnoreCase))
                     {
                         foundImageTypes.Add(type);
                     }
@@ -488,7 +490,9 @@ namespace MediaBrowser.Providers.Manager
 
                 hasBackdrop = true;
 
-                if (item.ContainingFolderPath is not null && item.ContainingFolderPath.Contains(Path.GetDirectoryName(image.FileInfo.FullName), StringComparison.OrdinalIgnoreCase))
+                if (item.ContainingFolderPath is not null
+                    && !IsServerManagedMetadataPath(item.ContainingFolderPath)
+                    && item.ContainingFolderPath.Contains(Path.GetDirectoryName(image.FileInfo.FullName), StringComparison.OrdinalIgnoreCase))
                 {
                     backdropStoredWithMedia = true;
                     break;
@@ -514,6 +518,13 @@ namespace MediaBrowser.Providers.Manager
             }
 
             return changed;
+        }
+
+        private static bool IsServerManagedMetadataPath(string path)
+        {
+            var metadataPath = BaseItem.ConfigurationManager?.ApplicationPaths?.InternalMetadataPath;
+            return !string.IsNullOrEmpty(metadataPath)
+                   && path.StartsWith(metadataPath, StringComparison.OrdinalIgnoreCase);
         }
 
         private static LocalImageInfo GetFirstLocalImageInfoByType(IReadOnlyList<LocalImageInfo> images, ImageType type)
@@ -563,7 +574,7 @@ namespace MediaBrowser.Providers.Manager
 
             if (EnableImageStub(item) && eligibleImages.Count > 0)
             {
-                SaveImageStub(item, type, eligibleImages.Select(i => i.Url));
+                SaveImageStub(item, type, eligibleImages.Select(i => ResolveStubPath(provider, i.Url)));
                 result.UpdateType |= ItemUpdateType.ImageUpdate;
                 return true;
             }
@@ -644,6 +655,17 @@ namespace MediaBrowser.Providers.Manager
             return false;
         }
 
+        private static string ResolveStubPath(IRemoteImageProvider provider, string url)
+        {
+            if (provider is IHasLocalImagePath localImageProvider
+                && localImageProvider.TryGetLocalImagePath(url, out var localPath))
+            {
+                return localPath;
+            }
+
+            return url;
+        }
+
         private void SaveImageStub(BaseItem item, ImageType imageType, IEnumerable<string> urls)
         {
             var newIndex = item.AllowsMultipleImages(imageType) ? item.GetImages(imageType).Count() : 0;
@@ -682,7 +704,7 @@ namespace MediaBrowser.Providers.Manager
 
                 if (EnableImageStub(item))
                 {
-                    SaveImageStub(item, imageType, new[] { url });
+                    SaveImageStub(item, imageType, new[] { ResolveStubPath(provider, url) });
                     result.UpdateType |= ItemUpdateType.ImageUpdate;
                     continue;
                 }
