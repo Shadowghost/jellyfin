@@ -56,6 +56,14 @@ public class NetVipsEncoder : IImageEncoder
         // Refuse the loaders libvips itself marks untrusted, so a hostile file in a library cannot
         // reach a decoder that nobody audits.
         VipsRuntime.BlockUntrusted = true;
+
+        // svgload is one of those, but scrapers routinely save SVG artwork - clearlogos especially -
+        // under a .jpg or .png name, and librsvg is the only way to read it. The exposure is narrow:
+        // librsvg refuses entity expansion and external entities, loading through a Source leaves it
+        // without a base URI so it resolves no external references at all, and every render below
+        // goes through thumbnail, which rasterises at the target size rather than at whatever canvas
+        // the file declares. Must come after the line above; the global set would re-block it.
+        Operation.Block("VipsForeignLoadSvg", false);
     }
 
     /// <summary>
@@ -553,6 +561,7 @@ public class NetVipsEncoder : IImageEncoder
         // Formats SkiaSharp cannot read at all.
         AddIf("heifload", "heic", "heif", "avif");
         AddIf("jxlload", "jxl");
+        AddIf("svgload", "svg");
 
         // BMP and ICO only exist behind the ImageMagick fallback, which the prebuilt NetVips.Native
         // binaries do not ship. Losing them is the one input regression against SkiaSharp.
