@@ -1,4 +1,6 @@
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Jellyfin.Database.Implementations;
 using Jellyfin.Server.ServerSetupApp;
 using MediaBrowser.Model.Globalization;
@@ -30,8 +32,15 @@ internal class MigrateRatingLevels : IDatabaseMigrationRoutine
         _logger = logger;
     }
 
-    /// <inheritdoc/>
-    public void Perform()
+    /// <inheritdoc />
+    public Task PerformAsync(CancellationToken cancellationToken)
+    {
+        // This routine predates the async interface and has not been ported to async database access yet.
+        PerformCore();
+        return Task.CompletedTask;
+    }
+
+    private void PerformCore()
     {
         _logger.LogInformation("Recalculating parental rating levels based on rating string.");
         using var context = _provider.CreateDbContext();
