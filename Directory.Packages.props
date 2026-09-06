@@ -63,6 +63,12 @@
     <PackageVersion Include="NetVips.Native.win-arm64" Version="8.18.6" />
     <PackageVersion Include="NetVips.Native.win-x64" Version="8.18.6" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.18.0-beta.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.18.0" />
     <PackageVersion Include="PDFtoImage" Version="5.2.1" />
     <PackageVersion Include="PlaylistsNET" Version="1.4.1" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
