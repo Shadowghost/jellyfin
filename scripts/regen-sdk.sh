@@ -6,7 +6,7 @@
 # Pipeline:
 #   1. Generate openapi.json by running the OpenApiSpecTests integration test.
 #   2. Copy the spec into the SDK repo.
-#   3. Rebuild the SDK (fix-schema + generate client + bundle).
+#   3. Rebuild the SDK (fix-schema + generate client + type-check + bundle).
 #   4. Pack the SDK into a tarball (lib/ only, no bundled axios).
 #   5. Install the tarball into jellyfin-web and type-check it.
 #
@@ -47,13 +47,27 @@ command -v npm    >/dev/null || die "npm is not installed"
 command -v java   >/dev/null || die "java is not installed (required by openapi-generator)"
 
 # --- 1. Generate the OpenAPI spec -------------------------------------------
+BIN_DIR="$SERVER_DIR/tests/Jellyfin.Server.Integration.Tests/bin/$CONFIG"
+
+# bin/ keeps the output of every target framework the project was ever built
+# for (e.g. a leftover net9.0/openapi.json next to today's net10.0 one). Taking
+# whichever one `find` happens to list first silently feeds a spec that is
+# months out of date into the SDK, so only accept files this run wrote.
+MARKER="$(mktemp)"
+trap 'rm -f "$MARKER"' EXIT
+
 log "Generating OpenAPI spec from current server code ($CONFIG)..."
 dotnet test "$TEST_PROJ" -c "$CONFIG" --filter "$TEST_FILTER"
 
-SPEC="$(find "$SERVER_DIR/tests/Jellyfin.Server.Integration.Tests/bin/$CONFIG" \
-            -name openapi.json -print 2>/dev/null | head -n1)"
-[ -n "$SPEC" ] && [ -f "$SPEC" ] || die "Generated openapi.json not found under bin/$CONFIG"
-log "Spec generated: $SPEC ($(wc -c < "$SPEC" | tr -d ' ') bytes)"
+mapfile -t SPECS < <(find "$BIN_DIR" -name openapi.json -newer "$MARKER" 2>/dev/null | sort)
+case "${#SPECS[@]}" in
+    0) die "No openapi.json was written under bin/$CONFIG by this run (stale specs are ignored on purpose)" ;;
+    1) SPEC="${SPECS[0]}" ;;
+    *) die "Several target frameworks produced a spec, cannot pick one:$(printf '\n  %s' "${SPECS[@]}")" ;;
+esac
+
+SPEC_VERSION="$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).info.version)' "$SPEC")"
+log "Spec generated: $SPEC (API $SPEC_VERSION, $(wc -c < "$SPEC" | tr -d ' ') bytes)"
 
 # --- 2. Copy the spec into the SDK repo -------------------------------------
 log "Copying spec into SDK repo..."
@@ -65,8 +79,20 @@ if [ ! -d "$SDK_DIR/node_modules" ]; then
     ( cd "$SDK_DIR" && npm install )
 fi
 
-log "Fixing schema and rebuilding the SDK..."
-( cd "$SDK_DIR" && npm run fix-schema && npm run build )
+log "Fixing schema and regenerating the SDK client..."
+( cd "$SDK_DIR" && npm run fix-schema && npm run build:generated-client )
+
+# rollup reports TypeScript errors as warnings and still emits, so a client that
+# does not match the SDK's hand-written wrappers in src/utils/api would only
+# surface later as a wall of errors in jellyfin-web. Fail here instead.
+log "Type-checking the SDK against the regenerated client..."
+( cd "$SDK_DIR" && npx tsc --noEmit -p tsconfig.json )
+
+# clean:build:sdk (rimraf lib && rollup -c) rather than build:sdk: lib/ is not
+# cleaned by rollup, and npm pack runs prepack/prepare -- never prepublishOnly --
+# so anything left over from an earlier build would end up in the tarball.
+log "Bundling the SDK..."
+( cd "$SDK_DIR" && npm run clean:build:sdk )
 
 # --- 4. Pack the SDK ---------------------------------------------------------
 log "Packing the SDK into a tarball..."
