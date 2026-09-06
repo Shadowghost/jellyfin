@@ -5,6 +5,8 @@ using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Api.Extensions;
+using Jellyfin.Api.Helpers.DynamicStreamObserver;
+using Jellyfin.Extensions;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.Streaming;
 using Microsoft.AspNetCore.Http;
@@ -93,7 +95,10 @@ public static class FileStreamResponseHelpers
 
         // Return the stream from the upstream server
         // IMPORTANT: Do not dispose the response stream here, FileStreamResult will handle it.
-        return new FileStreamResult(await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false), contentType);
+        return new ObservableBlobActionResult(
+            await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false),
+            contentType,
+            state.BaseRequest.Id);
     }
 
     /// <summary>
@@ -101,12 +106,19 @@ public static class FileStreamResponseHelpers
     /// </summary>
     /// <param name="path">The path to the file.</param>
     /// <param name="contentType">The content type of the file.</param>
+    /// <param name="itemId">The associated Item id.</param>
     /// <returns>An <see cref="ActionResult"/> the file.</returns>
     public static ActionResult GetStaticFileResult(
         string path,
-        string contentType)
+        string contentType,
+        Guid itemId)
     {
-        return new PhysicalFileResult(path, contentType) { EnableRangeProcessing = true };
+        if (itemId.IsEmpty())
+        {
+            return new PhysicalFileResult(path, contentType);
+        }
+
+        return new ObservableBlobActionResult(path, contentType, itemId) { EnableRangeProcessing = true };
     }
 
     /// <summary>
@@ -163,7 +175,7 @@ public static class FileStreamResponseHelpers
             }
 
             var stream = new ProgressiveFileStream(outputPath, job, transcodeManager);
-            return new FileStreamResult(stream, contentType);
+            return new ObservableBlobActionResult(stream, contentType, state.BaseRequest.Id);
         }
     }
 }

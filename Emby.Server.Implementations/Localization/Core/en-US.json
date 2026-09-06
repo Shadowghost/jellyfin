@@ -90,6 +90,8 @@
     "TaskCleanActivityLogDescription": "Deletes activity log entries older than the configured age.",
     "TaskCleanCache": "Clean Cache Directory",
     "TaskCleanCacheDescription": "Deletes cache files no longer needed by the system.",
+    "TaskRebuildPlaybackProjection": "Rebuild Played State From History",
+    "TaskRebuildPlaybackProjectionDescription": "Recalculates played state, play counts, and played dates from the recorded playback history. Playback keeps these up to date automatically, so this is only needed to repair them.",
     "TaskRefreshChapterImages": "Extract Chapter Images",
     "TaskRefreshChapterImagesDescription": "Creates thumbnails for videos that have chapters.",
     "TaskAudioNormalization": "Audio Normalization",
@@ -121,5 +123,5 @@
     "TaskMoveTrickplayImages": "Migrate Trickplay Image Location",
     "TaskMoveTrickplayImagesDescription": "Moves existing trickplay files according to the library settings.",
     "CleanupUserDataTask": "User data cleanup task",
-    "CleanupUserDataTaskDescription": "Cleans all user data (Watch state, favorite status etc) from media that is no longer present for at least 90 days."
+    "CleanupUserDataTaskDescription": "Cleans all user data (watch state, favorite status etc.) and playback history from media that is no longer present for at least 90 days."
 }
