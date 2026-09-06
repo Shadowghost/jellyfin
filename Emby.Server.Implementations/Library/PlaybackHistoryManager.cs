@@ -205,7 +205,7 @@ public class PlaybackHistoryManager : IPlaybackHistoryManager
                     LastPlayedDate = g.Max(h => h.DateStarted == unknownDate ? (DateTime?)null : h.DateStarted),
                     HasCompletion = g.Any(h => h.PlayedToCompletion)
                 })
-                .FirstOrDefaultAsync(cancellationToken)
+                .SingleOrDefaultAsync(cancellationToken)
                 .ConfigureAwait(false);
 
             return stats is null
@@ -571,7 +571,7 @@ public class PlaybackHistoryManager : IPlaybackHistoryManager
                         ? (double)h.Bitrate!.Value * h.PlayedDurationTicks
                         : 0d)
                 })
-                .FirstOrDefaultAsync(cancellationToken)
+                .SingleOrDefaultAsync(cancellationToken)
                 .ConfigureAwait(false);
 
             if (totals is null)
@@ -757,7 +757,7 @@ public class PlaybackHistoryManager : IPlaybackHistoryManager
             var totals = await query
                 .GroupBy(_ => 1)
                 .Select(g => new { Total = g.Count(), Transcoded = g.Count(h => h.Transcoded) })
-                .FirstOrDefaultAsync(cancellationToken)
+                .SingleOrDefaultAsync(cancellationToken)
                 .ConfigureAwait(false);
 
             var total = totals?.Total ?? 0;
