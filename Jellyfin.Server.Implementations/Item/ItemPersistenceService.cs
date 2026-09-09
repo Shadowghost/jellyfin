@@ -183,34 +183,45 @@ public class ItemPersistenceService : IItemPersistenceService
         var context = await _dbProvider.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using (context.ConfigureAwait(false))
         {
-            await context.BaseItemImageInfos
-                .Where(e => e.ItemId == item.Id)
-                .ExecuteDeleteAsync(cancellationToken)
-                .ConfigureAwait(false);
-
-            await context.BaseItemImageInfos
-                .AddRangeAsync(images, cancellationToken)
-                .ConfigureAwait(false);
-
-            try
+            // The delete executes on its own the moment it is issued, so pair it with the insert in
+            // one transaction: otherwise a failing insert leaves the item with no images at all
+            // rather than the set it had before the call.
+            var transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            await using (transaction.ConfigureAwait(false))
             {
-                await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (DbUpdateException)
-            {
-                // Checking that the item exists before writing leaves a gap a scan can delete it
-                // through, turning the insert into a foreign key violation that fails the whole
-                // refresh instead of the no-op intended here. Let the insert be the check: it is the
-                // only point at which the answer cannot go stale. Nothing is orphaned by the delete
-                // above, because deleting the item cascades to its images anyway.
-                if (await context.BaseItems
-                    .AnyAsync(bi => bi.Id == item.Id, cancellationToken)
-                    .ConfigureAwait(false))
+                await context.BaseItemImageInfos
+                    .Where(e => e.ItemId == item.Id)
+                    .ExecuteDeleteAsync(cancellationToken)
+                    .ConfigureAwait(false);
+
+                await context.BaseItemImageInfos
+                    .AddRangeAsync(images, cancellationToken)
+                    .ConfigureAwait(false);
+
+                try
                 {
-                    throw;
+                    await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (DbUpdateException)
+                {
+                    // Checking that the item exists before writing leaves a gap a scan can delete it
+                    // through, turning the insert into a foreign key violation that fails the whole
+                    // refresh instead of the no-op intended here. Let the insert be the check: it is
+                    // the only point at which the answer cannot go stale.
+                    await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+
+                    if (await context.BaseItems
+                        .AnyAsync(bi => bi.Id == item.Id, cancellationToken)
+                        .ConfigureAwait(false))
+                    {
+                        throw;
+                    }
+
+                    _logger.LogWarning("Unable to save ImageInfo for non existing BaseItem {ItemId}", item.Id);
+                    return;
                 }
 
-                _logger.LogWarning("Unable to save ImageInfo for non existing BaseItem {ItemId}", item.Id);
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             }
         }
     }

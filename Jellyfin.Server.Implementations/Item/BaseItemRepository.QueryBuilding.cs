@@ -344,29 +344,37 @@ public sealed partial class BaseItemRepository
     /// <inheritdoc />
     public IQueryable<BaseItemEntity> ApplyNavigations(IQueryable<BaseItemEntity> dbQuery, InternalItemsQuery filter)
     {
+        // Every Include below is a collection navigation, and they are all rooted at BaseItems.
+        var collectionIncludes = 0;
+
         if (filter.TrailerTypes.Length > 0 || filter.IncludeItemTypes.Contains(BaseItemKind.Trailer))
         {
             dbQuery = dbQuery.Include(e => e.TrailerTypes);
+            collectionIncludes++;
         }
 
         if (filter.DtoOptions.ContainsField(ItemFields.ProviderIds))
         {
             dbQuery = dbQuery.Include(e => e.Provider);
+            collectionIncludes++;
         }
 
         if (filter.DtoOptions.ContainsField(ItemFields.Settings))
         {
             dbQuery = dbQuery.Include(e => e.LockedFields);
+            collectionIncludes++;
         }
 
         if (filter.DtoOptions.EnableUserData)
         {
             dbQuery = dbQuery.Include(e => e.UserData);
+            collectionIncludes++;
         }
 
         if (filter.DtoOptions.EnableImages)
         {
             dbQuery = dbQuery.Include(e => e.Images);
+            collectionIncludes++;
         }
 
         // Include LinkedChildEntities for container types and videos that use them (BoxSet, Playlist,
@@ -387,14 +395,21 @@ public sealed partial class BaseItemRepository
         if (filter.IncludeItemTypes.Length == 0 || filter.IncludeItemTypes.Any(linkedChildTypes.Contains))
         {
             dbQuery = dbQuery.Include(e => e.LinkedChildEntities);
+            collectionIncludes++;
         }
 
         if (filter.IncludeExtras)
         {
             dbQuery = dbQuery.Include(e => e.Extras);
+            collectionIncludes++;
         }
 
-        return dbQuery;
+        // Splitting is only worth it when the query that feeds the includes is cheap to run again:
+        // EF repeats it once per collection. That holds for the unlimited reads that load a whole
+        // folder, which is where the cartesian product actually hurts. A row-limited query is the
+        // opposite case - its parent carries the sort over the whole table for the sake of one page,
+        // so paying for that sort once per collection costs more than the duplicate rows ever did.
+        return collectionIncludes > 1 && filter.Limit is null ? dbQuery.AsSplitQuery() : dbQuery;
     }
 
     /// <inheritdoc />
