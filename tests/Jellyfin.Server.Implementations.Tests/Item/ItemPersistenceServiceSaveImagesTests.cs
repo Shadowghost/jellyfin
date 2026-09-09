@@ -56,6 +56,29 @@ public class ItemPersistenceServiceSaveImagesTests : SqliteDbTestFixture
         Assert.Empty(context.BaseItemImageInfos.Where(e => e.ItemId.Equals(itemId)));
     }
 
+    [Fact]
+    public async Task SaveImagesAsync_WriteFailsWhileTheItemExists_KeepsThePreviousImages()
+    {
+        // The delete of the old rows runs the moment it is issued, so a failing write must roll back
+        // rather than leave the item with no images at all.
+        var itemId = Guid.NewGuid();
+        Seed(itemId);
+
+        await _service.SaveImagesAsync(CreateItem(itemId, "/first.jpg"), TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => _service.SaveImagesAsync(
+            CreateItem(itemId, null!),
+            TestContext.Current.CancellationToken));
+
+        using var context = CreateDbContext();
+        var paths = context.BaseItemImageInfos
+            .Where(e => e.ItemId.Equals(itemId))
+            .Select(e => e.Path)
+            .ToList();
+
+        Assert.Equal(["/first.jpg"], paths);
+    }
+
     private static BaseItem CreateItem(Guid itemId, string imagePath)
         => new Folder
         {
