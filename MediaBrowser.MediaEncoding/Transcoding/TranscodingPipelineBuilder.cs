@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -20,6 +19,8 @@ namespace MediaBrowser.MediaEncoding.Transcoding;
 /// </summary>
 public static partial class TranscodingPipelineBuilder
 {
+    private static readonly char[] _pathSeparators = ['/', '\\'];
+
     /// <summary>
     /// Builds the pipeline for a running ffmpeg job. Transcoded streams get their decode, filter and
     /// encode stages; streams that are only rewrapped get a single passthrough stage, so a remux is
@@ -130,14 +131,15 @@ public static partial class TranscodingPipelineBuilder
             return null;
         }
 
-        var outputDirectory = Path.GetDirectoryName(outputPath);
-        if (string.IsNullOrEmpty(outputDirectory))
+        var separatorIndex = outputPath.LastIndexOfAny(_pathSeparators);
+        if (separatorIndex <= 0)
         {
             return null;
         }
 
+        var outputDirectory = outputPath[..separatorIndex];
         var probeCommand = commandLineArguments.Replace(outputDirectory, probeDirectory, StringComparison.Ordinal);
-        var probeOutput = Path.Combine(probeDirectory, Path.GetFileName(outputPath));
+        var probeOutput = probeDirectory + outputPath[separatorIndex..];
         var outputIndex = probeCommand.LastIndexOf(probeOutput, StringComparison.Ordinal);
         if (outputIndex < 0)
         {
