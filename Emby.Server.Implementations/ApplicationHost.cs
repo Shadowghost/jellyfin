@@ -23,6 +23,7 @@ using Emby.Server.Implementations.Cryptography;
 using Emby.Server.Implementations.Data;
 using Emby.Server.Implementations.Devices;
 using Emby.Server.Implementations.Dto;
+using Emby.Server.Implementations.Hero;
 using Emby.Server.Implementations.HttpServer.Security;
 using Emby.Server.Implementations.IO;
 using Emby.Server.Implementations.Library;
@@ -65,6 +66,7 @@ using MediaBrowser.Controller.Drawing;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
+using MediaBrowser.Controller.Hero;
 using MediaBrowser.Controller.IO;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LibraryTaskScheduler;
@@ -615,6 +617,8 @@ namespace Emby.Server.Implementations
             serviceCollection.AddSingleton<ISyncPlayManager, SyncPlayManager>();
 
             serviceCollection.AddSingleton<IUserViewManager, UserViewManager>();
+
+            serviceCollection.AddSingleton<IHeroService, HeroService>();
 
             serviceCollection.AddSingleton<IChapterManager, ChapterManager>();
 
