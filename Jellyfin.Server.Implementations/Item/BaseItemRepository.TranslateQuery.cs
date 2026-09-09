@@ -517,7 +517,18 @@ public sealed partial class BaseItemRepository
         if (filter.ImageTypes.Length > 0)
         {
             var imgTypes = filter.ImageTypes.Select(e => (ImageInfoImageType)e).ToArray();
-            baseQuery = baseQuery.Where(e => e.Images!.Any(w => imgTypes.Contains(w.ImageType)));
+            if (filter.ImageTypesMatchAll)
+            {
+                // One EXISTS per type, so an item only matches when it has all of them.
+                foreach (var imgType in imgTypes)
+                {
+                    baseQuery = baseQuery.Where(e => e.Images!.Any(w => w.ImageType == imgType));
+                }
+            }
+            else
+            {
+                baseQuery = baseQuery.Where(e => e.Images!.Any(w => imgTypes.Contains(w.ImageType)));
+            }
         }
 
         if (filter.IsLiked.HasValue)

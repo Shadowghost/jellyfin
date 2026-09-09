@@ -289,6 +289,12 @@ namespace MediaBrowser.Controller.Entities
 
         public ImageType[] ImageTypes { get; set; }
 
+        /// <summary>
+        /// Gets or sets a value indicating whether an item must have every type in
+        /// <see cref="ImageTypes"/> rather than any one of them.
+        /// </summary>
+        public bool ImageTypesMatchAll { get; set; }
+
         public VideoType[] VideoTypes { get; set; }
 
         public UnratedItem[] BlockUnratedItems { get; set; }
