@@ -139,7 +139,8 @@ namespace Emby.Server.Implementations.Localization
                     var ratingSystem = await JsonSerializer.DeserializeAsync<ParentalRatingSystem>(stream, _jsonOptions).ConfigureAwait(false)
                                 ?? throw new InvalidOperationException($"Invalid resource path: '{CountriesPath}'");
 
-                    var dict = new Dictionary<string, ParentalRatingScore?>();
+                    // Rating strings are compared case insensitively, providers are not consistent about casing (e.g. "VM18" vs "vm18")
+                    var dict = new Dictionary<string, ParentalRatingScore?>(StringComparer.OrdinalIgnoreCase);
                     if (ratingSystem.Ratings is not null)
                     {
                         foreach (var ratingEntry in ratingSystem.Ratings)
@@ -374,6 +375,12 @@ namespace Emby.Server.Implementations.Localization
         {
             ArgumentException.ThrowIfNullOrEmpty(rating);
 
+            // Handle unrated content before splitting, some unrated values contain a '/' themselves (e.g. "n/a")
+            if (_unratedValues.Contains(rating.AsSpan(), StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
             // Some providers may list multiple ratings separated by '/' (e.g. "SE:15 / SE:15+ / SE:Från 15 år").
             // Try each one in order and use the first that resolves.
             var ratingValues = rating.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -509,6 +516,12 @@ namespace Emby.Server.Implementations.Localization
                 if (TryParseRatingAsScore(ratingPart, out var numericScore))
                 {
                     result = new ParentalRatingScore(numericScore, null);
+                    return true;
+                }
+
+                // Explicitly unrated content (e.g. "IT-NR") is unrated by definition, not a lookup failure
+                if (_unratedValues.Contains(ratingPart.AsSpan(), StringComparison.OrdinalIgnoreCase))
+                {
                     return true;
                 }
 
