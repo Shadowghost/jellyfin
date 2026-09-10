@@ -60,12 +60,14 @@ namespace Emby.Server.Implementations.SyncPlay
         /// <summary>
         /// The participants, or members of the group.
         /// </summary>
-        private readonly Dictionary<string, GroupMember> _participants = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, GroupMember> _participants =
+            new Dictionary<string, GroupMember>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// The sessions of the participants, which only carry identifiers.
         /// </summary>
-        private readonly Dictionary<string, SessionInfo> _participantSessions = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, SessionInfo> _participantSessions =
+            new Dictionary<string, SessionInfo>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// The internal group state.
@@ -179,15 +181,16 @@ namespace Emby.Server.Implementations.SyncPlay
         /// <param name="session">The session.</param>
         private void AddSession(SessionInfo session)
         {
-            _participants.TryAdd(
+            if (_participants.TryAdd(
                 session.Id,
                 new GroupMember(session)
                 {
                     Ping = DefaultPing,
                     IsBuffering = false
-                });
-
-            _participantSessions[session.Id] = session;
+                }))
+            {
+                _participantSessions[session.Id] = session;
+            }
         }
 
         /// <summary>
@@ -424,7 +427,7 @@ namespace Emby.Server.Implementations.SyncPlay
         public void SetState(IGroupState state)
         {
             _logger.LogInformation("Group {GroupId} switching from {FromStateType} to {ToStateType}.", GroupId.ToString(), _state.Type, state.Type);
-            _state = state;
+            this._state = state;
 
             if (state.Type != GroupStateType.Waiting)
             {
@@ -737,8 +740,7 @@ namespace Emby.Server.Implementations.SyncPlay
         /// <param name="cancellationToken">The cancellation token.</param>
         internal void HandleGroupWaitTimeout(CancellationToken cancellationToken)
         {
-            var deadline = GroupWaitDeadline;
-            if (deadline is null || deadline > Environment.TickCount64)
+            if (GroupWaitDeadline is null || GroupWaitDeadline > Environment.TickCount64)
             {
                 return;
             }
@@ -750,27 +752,23 @@ namespace Emby.Server.Implementations.SyncPlay
                 return;
             }
 
-            var blockingSessions = _participantSessions
+            var blockingSessions = _participants
                 .Values
-                .Where(participant => _participants.TryGetValue(participant.Id, out var member)
-                    && member.IsBuffering
-                    && !member.IgnoreGroupWait)
+                .Where(member => member.IsBuffering && !member.IgnoreGroupWait)
+                .Select(member => member.SessionId)
                 .ToList();
 
-            if (blockingSessions.Count == 0)
+            if (blockingSessions.Count == 0
+                || !_participantSessions.TryGetValue(blockingSessions[0], out var session))
             {
                 return;
             }
 
-            // The recovery below is broadcast to the whole group, so it does not matter which of
-            // the sessions that kept the group waiting is the one acting on the group's behalf.
-            var session = blockingSessions[0];
-
             _logger.LogWarning(
-                "Group {GroupId} waited {Waited} ms for session(s) {SessionIds} to report ready, giving up.",
+                "Group {GroupId} waited {Timeout} ms for session(s) {SessionIds} to report ready, giving up.",
                 GroupId.ToString(),
-                GroupWaitTimeout + Environment.TickCount64 - deadline.Value,
-                string.Join(", ", blockingSessions.Select(participant => participant.Id)));
+                GroupWaitTimeout,
+                string.Join(", ", blockingSessions));
 
             if (waitingState.ResumePlaying)
             {
