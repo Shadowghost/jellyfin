@@ -77,7 +77,8 @@ namespace MediaBrowser.Providers.Manager
 
         /// <summary>
         /// Cache for ordered metadata providers per library/item type combination.
-        /// Key: (LibraryPath, ItemTypeName, IncludeDisabled, ForceEnableInternetMetadata).
+        /// Key: (LibraryPath, ItemTypeName, IncludeDisabled, ForceEnableInternetMetadata), where
+        /// LibraryPath is the collection folder path the library options are stored against.
         /// Value: Array of ordered metadata providers (before per-item filtering).
         /// </summary>
         private readonly ConcurrentDictionary<MetadataProviderCacheKey, IMetadataProvider[]> _metadataProviderCache = new();
@@ -137,6 +138,7 @@ namespace MediaBrowser.Providers.Manager
             _similarItemsManager = similarItemsManager;
 
             CollectionFolder.LibraryOptionsUpdated += OnLibraryOptionsUpdated;
+            _configurationManager.ConfigurationUpdated += OnConfigurationUpdated;
         }
 
         /// <inheritdoc/>
@@ -511,15 +513,15 @@ namespace MediaBrowser.Providers.Manager
             return GetMetadataProvidersInternal<T>(item, libraryOptions, globalMetadataOptions, includeDisabled, false, libraryPath);
         }
 
-        private static string GetLibraryPathForItem(BaseItem item)
+        private string GetLibraryPathForItem(BaseItem item)
         {
             if (item is CollectionFolder collectionFolder)
             {
                 return collectionFolder.Path ?? string.Empty;
             }
 
-            var topParent = item.GetTopParent();
-            return topParent?.Path ?? string.Empty;
+            return _libraryManager.GetCollectionFolders(item)
+                .Find(folder => folder is CollectionFolder)?.Path ?? string.Empty;
         }
 
         /// <inheritdoc />
@@ -1349,6 +1351,7 @@ namespace MediaBrowser.Providers.Manager
             if (disposing)
             {
                 CollectionFolder.LibraryOptionsUpdated -= OnLibraryOptionsUpdated;
+                _configurationManager.ConfigurationUpdated -= OnConfigurationUpdated;
 
                 if (!_disposeCancellationTokenSource.IsCancellationRequested)
                 {
@@ -1376,6 +1379,11 @@ namespace MediaBrowser.Providers.Manager
             _logger.LogDebug("Invalidated metadata provider cache for library: {LibraryPath}", e.LibraryPath);
         }
 
+        private void OnConfigurationUpdated(object? sender, EventArgs e)
+        {
+            ClearMetadataProviderCache();
+        }
+
         internal void ClearMetadataProviderCache()
         {
             _metadataProviderCache.Clear();
@@ -1385,7 +1393,7 @@ namespace MediaBrowser.Providers.Manager
         /// <summary>
         /// Cache key for metadata provider lookups.
         /// </summary>
-        /// <param name="LibraryPath">The library path for the collection folder.</param>
+        /// <param name="LibraryPath">The path of the collection folder providing the library options.</param>
         /// <param name="ItemTypeName">The item type name.</param>
         /// <param name="IncludeDisabled">Whether to include disabled providers.</param>
         /// <param name="ForceEnableInternetMetadata">Whether internet metadata is force-enabled.</param>
