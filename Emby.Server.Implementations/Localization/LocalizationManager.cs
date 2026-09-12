@@ -429,6 +429,12 @@ namespace Emby.Server.Implementations.Localization
         /// </summary>
         private ParentalRatingScore? GetSingleRatingScore(string rating, string? countryCode)
         {
+            // Handle unrated content
+            if (IsUnrated(rating.AsSpan()))
+            {
+                return null;
+            }
+
             // Convert ints directly
             // This may override some of the locale specific age ratings (but those always map to the same age)
             if (TryParseRatingAsScore(rating, out var ratingAge))
