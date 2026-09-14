@@ -38,6 +38,10 @@ namespace Jellyfin.LiveTv.Listings
         private const string ApiUrl = "https://json.schedulesdirect.org/20141201";
         private const int CountryCacheDays = 7;
 
+        // Schedules Direct disables an account that keeps requesting images after the daily
+        // download limit, so stop after a short streak of rejections instead of retrying forever.
+        private const int MaxConsecutiveImageFailures = 10;
+
         private readonly ILogger<SchedulesDirect> _logger;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IApplicationPaths _appPaths;
@@ -52,6 +56,7 @@ namespace Jellyfin.LiveTv.Listings
         private byte[] _countriesCache;
         private DateOnly? _imageLimitHitDate;
         private DateOnly? _metadataLimitHitDate;
+        private int _consecutiveImageFailures;
 
         public SchedulesDirect(
             ILogger<SchedulesDirect> logger,
@@ -929,6 +934,46 @@ namespace Jellyfin.LiveTv.Listings
         }
 
         /// <inheritdoc />
+        public bool CanDownloadImage(string imageUrl)
+            => !IsSchedulesDirectUrl(imageUrl) || !IsImageDailyLimitActive();
+
+        /// <inheritdoc />
+        public void ReportImageDownloadSuccess(string imageUrl)
+        {
+            if (IsSchedulesDirectUrl(imageUrl))
+            {
+                Interlocked.Exchange(ref _consecutiveImageFailures, 0);
+            }
+        }
+
+        /// <inheritdoc />
+        public void ReportImageDownloadFailure(string imageUrl, HttpStatusCode? statusCode)
+        {
+            // Only count rejections: a 404 is a single missing artwork and says nothing
+            // about the quota, and a network error is not SD refusing us.
+            if (!IsSchedulesDirectUrl(imageUrl)
+                || statusCode is not (HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests))
+            {
+                return;
+            }
+
+            var failures = Interlocked.Increment(ref _consecutiveImageFailures);
+            if (failures < MaxConsecutiveImageFailures || IsImageDailyLimitActive())
+            {
+                return;
+            }
+
+            _logger.LogError(
+                "Schedules Direct rejected {Count} image downloads in a row (last status {StatusCode}). Disabling image acquisition until SD reset.",
+                failures,
+                (int)statusCode.Value);
+            SetImageLimitHit();
+        }
+
+        private static bool IsSchedulesDirectUrl(string url)
+            => url is not null && url.Contains("schedulesdirect", StringComparison.OrdinalIgnoreCase);
+
+        /// <inheritdoc />
         public bool IsImageDailyLimitActive()
         {
             if (!_imageLimitHitDate.HasValue)
@@ -939,6 +984,7 @@ namespace Jellyfin.LiveTv.Listings
             if (_imageLimitHitDate.Value < DateOnly.FromDateTime(DateTime.UtcNow))
             {
                 _imageLimitHitDate = null;
+                Interlocked.Exchange(ref _consecutiveImageFailures, 0);
                 TryDeleteFile(ImageLimitFilePath);
                 return false;
             }
