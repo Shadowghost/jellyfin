@@ -15,6 +15,7 @@ using Xunit;
 
 namespace Jellyfin.Controller.Tests.Entities;
 
+[Collection("BaseItemStatics")]
 public class PlaylistTests
 {
     [Fact]

@@ -27,7 +27,7 @@ using Xunit;
 
 namespace Jellyfin.Controller.Tests.Entities;
 
-[Collection("LibraryManagerTests")]
+[Collection("BaseItemStatics")]
 public class BaseItemTests
 {
     [Theory]
