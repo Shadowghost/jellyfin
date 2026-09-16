@@ -1718,6 +1718,17 @@ namespace Emby.Server.Implementations.Session
             }
         }
 
+        private static async Task SendMessageToAllSessionClients<T>(SessionInfo session, SessionMessageType name, T data, CancellationToken cancellationToken)
+        {
+            var controllers = session.SessionControllers;
+            var messageId = Guid.NewGuid();
+
+            foreach (var controller in controllers)
+            {
+                await controller.SendMessageToAllClients(name, messageId, data, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
         private static Task SendMessageToSessions<T>(IEnumerable<SessionInfo> sessions, SessionMessageType name, T data, CancellationToken cancellationToken)
         {
             IEnumerable<Task> GetTasks()
@@ -1827,7 +1838,8 @@ namespace Emby.Server.Implementations.Session
         {
             CheckDisposed();
             var session = GetSession(sessionId);
-            await SendMessageToSession(session, SessionMessageType.SyncPlayCommand, command, cancellationToken).ConfigureAwait(false);
+
+            await SendMessageToAllSessionClients(session, SessionMessageType.SyncPlayCommand, command, cancellationToken).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
@@ -1835,7 +1847,7 @@ namespace Emby.Server.Implementations.Session
         {
             CheckDisposed();
             var session = GetSession(sessionId);
-            await SendMessageToSession(session, SessionMessageType.SyncPlayGroupUpdate, command, cancellationToken).ConfigureAwait(false);
+            await SendMessageToAllSessionClients(session, SessionMessageType.SyncPlayGroupUpdate, command, cancellationToken).ConfigureAwait(false);
         }
 
         private IEnumerable<BaseItem> TranslateItemForPlayback(Guid id, User user)
