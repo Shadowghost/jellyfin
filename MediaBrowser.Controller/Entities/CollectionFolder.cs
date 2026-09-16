@@ -203,6 +203,21 @@ namespace MediaBrowser.Controller.Entities
             return CreateResolveArgs(directoryService, true).FileSystemChildren;
         }
 
+        internal override ItemUpdateType UpdateFromResolvedItem(BaseItem newItem)
+        {
+            var updateType = base.UpdateFromResolvedItem(newItem);
+            if (newItem is CollectionFolder resolved
+                && resolved.CollectionType is not null
+                && CollectionType != resolved.CollectionType)
+            {
+                CollectionType = resolved.CollectionType;
+                _requiresRefresh = true;
+                updateType |= ItemUpdateType.MetadataImport;
+            }
+
+            return updateType;
+        }
+
         public override bool RequiresRefresh()
         {
             var changed = base.RequiresRefresh() || _requiresRefresh;
