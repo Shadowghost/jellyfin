@@ -337,6 +337,7 @@ public class EncodingHelperTests
             subtitleEncoder.Object,
             config.Object,
             configurationManager.Object,
-            pathManager.Object);
+            pathManager.Object,
+            HardwareCapabilitiesMock.CreatePermissive());
     }
 }

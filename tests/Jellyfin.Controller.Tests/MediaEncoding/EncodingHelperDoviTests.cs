@@ -157,6 +157,7 @@ public class EncodingHelperDoviTests
             Mock.Of<ISubtitleEncoder>(),
             Mock.Of<IConfiguration>(),
             Mock.Of<IConfigurationManager>(),
-            Mock.Of<IPathManager>());
+            Mock.Of<IPathManager>(),
+            HardwareCapabilitiesMock.CreatePermissive());
     }
 }

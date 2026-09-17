@@ -24,6 +24,7 @@ using MediaBrowser.Model.Configuration;
 using MediaBrowser.Model.Dlna;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.MediaEncoding.Hardware;
 using MediaBrowser.Model.MediaInfo;
 using MediaBrowser.Model.Session;
 using Microsoft.Extensions.Configuration;
@@ -63,6 +64,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         private readonly ISubtitleEncoder _subtitleEncoder;
         private readonly IConfiguration _config;
         private readonly IConfigurationManager _configurationManager;
+        private readonly IHardwareCapabilitiesProvider _hardwareCapabilities;
         private readonly IPathManager _pathManager;
 
         // i915 hang was fixed by linux 6.2 (3f882f2)
@@ -166,7 +168,8 @@ namespace MediaBrowser.Controller.MediaEncoding
             ISubtitleEncoder subtitleEncoder,
             IConfiguration config,
             IConfigurationManager configurationManager,
-            IPathManager pathManager)
+            IPathManager pathManager,
+            IHardwareCapabilitiesProvider hardwareCapabilities)
         {
             _appPaths = appPaths;
             _mediaEncoder = mediaEncoder;
@@ -174,6 +177,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             _config = config;
             _configurationManager = configurationManager;
             _pathManager = pathManager;
+            _hardwareCapabilities = hardwareCapabilities;
         }
 
         private enum DynamicHdrMetadataRemovalPlan
@@ -269,6 +273,39 @@ namespace MediaBrowser.Controller.MediaEncoding
             return _defaultMjpegEncoder;
         }
 
+        private EncodingOptions GetConfiguredEncodingOptions() => _configurationManager.GetEncodingOptions();
+
+        /// <summary>
+        /// Whether the configured device reports the given video processing operation.
+        /// </summary>
+        /// <remarks>
+        /// Devices that report no video processing at all, such as cuda and videotoolbox, always answer yes;
+        /// only the filter availability of the ffmpeg build can rule those out.
+        /// </remarks>
+        private bool CanDeviceFilter(HardwareAccelerationType type, HwVppKind kind, int width = 0, int height = 0)
+            => _hardwareCapabilities.CanFilter(type, GetConfiguredEncodingOptions(), kind, width, height);
+
+        private bool CanDeviceDecode(EncodingJobInfo state, EncodingOptions options, string videoCodec, int bitDepth)
+            => _hardwareCapabilities.CanDecode(
+                options.HardwareAccelerationType,
+                options,
+                videoCodec,
+                state.VideoStream?.Width ?? 0,
+                state.VideoStream?.Height ?? 0,
+                GetHwSurfaceFormat(bitDepth));
+
+        /// <summary>
+        /// Maps a bit depth to the hardware surface format a decoder reports, or <c>null</c> when it is not one we can name.
+        /// </summary>
+        /// <param name="bitDepth">The video bit depth.</param>
+        /// <returns>The surface format name.</returns>
+        private static string GetHwSurfaceFormat(int bitDepth) => bitDepth switch
+        {
+            <= 8 => "nv12",
+            10 => "p010le",
+            _ => null
+        };
+
         private bool IsVaapiSupported(EncodingJobInfo state)
         {
             // vaapi will throw an error with this input
@@ -291,7 +328,11 @@ namespace MediaBrowser.Controller.MediaEncoding
                    && _mediaEncoder.SupportsFilter("procamp_vaapi")
                    && _mediaEncoder.SupportsFilterWithOption(FilterOptionType.OverlayVaapiFrameSync)
                    && _mediaEncoder.SupportsFilter("transpose_vaapi")
-                   && _mediaEncoder.SupportsFilter("hwupload_vaapi");
+                   && _mediaEncoder.SupportsFilter("hwupload_vaapi")
+                   && CanDeviceFilter(HardwareAccelerationType.vaapi, HwVppKind.Scale)
+                   && CanDeviceFilter(HardwareAccelerationType.vaapi, HwVppKind.Deinterlace)
+                   && CanDeviceFilter(HardwareAccelerationType.vaapi, HwVppKind.Procamp)
+                   && CanDeviceFilter(HardwareAccelerationType.vaapi, HwVppKind.Overlay);
         }
 
         private bool IsRkmppFullSupported()
@@ -299,7 +340,9 @@ namespace MediaBrowser.Controller.MediaEncoding
             return _mediaEncoder.SupportsHwaccel("rkmpp")
                    && _mediaEncoder.SupportsFilter("scale_rkrga")
                    && _mediaEncoder.SupportsFilter("vpp_rkrga")
-                   && _mediaEncoder.SupportsFilter("overlay_rkrga");
+                   && _mediaEncoder.SupportsFilter("overlay_rkrga")
+                   && CanDeviceFilter(HardwareAccelerationType.rkmpp, HwVppKind.Scale)
+                   && CanDeviceFilter(HardwareAccelerationType.rkmpp, HwVppKind.Overlay);
         }
 
         private bool IsOpenclFullSupported()
@@ -6763,6 +6806,13 @@ namespace MediaBrowser.Controller.MediaEncoding
             var stripRotationData = (state.VideoStream?.Rotation ?? 0) != 0
                 && ffmpegVersion >= _minFFmpegDisplayRotationOption;
             var stripRotationDataArgs = stripRotationData ? " -display_rotation 0" : string.Empty;
+
+            // The reported decoder limits settle resolution, profile and surface format before any of the
+            // hand maintained rules below get a say, so an oversized 3D or VR source drops to software here.
+            if (isCodecAvailable && !CanDeviceDecode(state, options, videoCodec, bitDepth))
+            {
+                return null;
+            }
 
             // VideoToolbox decoders have built-in SW fallback
             if (isCodecAvailable

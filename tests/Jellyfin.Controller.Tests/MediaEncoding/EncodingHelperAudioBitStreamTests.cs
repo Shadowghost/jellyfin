@@ -36,7 +36,8 @@ namespace Jellyfin.Controller.Tests.MediaEncoding
                 Mock.Of<ISubtitleEncoder>(),
                 Mock.Of<IConfiguration>(),
                 Mock.Of<IConfigurationManager>(),
-                Mock.Of<IPathManager>());
+                Mock.Of<IPathManager>(),
+                HardwareCapabilitiesMock.CreatePermissive());
         }
 
         private static EncodingJobInfo CreateState(
