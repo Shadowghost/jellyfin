@@ -124,6 +124,30 @@ public class EncodingHelperHwPipelineTests
         Assert.DoesNotContain("_qsv", filters, StringComparison.Ordinal);
     }
 
+    [Theory]
+    // The fixed function VPP scalers have always applied the crop rectangle of their input frames.
+    [InlineData(HardwareAccelerationType.qsv, "7.1.1", true)]
+    [InlineData(HardwareAccelerationType.vaapi, "7.1.1", true)]
+    [InlineData(HardwareAccelerationType.rkmpp, "7.1.1", true)]
+    // The shader and kernel based ones only from FFmpeg 8.
+    [InlineData(HardwareAccelerationType.nvenc, "7.1.1", false)]
+    [InlineData(HardwareAccelerationType.nvenc, "8.0", true)]
+    public void GetVideoProcessingFilterParam_ShaderScalers_OnlyCropInVramFromFfmpeg8(
+        HardwareAccelerationType type,
+        string encoderVersion,
+        bool expectHardwareCrop)
+    {
+        var state = BuildState(Video3DFormat.FullSideBySide);
+        var filters = CreateHelper(encoderVersion: Version.Parse(encoderVersion))
+            .GetVideoProcessingFilterParam(state, BuildOptions(type), "libx264");
+
+        // A software crop is followed by the software stretch filters, a hardware one never is.
+        var isSoftwareCrop = filters.Contains("crop=trunc(iw/4)*2:ih:0:0,format=", StringComparison.Ordinal)
+            || filters.Contains("crop=trunc(iw/4)*2:ih:0:0,scale=", StringComparison.Ordinal);
+
+        Assert.Equal(expectHardwareCrop, !isSoftwareCrop);
+    }
+
     private static EncodingOptions BuildOptions(HardwareAccelerationType type) => new()
     {
         HardwareAccelerationType = type,
@@ -182,11 +206,12 @@ public class EncodingHelperHwPipelineTests
     /// Builds a helper over an ffmpeg that has every codec and filter, so the hardware chains are reached.
     /// </summary>
     /// <param name="capabilities">The capability provider, permissive when not given.</param>
+    /// <param name="encoderVersion">The ffmpeg version to report.</param>
     /// <returns>The helper.</returns>
-    private static EncodingHelper CreateHelper(IHardwareCapabilitiesProvider? capabilities = null)
+    private static EncodingHelper CreateHelper(IHardwareCapabilitiesProvider? capabilities = null, Version? encoderVersion = null)
     {
         var mediaEncoder = new Mock<IMediaEncoder>();
-        mediaEncoder.SetupGet(e => e.EncoderVersion).Returns(new Version(8, 1, 2));
+        mediaEncoder.SetupGet(e => e.EncoderVersion).Returns(encoderVersion ?? new Version(8, 1, 2));
         mediaEncoder.Setup(e => e.SupportsEncoder(It.IsAny<string>())).Returns(true);
         mediaEncoder.Setup(e => e.SupportsDecoder(It.IsAny<string>())).Returns(true);
         mediaEncoder.Setup(e => e.SupportsHwaccel(It.IsAny<string>())).Returns(true);
