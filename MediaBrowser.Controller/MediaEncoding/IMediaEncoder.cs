@@ -82,6 +82,12 @@ namespace MediaBrowser.Controller.MediaEncoding
         bool IsVideoToolboxAv1DecodeAvailable { get; }
 
         /// <summary>
+        /// Gets a value indicating whether ffprobe can report hardware capabilities directly.
+        /// </summary>
+        /// <value><c>true</c> if ffprobe supports -show_hwaccel, <c>false</c> otherwise.</value>
+        bool SupportsHwCapsProbing { get; }
+
+        /// <summary>
         /// Whether given encoder codec is supported.
         /// </summary>
         /// <param name="encoder">The encoder.</param>

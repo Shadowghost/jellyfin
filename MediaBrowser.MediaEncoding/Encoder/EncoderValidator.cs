@@ -573,6 +573,13 @@ namespace MediaBrowser.MediaEncoding.Encoder
             return !string.IsNullOrEmpty(option) && GetProcessExitCode(proberPath, $"-loglevel quiet -f lavfi -i nullsrc=s=1x1:d=1 -{option}");
         }
 
+        public bool CheckSupportedProberHwCaps(string proberPath)
+        {
+            // An hwaccel type without a usable device still exits 0, so this only tests for the option itself.
+            return !string.IsNullOrEmpty(proberPath)
+                && GetProcessExitCode(proberPath, "-loglevel quiet -show_hwaccel vaapi -hwaccel_flags dev -print_format json");
+        }
+
         private IEnumerable<string> GetCodecs(Codec codec)
         {
             string codecstr = codec == Codec.Encoder ? "encoders" : "decoders";

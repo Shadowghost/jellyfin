@@ -63,6 +63,7 @@ public class EncodingOptions
         AllowOnDemandMetadataBasedKeyframeExtractionForExtensions = ["mkv"];
         HardwareDecodingCodecs = ["h264", "vc1"];
         HlsAudioSeekStrategy = HlsAudioSeekStrategy.TrimCopiedAudio;
+        HardwareCapabilityDetection = HardwareCapabilityDetectionMode.Auto;
     }
 
     /// <summary>
@@ -129,6 +130,11 @@ public class EncodingOptions
     /// Gets or sets the hardware acceleration type.
     /// </summary>
     public HardwareAccelerationType HardwareAccelerationType { get; set; }
+
+    /// <summary>
+    /// Gets or sets the hardware capability detection mode.
+    /// </summary>
+    public HardwareCapabilityDetectionMode HardwareCapabilityDetection { get; set; }
 
     /// <summary>
     /// Gets or sets the FFmpeg path as set by the user via the UI.

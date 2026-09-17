@@ -79,6 +79,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
         private bool _isPkeyPauseSupported = false;
         private bool _isLowPriorityHwDecodeSupported = false;
         private bool _proberSupportsFirstVideoFrame = false;
+        private bool _proberSupportsHwCaps = false;
 
         private bool _isVaapiDeviceAmd = false;
         private bool _isVaapiDeviceInteliHD = false;
@@ -168,6 +169,9 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
         public bool IsVideoToolboxAv1DecodeAvailable => _isVideoToolboxAv1DecodeAvailable;
 
+        /// <inheritdoc />
+        public bool SupportsHwCapsProbing => _proberSupportsHwCaps;
+
         [GeneratedRegex(@"[^\/\\]+?(\.[^\/\\\n.]+)?$")]
         private static partial Regex FfprobePathRegex();
 
@@ -236,6 +240,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
                 _isPkeyPauseSupported = validator.CheckSupportedRuntimeKey("p      pause transcoding", _ffmpegVersion);
                 _isLowPriorityHwDecodeSupported = validator.CheckSupportedHwaccelFlag("low_priority");
                 _proberSupportsFirstVideoFrame = validator.CheckSupportedProberOption("only_first_vframe", _ffprobePath);
+                _proberSupportsHwCaps = validator.CheckSupportedProberHwCaps(_ffprobePath);
 
                 // Check the Vaapi device vendor
                 if (OperatingSystem.IsLinux()

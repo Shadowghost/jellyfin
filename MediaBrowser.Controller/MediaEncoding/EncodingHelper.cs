@@ -88,6 +88,8 @@ namespace MediaBrowser.Controller.MediaEncoding
         private readonly Version _minFFmpegRkmppHevcDecDoviRpu = new Version(7, 1, 1);
         private readonly Version _minFFmpegReadrateCatchupOption = new Version(8, 0);
         private readonly Version _minFFmpegNoiseBsfDrop = new Version(5, 0);
+        private readonly Version _minFFmpegHwCrop = new Version(7, 0, 1);
+        private readonly Version _minFFmpegHwCapsProbe = new Version(8, 1, 2);
 
         private static readonly string[] _videoProfilesH264 =
         [
