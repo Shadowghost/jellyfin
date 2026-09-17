@@ -28,6 +28,9 @@ public class HardwareCapabilitiesProvider : IHardwareCapabilitiesProvider
     private const int CacheVersion = 1;
     private const string ProbeFlags = "dev+dec+enc+vpp+ocl+vk";
 
+    // Every supported CPU decodes the legacy codecs comfortably, so they are not worth pointing out.
+    private static readonly string[] _codecsWorthAccelerating = ["h264", "hevc", "vp9", "av1"];
+
     private readonly ILogger<HardwareCapabilitiesProvider> _logger;
     private readonly IApplicationPaths _appPaths;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonDefaults.Options) { WriteIndented = false };
@@ -94,10 +97,42 @@ public class HardwareCapabilitiesProvider : IHardwareCapabilitiesProvider
         }
 
         _isPopulated = !_capabilities.IsEmpty;
+        LogUnusedCapabilities(options);
 
         if (!probed && !useReport)
         {
             StartFallbackProbe(ffmpegPath, probeTypes[0], encoderVersion, deviceKey, options);
+        }
+    }
+
+    /// <summary>
+    /// Points out what a manually tuned server is leaving on the table, once, at startup.
+    /// </summary>
+    /// <param name="options">The encoding options.</param>
+    private void LogUnusedCapabilities(EncodingOptions options)
+    {
+        if (!_isPopulated || options.HardwareTuning != HardwareTuningMode.Manual)
+        {
+            return;
+        }
+
+        var device = GetActiveDevice(options.HardwareAccelerationType, options);
+        if (device is null || device.Decoders.Count == 0)
+        {
+            return;
+        }
+
+        var unused = device.Decoders
+            .Select(d => d.CodecName)
+            .Where(c => _codecsWorthAccelerating.Contains(c, StringComparer.OrdinalIgnoreCase)
+                && !options.HardwareDecodingCodecs.Contains(c, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+
+        if (unused.Length > 0)
+        {
+            _logger.LogInformation(
+                "Hardware decoding is set manually; the detected device also reports {Codecs}",
+                string.Join(", ", unused));
         }
     }
 

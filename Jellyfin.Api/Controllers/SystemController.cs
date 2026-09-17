@@ -11,7 +11,10 @@ using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Extensions;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Controller;
+using MediaBrowser.Controller.MediaEncoding;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
+using MediaBrowser.Model.MediaEncoding.Hardware;
 using MediaBrowser.Model.Net;
 using MediaBrowser.Model.System;
 using Microsoft.AspNetCore.Authorization;
@@ -32,6 +35,8 @@ public class SystemController : BaseJellyfinApiController
     private readonly IFileSystem _fileSystem;
     private readonly INetworkManager _networkManager;
     private readonly ISystemManager _systemManager;
+    private readonly IHardwareCapabilitiesProvider _hardwareCapabilities;
+    private readonly IConfigurationManager _configurationManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemController"/> class.
@@ -42,13 +47,17 @@ public class SystemController : BaseJellyfinApiController
     /// <param name="fileSystem">Instance of <see cref="IFileSystem"/> interface.</param>
     /// <param name="networkManager">Instance of <see cref="INetworkManager"/> interface.</param>
     /// <param name="systemManager">Instance of <see cref="ISystemManager"/> interface.</param>
+    /// <param name="hardwareCapabilities">Instance of <see cref="IHardwareCapabilitiesProvider"/> interface.</param>
+    /// <param name="configurationManager">Instance of <see cref="IConfigurationManager"/> interface.</param>
     public SystemController(
         ILogger<SystemController> logger,
         IServerApplicationHost appHost,
         IServerApplicationPaths appPaths,
         IFileSystem fileSystem,
         INetworkManager networkManager,
-        ISystemManager systemManager)
+        ISystemManager systemManager,
+        IHardwareCapabilitiesProvider hardwareCapabilities,
+        IConfigurationManager configurationManager)
     {
         _logger = logger;
         _appHost = appHost;
@@ -56,6 +65,8 @@ public class SystemController : BaseJellyfinApiController
         _fileSystem = fileSystem;
         _networkManager = networkManager;
         _systemManager = systemManager;
+        _hardwareCapabilities = hardwareCapabilities;
+        _configurationManager = configurationManager;
     }
 
     /// <summary>
@@ -174,6 +185,27 @@ public class SystemController : BaseJellyfinApiController
             .ToArray();
 
         return result;
+    }
+
+    /// <summary>
+    /// Gets what the configured hardware reported it can decode, encode and filter.
+    /// </summary>
+    /// <param name="type">The hardware acceleration type, defaulting to the configured one.</param>
+    /// <response code="200">Capabilities retrieved.</response>
+    /// <response code="403">User does not have permission to retrieve information.</response>
+    /// <response code="404">No capabilities were detected.</response>
+    /// <returns>The <see cref="HwAccelCapabilities"/> of the given hardware acceleration type.</returns>
+    [HttpGet("HardwareCapabilities")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public ActionResult<HwAccelCapabilities> GetHardwareCapabilities([FromQuery] HardwareAccelerationType? type)
+    {
+        var accelerationType = type ?? _configurationManager.GetEncodingOptions().HardwareAccelerationType;
+        var capabilities = _hardwareCapabilities.GetCapabilities(accelerationType);
+
+        return capabilities is null ? NotFound() : capabilities;
     }
 
     /// <summary>

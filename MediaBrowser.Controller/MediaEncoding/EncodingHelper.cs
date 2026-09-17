@@ -297,6 +297,63 @@ namespace MediaBrowser.Controller.MediaEncoding
         private bool CanDeviceFilter(HardwareAccelerationType type, HwVppKind kind, int width = 0, int height = 0)
             => _hardwareCapabilities.CanFilter(type, GetConfiguredEncodingOptions(), kind, width, height);
 
+        /// <summary>
+        /// Whether the capability settings are answered from the detected hardware rather than the configuration.
+        /// </summary>
+        /// <param name="options">The encoding options.</param>
+        /// <returns><c>true</c> if the detected hardware decides, <c>false</c> otherwise.</returns>
+        private bool IsHwTuningAutomatic(EncodingOptions options)
+            => options.HardwareTuning == HardwareTuningMode.Auto
+                && options.HardwareCapabilityDetection != HardwareCapabilityDetectionMode.Disabled
+                && _hardwareCapabilities.IsPopulated;
+
+        /// <summary>
+        /// Whether the user allows hardware decoding of the given codec.
+        /// </summary>
+        /// <remarks>
+        /// Automatic tuning defers to the reported decoder list, which <see cref="CanDeviceDecode"/> checks
+        /// separately, so this only has to stop saying no on the configuration's behalf.
+        /// </remarks>
+        /// <param name="options">The encoding options.</param>
+        /// <param name="videoCodec">The codec name.</param>
+        /// <returns><c>true</c> if the codec may be decoded in hardware, <c>false</c> otherwise.</returns>
+        private bool IsHwDecodingCodecAllowed(EncodingOptions options, string videoCodec)
+            => IsHwTuningAutomatic(options)
+                || options.HardwareDecodingCodecs.Contains(videoCodec, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Whether the user allows hardware decoding of the given codec at the given bit depth.
+        /// </summary>
+        /// <param name="options">The encoding options.</param>
+        /// <param name="videoCodec">The codec name.</param>
+        /// <param name="bitDepth">The video bit depth.</param>
+        /// <param name="isHevcRext">Whether the stream is HEVC range extension.</param>
+        /// <returns><c>true</c> if the bit depth may be decoded in hardware, <c>false</c> otherwise.</returns>
+        private bool IsHwDecodingColorDepthAllowed(EncodingOptions options, string videoCodec, int bitDepth, bool isHevcRext)
+        {
+            if (IsHwTuningAutomatic(options))
+            {
+                return true;
+            }
+
+            if (string.Equals(videoCodec, "hevc", StringComparison.OrdinalIgnoreCase))
+            {
+                if (isHevcRext)
+                {
+                    return bitDepth == 12 ? options.EnableDecodingColorDepth12HevcRext : options.EnableDecodingColorDepth10HevcRext;
+                }
+
+                return bitDepth != 10 || options.EnableDecodingColorDepth10Hevc;
+            }
+
+            if (string.Equals(videoCodec, "vp9", StringComparison.OrdinalIgnoreCase))
+            {
+                return bitDepth != 10 || options.EnableDecodingColorDepth10Vp9;
+            }
+
+            return true;
+        }
+
         private bool CanDeviceDecode(EncodingJobInfo state, EncodingOptions options, string videoCodec, int bitDepth)
             => _hardwareCapabilities.CanDecode(
                 options.HardwareAccelerationType,
@@ -6688,26 +6745,15 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             var decoderName = decoderPrefix + '_' + decoderSuffix;
 
-            var isCodecAvailable = _mediaEncoder.SupportsDecoder(decoderName) && options.HardwareDecodingCodecs.Contains(videoCodec, StringComparison.OrdinalIgnoreCase);
+            var isCodecAvailable = _mediaEncoder.SupportsDecoder(decoderName) && IsHwDecodingCodecAllowed(options, videoCodec);
 
             // VideoToolbox decoders have built-in SW fallback
             if (bitDepth == 10
                 && isCodecAvailable
-                && (options.HardwareAccelerationType != HardwareAccelerationType.videotoolbox))
+                && options.HardwareAccelerationType != HardwareAccelerationType.videotoolbox
+                && !IsHwDecodingColorDepthAllowed(options, videoCodec, bitDepth, false))
             {
-                if (string.Equals(videoCodec, "hevc", StringComparison.OrdinalIgnoreCase)
-                    && options.HardwareDecodingCodecs.Contains("hevc", StringComparison.OrdinalIgnoreCase)
-                    && !options.EnableDecodingColorDepth10Hevc)
-                {
-                    return null;
-                }
-
-                if (string.Equals(videoCodec, "vp9", StringComparison.OrdinalIgnoreCase)
-                    && options.HardwareDecodingCodecs.Contains("vp9", StringComparison.OrdinalIgnoreCase)
-                    && !options.EnableDecodingColorDepth10Vp9)
-                {
-                    return null;
-                }
+                return null;
             }
 
             if (string.Equals(decoderSuffix, "cuvid", StringComparison.OrdinalIgnoreCase) && options.EnableEnhancedNvdecDecoder)
@@ -6753,7 +6799,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var isQsvSupported = (isLinux || isWindows) && _mediaEncoder.SupportsHwaccel("qsv");
             var isVideotoolboxSupported = isMacOS && _mediaEncoder.SupportsHwaccel("videotoolbox");
             var isRkmppSupported = isLinux && IsRkmppFullSupported();
-            var isCodecAvailable = options.HardwareDecodingCodecs.Contains(videoCodec, StringComparison.OrdinalIgnoreCase);
+            var isCodecAvailable = IsHwDecodingCodecAllowed(options, videoCodec);
             var hardwareAccelerationType = options.HardwareAccelerationType;
 
             var ffmpegVersion = _mediaEncoder.EncoderVersion;
@@ -6783,39 +6829,20 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             // VideoToolbox decoders have built-in SW fallback
             if (isCodecAvailable
-                && (options.HardwareAccelerationType != HardwareAccelerationType.videotoolbox))
+                && options.HardwareAccelerationType != HardwareAccelerationType.videotoolbox)
             {
-                if (string.Equals(videoCodec, "hevc", StringComparison.OrdinalIgnoreCase)
-                    && options.HardwareDecodingCodecs.Contains("hevc", StringComparison.OrdinalIgnoreCase))
+                var isHevcRext = string.Equals(videoCodec, "hevc", StringComparison.OrdinalIgnoreCase)
+                    && IsVideoStreamHevcRext(state);
+
+                if (!IsHwDecodingColorDepthAllowed(options, videoCodec, bitDepth, isHevcRext))
                 {
-                    if (IsVideoStreamHevcRext(state))
-                    {
-                        if (bitDepth <= 10 && !options.EnableDecodingColorDepth10HevcRext)
-                        {
-                            return null;
-                        }
-
-                        if (bitDepth == 12 && !options.EnableDecodingColorDepth12HevcRext)
-                        {
-                            return null;
-                        }
-
-                        if (hardwareAccelerationType == HardwareAccelerationType.vaapi
-                            && !_mediaEncoder.IsVaapiDeviceInteliHD)
-                        {
-                            return null;
-                        }
-                    }
-                    else if (bitDepth == 10 && !options.EnableDecodingColorDepth10Hevc)
-                    {
-                        return null;
-                    }
+                    return null;
                 }
 
-                if (string.Equals(videoCodec, "vp9", StringComparison.OrdinalIgnoreCase)
-                    && options.HardwareDecodingCodecs.Contains("vp9", StringComparison.OrdinalIgnoreCase)
-                    && bitDepth == 10
-                    && !options.EnableDecodingColorDepth10Vp9)
+                // Only the Intel iHD driver decodes hevc range extension.
+                if (isHevcRext
+                    && hardwareAccelerationType == HardwareAccelerationType.vaapi
+                    && !_mediaEncoder.IsVaapiDeviceInteliHD)
                 {
                     return null;
                 }

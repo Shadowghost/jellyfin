@@ -64,6 +64,7 @@ public class EncodingOptions
         HardwareDecodingCodecs = ["h264", "vc1"];
         HlsAudioSeekStrategy = HlsAudioSeekStrategy.TrimCopiedAudio;
         HardwareCapabilityDetection = HardwareCapabilityDetectionMode.Auto;
+        HardwareTuning = HardwareTuningMode.Auto;
     }
 
     /// <summary>
@@ -135,6 +136,15 @@ public class EncodingOptions
     /// Gets or sets the hardware capability detection mode.
     /// </summary>
     public HardwareCapabilityDetectionMode HardwareCapabilityDetection { get; set; }
+
+    /// <summary>
+    /// Gets or sets how the hardware decoding capability settings are decided.
+    /// </summary>
+    /// <remarks>
+    /// In <see cref="HardwareTuningMode.Auto"/> the settings below are answered from the detected
+    /// hardware instead, but are kept as they are so switching back restores them exactly.
+    /// </remarks>
+    public HardwareTuningMode HardwareTuning { get; set; }
 
     /// <summary>
     /// Gets or sets the FFmpeg path as set by the user via the UI.
