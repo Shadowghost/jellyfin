@@ -4118,6 +4118,21 @@ namespace MediaBrowser.Controller.MediaEncoding
         }
 
         /// <summary>
+        /// Gets which side of the pipeline runs in hardware, from the decoder and encoder the job settled on.
+        /// </summary>
+        /// <param name="vidDecoder">The hardware decoder arguments, empty for software decoding.</param>
+        /// <param name="vidEncoder">The video encoder.</param>
+        /// <param name="hwEncoderSuffix">The suffix that marks this pipeline's hardware encoders.</param>
+        /// <returns>The decoder and encoder kinds.</returns>
+        private static (bool IsSwDecoder, bool IsSwEncoder, bool IsMjpegEncoder) GetChainEndpoints(
+            string vidDecoder,
+            string vidEncoder,
+            string hwEncoderSuffix)
+            => (string.IsNullOrEmpty(vidDecoder),
+                !vidEncoder.Contains(hwEncoderSuffix, StringComparison.OrdinalIgnoreCase),
+                vidEncoder.Contains("mjpeg", StringComparison.OrdinalIgnoreCase));
+
+        /// <summary>
         /// Whether a job has to take the software chain no matter what the device could do.
         /// </summary>
         /// <remarks>
@@ -4535,9 +4550,7 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             var isNvDecoder = vidDecoder.Contains("cuda", StringComparison.OrdinalIgnoreCase);
             var isNvencEncoder = vidEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase);
-            var isSwDecoder = string.IsNullOrEmpty(vidDecoder);
-            var isSwEncoder = !isNvencEncoder;
-            var isMjpegEncoder = vidEncoder.Contains("mjpeg", StringComparison.OrdinalIgnoreCase);
+            var (isSwDecoder, isSwEncoder, isMjpegEncoder) = GetChainEndpoints(vidDecoder, vidEncoder, "nvenc");
             var isCuInCuOut = isNvDecoder && isNvencEncoder;
 
             var doubleRateDeint = options.DeinterlaceDoubleRate && (state.VideoStream?.ReferenceFrameRate ?? 60) <= 30;
@@ -4698,9 +4711,7 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             var isD3d11vaDecoder = vidDecoder.Contains("d3d11va", StringComparison.OrdinalIgnoreCase);
             var isAmfEncoder = vidEncoder.Contains("amf", StringComparison.OrdinalIgnoreCase);
-            var isSwDecoder = string.IsNullOrEmpty(vidDecoder);
-            var isSwEncoder = !isAmfEncoder;
-            var isMjpegEncoder = vidEncoder.Contains("mjpeg", StringComparison.OrdinalIgnoreCase);
+            var (isSwDecoder, isSwEncoder, isMjpegEncoder) = GetChainEndpoints(vidDecoder, vidEncoder, "amf");
             var isDxInDxOut = isD3d11vaDecoder && isAmfEncoder;
 
             var doDeintH2645 = IsDeinterlaceAvailable(state);
@@ -4894,9 +4905,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var isQsvDecoder = vidDecoder.Contains("qsv", StringComparison.OrdinalIgnoreCase);
             var isQsvEncoder = vidEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase);
             var isHwDecoder = isD3d11vaDecoder || isQsvDecoder;
-            var isSwDecoder = string.IsNullOrEmpty(vidDecoder);
-            var isSwEncoder = !isQsvEncoder;
-            var isMjpegEncoder = vidEncoder.Contains("mjpeg", StringComparison.OrdinalIgnoreCase);
+            var (isSwDecoder, isSwEncoder, isMjpegEncoder) = GetChainEndpoints(vidDecoder, vidEncoder, "qsv");
             var isQsvInQsvOut = isHwDecoder && isQsvEncoder;
 
             var doDeintH2645 = IsDeinterlaceAvailable(state);
@@ -5127,9 +5136,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var isQsvDecoder = vidDecoder.Contains("qsv", StringComparison.OrdinalIgnoreCase);
             var isQsvEncoder = vidEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase);
             var isHwDecoder = isVaapiDecoder || isQsvDecoder;
-            var isSwDecoder = string.IsNullOrEmpty(vidDecoder);
-            var isSwEncoder = !isQsvEncoder;
-            var isMjpegEncoder = vidEncoder.Contains("mjpeg", StringComparison.OrdinalIgnoreCase);
+            var (isSwDecoder, isSwEncoder, isMjpegEncoder) = GetChainEndpoints(vidDecoder, vidEncoder, "qsv");
             var isQsvInQsvOut = isHwDecoder && isQsvEncoder;
 
             var doVaVppTonemap = IsIntelVppTonemapAvailable(state, options);
@@ -5395,9 +5402,7 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             var isVaapiDecoder = vidDecoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase);
             var isVaapiEncoder = vidEncoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase);
-            var isSwDecoder = string.IsNullOrEmpty(vidDecoder);
-            var isSwEncoder = !isVaapiEncoder;
-            var isMjpegEncoder = vidEncoder.Contains("mjpeg", StringComparison.OrdinalIgnoreCase);
+            var (isSwDecoder, isSwEncoder, isMjpegEncoder) = GetChainEndpoints(vidDecoder, vidEncoder, "vaapi");
             var isVaInVaOut = isVaapiDecoder && isVaapiEncoder;
 
             var doVaVppTonemap = isVaapiDecoder && IsIntelVppTonemapAvailable(state, options);
@@ -5573,9 +5578,7 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             var isVaapiDecoder = vidDecoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase);
             var isVaapiEncoder = vidEncoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase);
-            var isSwDecoder = string.IsNullOrEmpty(vidDecoder);
-            var isSwEncoder = !isVaapiEncoder;
-            var isMjpegEncoder = vidEncoder.Contains("mjpeg", StringComparison.OrdinalIgnoreCase);
+            var (isSwDecoder, isSwEncoder, isMjpegEncoder) = GetChainEndpoints(vidDecoder, vidEncoder, "vaapi");
 
             var doVkTonemap = IsVulkanHwTonemapAvailable(state, options);
             var doDeintH2645 = IsDeinterlaceAvailable(state);
@@ -5805,9 +5808,7 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             var isVaapiDecoder = vidDecoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase);
             var isVaapiEncoder = vidEncoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase);
-            var isSwDecoder = string.IsNullOrEmpty(vidDecoder);
-            var isSwEncoder = !isVaapiEncoder;
-            var isMjpegEncoder = vidEncoder.Contains("mjpeg", StringComparison.OrdinalIgnoreCase);
+            var (isSwDecoder, isSwEncoder, isMjpegEncoder) = GetChainEndpoints(vidDecoder, vidEncoder, "vaapi");
             var isVaInVaOut = isVaapiDecoder && isVaapiEncoder;
             var isi965Driver = _mediaEncoder.IsVaapiDeviceInteli965;
             var isAmdDriver = _mediaEncoder.IsVaapiDeviceAmd;
