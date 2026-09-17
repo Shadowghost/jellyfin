@@ -688,14 +688,24 @@ namespace MediaBrowser.MediaEncoding.Encoder
                 CreateNoWindow = true,
                 UseShellExecute = false,
                 WindowStyle = ProcessWindowStyle.Hidden,
-                ErrorDialog = false
+                ErrorDialog = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
             };
             _logger.LogDebug("Running {Path} {Arguments}", path, arguments);
 
             try
             {
                 process.Start();
+
+                // Drain both streams concurrently to prevent pipe hanging, see #17429
+                var standardOutput = process.StandardOutput.ReadToEndAsync();
+                var standardError = process.StandardError.ReadToEndAsync();
                 process.WaitForExit();
+                Task.WaitAll(standardOutput, standardError);
+
                 return process.ExitCode == 0;
             }
             catch (Exception ex)
