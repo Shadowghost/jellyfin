@@ -91,7 +91,6 @@ namespace MediaBrowser.Controller.MediaEncoding
         private readonly Version _minFFmpegReadrateCatchupOption = new Version(8, 0);
         private readonly Version _minFFmpegNoiseBsfDrop = new Version(5, 0);
         private readonly Version _minFFmpegHwCrop = new Version(8, 0);
-        private readonly Version _minFFmpegHwCapsProbe = new Version(8, 1, 2);
 
         private static readonly string[] _videoProfilesH264 =
         [
@@ -3831,10 +3830,13 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <returns>The crop filter, or an empty string when the source needs no flattening.</returns>
         public static string GetVideo3DCropFilter(Video3DFormat? threedFormat)
         {
+            // setsar only rewrites metadata, so it runs on hardware frames as happily as crop does.
             return threedFormat switch
             {
-                Video3DFormat.FullSideBySide or Video3DFormat.HalfSideBySide => "crop=trunc(iw/4)*2:ih:0:0",
-                Video3DFormat.FullTopAndBottom or Video3DFormat.HalfTopAndBottom => "crop=iw:trunc(ih/4)*2:0:0",
+                Video3DFormat.FullSideBySide => "crop=trunc(iw/4)*2:ih:0:0",
+                Video3DFormat.HalfSideBySide => "crop=trunc(iw/4)*2:ih:0:0,setsar=sar=1",
+                Video3DFormat.FullTopAndBottom => "crop=iw:trunc(ih/4)*2:0:0",
+                Video3DFormat.HalfTopAndBottom => "crop=iw:trunc(ih/4)*2:0:0,setsar=sar=1",
                 _ => string.Empty
             };
         }

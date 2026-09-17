@@ -45,9 +45,9 @@ namespace Jellyfin.MediaEncoding.Tests
         [InlineData(null, "")]
         [InlineData(Video3DFormat.MVC, "")]
         [InlineData(Video3DFormat.FullSideBySide, "crop=trunc(iw/4)*2:ih:0:0")]
-        [InlineData(Video3DFormat.HalfSideBySide, "crop=trunc(iw/4)*2:ih:0:0")]
+        [InlineData(Video3DFormat.HalfSideBySide, "crop=trunc(iw/4)*2:ih:0:0,setsar=sar=1")]
         [InlineData(Video3DFormat.FullTopAndBottom, "crop=iw:trunc(ih/4)*2:0:0")]
-        [InlineData(Video3DFormat.HalfTopAndBottom, "crop=iw:trunc(ih/4)*2:0:0")]
+        [InlineData(Video3DFormat.HalfTopAndBottom, "crop=iw:trunc(ih/4)*2:0:0,setsar=sar=1")]
         public void GetVideo3DCropFilter_NeverAddsASoftwareScale(Video3DFormat? threedFormat, string expected)
         {
             // The hardware scaler downstream stretches the half formats back, a software scale would copy back.
