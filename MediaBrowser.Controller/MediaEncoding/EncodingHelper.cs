@@ -377,27 +377,125 @@ namespace MediaBrowser.Controller.MediaEncoding
                    && _mediaEncoder.SupportsFilter("flip_vulkan");
         }
 
-        private bool IsHwVideo3DFlatteningAvailable(EncodingOptions options)
+        /// <summary>
+        /// Picks the device the filter chain will run on.
+        /// </summary>
+        /// <remarks>
+        /// libplacebo comes last on purpose: it is neither lightweight nor flexible, so the vaapi pipeline
+        /// only takes the vulkan route when the vaapi filters cannot do the job at all.
+        /// </remarks>
+        /// <param name="options">The encoding options.</param>
+        /// <returns>The filter device.</returns>
+        private HwFilterDevice GetHwFilterDevice(EncodingOptions options)
         {
-            return options.HardwareAccelerationType switch
+            switch (options.HardwareAccelerationType)
             {
-                // The QSV pipelines scale with vpp_qsv, which crops with cw/ch/cx/cy. The exception is the
-                // system native decoder on Linux, which hands vaapi surfaces to scale_vaapi instead.
-                HardwareAccelerationType.qsv => !(OperatingSystem.IsLinux() && options.PreferSystemNativeHwDecoder),
-                // Only the AMD pipeline reaches libplacebo and its crop_w/crop_h, the others scale with scale_vaapi.
-                HardwareAccelerationType.vaapi => _mediaEncoder.IsVaapiDeviceAmd
-                    && !_mediaEncoder.IsVaapiDeviceInteliHD
-                    && IsVulkanFullSupported()
-                    && _mediaEncoder.IsVaapiDeviceSupportVulkanDrmInterop
-                    && Environment.OSVersion.Version >= _minKernelVersionAmdVkFmtModifier,
+                case HardwareAccelerationType.qsv:
+                    // The system native decoder on Linux hands vaapi surfaces to the vaapi filters instead.
+                    return OperatingSystem.IsLinux() && options.PreferSystemNativeHwDecoder
+                        ? HwFilterDevice.Vaapi
+                        : HwFilterDevice.Qsv;
+                case HardwareAccelerationType.vaapi:
+                    return IsVaapiVulkanPipeline() ? HwFilterDevice.Vulkan : HwFilterDevice.Vaapi;
+                case HardwareAccelerationType.nvenc:
+                    return HwFilterDevice.Cuda;
+                case HardwareAccelerationType.amf:
+                    return IsOpenclFullSupported() ? HwFilterDevice.OpenCl : HwFilterDevice.None;
+                case HardwareAccelerationType.videotoolbox:
+                    return HwFilterDevice.VideoToolbox;
+                case HardwareAccelerationType.rkmpp:
+                    return HwFilterDevice.Rkrga;
+                default:
+                    return HwFilterDevice.None;
+            }
+        }
+
+        private bool IsVaapiVulkanPipeline()
+        {
+            return _mediaEncoder.IsVaapiDeviceAmd
+                && !_mediaEncoder.IsVaapiDeviceInteliHD
+                && IsVulkanFullSupported()
+                && _mediaEncoder.IsVaapiDeviceSupportVulkanDrmInterop
+                && Environment.OSVersion.Version >= _minKernelVersionAmdVkFmtModifier;
+        }
+
+        /// <summary>
+        /// Whether the given device can change the frame geometry without a round trip through system memory.
+        /// </summary>
+        /// <remarks>
+        /// vpp_qsv crops with cw/ch/cx/cy and libplacebo with crop_w/crop_h. scale_vaapi, scale_cuda,
+        /// scale_opencl, scale_vt and scale_rkrga all expect a preceding software crop filter instead.
+        /// </remarks>
+        /// <param name="device">The filter device.</param>
+        /// <returns><c>true</c> if the device can crop, <c>false</c> otherwise.</returns>
+        private bool CanCropOnDevice(HwFilterDevice device)
+        {
+            return device is HwFilterDevice.Qsv or HwFilterDevice.Vulkan
+                && _mediaEncoder.EncoderVersion >= _minFFmpegHwCrop;
+        }
+
+        /// <summary>
+        /// Decides what a job intends to do in hardware, before any filter chain is built.
+        /// </summary>
+        /// <param name="state">The encoding job info.</param>
+        /// <param name="options">The encoding options.</param>
+        /// <returns>The pipeline plan.</returns>
+        private HwPipelinePlan BuildHwPipelinePlan(EncodingJobInfo state, EncodingOptions options)
+        {
+            var device = GetHwFilterDevice(options);
+            var ops = HwOps.Scale;
+
+            if (!string.IsNullOrEmpty(GetVideo3DFilter(state.MediaSource?.Video3DFormat)))
+            {
+                ops |= HwOps.Crop;
+            }
+
+            if (IsDeinterlaceAvailable(state))
+            {
+                ops |= HwOps.Deinterlace;
+            }
+
+            if (IsHwTonemapAvailable(state, options))
+            {
+                ops |= HwOps.Tonemap;
+            }
+
+            if (state.SubtitleStream is not null && ShouldEncodeSubtitle(state))
+            {
+                ops |= HwOps.SubtitleOverlay;
+            }
+
+            if ((state.VideoStream?.Rotation ?? 0) != 0)
+            {
+                ops |= HwOps.Transpose;
+            }
+
+            var width = state.VideoStream?.Width ?? 0;
+            var height = state.VideoStream?.Height ?? 0;
+
+            // Software decoded frames are already in system memory, so they crop there for free.
+            var vidDecoder = GetHardwareVideoDecoder(state, options) ?? string.Empty;
+            var decodesOntoDevice = device switch
+            {
+                HwFilterDevice.Qsv => vidDecoder.Contains("qsv", StringComparison.OrdinalIgnoreCase),
+                HwFilterDevice.Vulkan => vidDecoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase),
                 _ => false
             };
+
+            var canCrop = decodesOntoDevice
+                && CanCropOnDevice(device)
+                && CanDeviceFilter(options.HardwareAccelerationType, HwVppKind.Scale, width, height);
+
+            return new HwPipelinePlan(options.HardwareAccelerationType, device, ops, canCrop);
         }
 
         private bool IsSwVideo3DFlatteningRequired(EncodingJobInfo state, EncodingOptions options)
+            => BuildHwPipelinePlan(state, options).RequiresSoftwareCrop;
+
+        private bool CanFlatten3DInVram(EncodingJobInfo state, EncodingOptions options)
         {
-            return !string.IsNullOrEmpty(GetVideo3DFilter(state.MediaSource?.Video3DFormat))
-                && !IsHwVideo3DFlatteningAvailable(options);
+            var plan = BuildHwPipelinePlan(state, options);
+            return plan.RequiredOps.HasFlag(HwOps.Crop) && plan.CanCropInVram;
         }
 
         private bool IsVideoToolboxFullSupported()
@@ -4638,7 +4736,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var (flatInW, flatInH) = GetVideo3DFlattenedSize(threeDFormat, inW, inH);
             var swpInW = swapWAndH ? flatInH : flatInW;
             var swpInH = swapWAndH ? flatInW : flatInH;
-            var crop3DArgs = GetVideo3DVppQsvCropArgs(threeDFormat, inW, inH);
+            var crop3DArgs = CanFlatten3DInVram(state, options) ? GetVideo3DVppQsvCropArgs(threeDFormat, inW, inH) : null;
 
             /* Make main filters for video stream */
             var mainFilters = new List<string>();
@@ -5003,7 +5101,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 var hwScalePrefix = isQsvDecoder ? "vpp" : "scale";
 
                 // hw 3d to 2d, only vpp_qsv can crop the second view away in vram
-                var crop3DArgs = isQsvDecoder ? GetVideo3DVppQsvCropArgs(threeDFormat, inW, inH) : null;
+                var crop3DArgs = CanFlatten3DInVram(state, options) ? GetVideo3DVppQsvCropArgs(threeDFormat, inW, inH) : null;
                 var hwScaleFilter = GetHwScaleFilter(hwScalePrefix, hwFilterSuffix, outFormat, swapOutputWandH, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, crop3DArgs);
 
                 if (!string.IsNullOrEmpty(hwScaleFilter) && isQsvDecoder && doVppTranspose)
@@ -5495,7 +5593,7 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             // scale_vaapi cannot crop, so a frame packed 3D source has to take the vulkan route and
             // let libplacebo crop the second view away.
-            var crop3DArgs = isVaapiDecoder ? GetVideo3DLibplaceboCropArgs(threeDFormat, inW, inH) : null;
+            var crop3DArgs = CanFlatten3DInVram(state, options) ? GetVideo3DLibplaceboCropArgs(threeDFormat, inW, inH) : null;
             var doVk3DFlatten = !string.IsNullOrEmpty(crop3DArgs);
 
             var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
