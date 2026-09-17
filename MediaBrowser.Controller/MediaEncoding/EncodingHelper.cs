@@ -4105,6 +4105,32 @@ namespace MediaBrowser.Controller.MediaEncoding
         }
 
         /// <summary>
+        /// Whether a job has to take the software chain no matter what the device could do.
+        /// </summary>
+        /// <remarks>
+        /// This is the one place that decides to leave hardware, and the hardware decoders gate their
+        /// surface output on the same answer, so the chain and the decoder can never disagree.
+        /// </remarks>
+        /// <param name="state">The encoding job info.</param>
+        /// <param name="options">The encoding options.</param>
+        /// <param name="isSwDecoder">Whether the job decodes in software.</param>
+        /// <param name="isSwEncoder">Whether the job encodes in software.</param>
+        /// <param name="isDeviceSupported">Whether the device offers the filters this pipeline needs.</param>
+        /// <returns><c>true</c> if the software chain has to be used, <c>false</c> otherwise.</returns>
+        private bool RequiresSwVidFilterChain(
+            EncodingJobInfo state,
+            EncodingOptions options,
+            bool isSwDecoder,
+            bool isSwEncoder,
+            bool isDeviceSupported)
+        {
+            return (isSwDecoder && isSwEncoder)
+                || !isDeviceSupported
+                || !_mediaEncoder.SupportsFilter("alphasrc")
+                || IsSwVideo3DFlatteningRequired(state, options);
+        }
+
+        /// <summary>
         /// Appends the filters that turn the subtitle stream into a frame the hardware overlays can take.
         /// </summary>
         /// <param name="subFilters">The subtitle filter list to append to.</param>
@@ -4477,10 +4503,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var isSwEncoder = !vidEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase);
 
             // legacy cuvid pipeline(copy-back)
-            if ((isSwDecoder && isSwEncoder)
-                || !IsCudaFullSupported()
-                || !_mediaEncoder.SupportsFilter("alphasrc")
-                || IsSwVideo3DFlatteningRequired(state, options))
+            if (RequiresSwVidFilterChain(state, options, isSwDecoder, isSwEncoder, IsCudaFullSupported()))
             {
                 return GetSwVidFilterChain(state, options, vidEncoder);
             }
@@ -4583,14 +4606,10 @@ namespace MediaBrowser.Controller.MediaEncoding
                 memoryOutput = true;
             }
 
-            if (memoryOutput)
+            // text subtitles burn in while the frames are in system memory
+            if (memoryOutput && hasTextSubs)
             {
-                // text subtitles
-                if (hasTextSubs)
-                {
-                    var textSubtitlesFilter = GetTextSubtitlesFilter(state, false, false);
-                    mainFilters.Add(textSubtitlesFilter);
-                }
+                mainFilters.Add(GetTextSubtitlesFilter(state, false, false));
             }
 
             // OUTPUT cuda(yuv420p) surface(vram)
@@ -4647,10 +4666,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var isAmfDx11OclSupported = isWindows && _mediaEncoder.SupportsHwaccel("d3d11va") && IsOpenclFullSupported();
 
             // legacy d3d11va pipeline(copy-back)
-            if ((isSwDecoder && isSwEncoder)
-                || !isAmfDx11OclSupported
-                || !_mediaEncoder.SupportsFilter("alphasrc")
-                || IsSwVideo3DFlatteningRequired(state, options))
+            if (RequiresSwVidFilterChain(state, options, isSwDecoder, isSwEncoder, isAmfDx11OclSupported))
             {
                 return GetSwVidFilterChain(state, options, vidEncoder);
             }
@@ -4761,14 +4777,10 @@ namespace MediaBrowser.Controller.MediaEncoding
                 memoryOutput = true;
             }
 
-            if (memoryOutput)
+            // text subtitles burn in while the frames are in system memory
+            if (memoryOutput && hasTextSubs)
             {
-                // text subtitles
-                if (hasTextSubs)
-                {
-                    var textSubtitlesFilter = GetTextSubtitlesFilter(state, false, false);
-                    mainFilters.Add(textSubtitlesFilter);
-                }
+                mainFilters.Add(GetTextSubtitlesFilter(state, false, false));
             }
 
             if ((isDxInDxOut || isUploadForOclTonemap) && !hasSubs)
@@ -4798,12 +4810,9 @@ namespace MediaBrowser.Controller.MediaEncoding
                     overlayFilters.Add("format=d3d11");
                 }
             }
-            else if (memoryOutput)
+            else if (memoryOutput && hasGraphicalSubs)
             {
-                if (hasGraphicalSubs)
-                {
-                    AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                }
+                AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
             }
 
             return (mainFilters, subFilters, overlayFilters);
@@ -4840,10 +4849,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 && isQsvOclSupported;
 
             // legacy qsv pipeline(copy-back)
-            if ((isSwDecoder && isSwEncoder)
-                || (!isIntelVaapiOclSupported && !isIntelDx11OclSupported)
-                || !_mediaEncoder.SupportsFilter("alphasrc")
-                || IsSwVideo3DFlatteningRequired(state, options))
+            if (RequiresSwVidFilterChain(state, options, isSwDecoder, isSwEncoder, isIntelVaapiOclSupported || isIntelDx11OclSupported))
             {
                 return GetSwVidFilterChain(state, options, vidEncoder);
             }
@@ -5056,14 +5062,10 @@ namespace MediaBrowser.Controller.MediaEncoding
                 memoryOutput = true;
             }
 
-            if (memoryOutput)
+            // text subtitles burn in while the frames are in system memory
+            if (memoryOutput && hasTextSubs)
             {
-                // text subtitles
-                if (hasTextSubs)
-                {
-                    var textSubtitlesFilter = GetTextSubtitlesFilter(state, false, false);
-                    mainFilters.Add(textSubtitlesFilter);
-                }
+                mainFilters.Add(GetTextSubtitlesFilter(state, false, false));
             }
 
             if (isQsvInQsvOut && doOclTonemap)
@@ -5092,12 +5094,9 @@ namespace MediaBrowser.Controller.MediaEncoding
                     overlayFilters.Add("overlay_qsv=eof_action=pass:repeatlast=0" + overlaySize);
                 }
             }
-            else if (memoryOutput)
+            else if (memoryOutput && hasGraphicalSubs)
             {
-                if (hasGraphicalSubs)
-                {
-                    AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                }
+                AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
             }
 
             return (mainFilters, subFilters, overlayFilters);
@@ -5259,14 +5258,10 @@ namespace MediaBrowser.Controller.MediaEncoding
                 memoryOutput = true;
             }
 
-            if (memoryOutput)
+            // text subtitles burn in while the frames are in system memory
+            if (memoryOutput && hasTextSubs)
             {
-                // text subtitles
-                if (hasTextSubs)
-                {
-                    var textSubtitlesFilter = GetTextSubtitlesFilter(state, false, false);
-                    mainFilters.Add(textSubtitlesFilter);
-                }
+                mainFilters.Add(GetTextSubtitlesFilter(state, false, false));
             }
 
             if (isQsvInQsvOut)
@@ -5303,12 +5298,9 @@ namespace MediaBrowser.Controller.MediaEncoding
                     overlayFilters.Add("overlay_qsv=eof_action=pass:repeatlast=0" + overlaySize);
                 }
             }
-            else if (memoryOutput)
+            else if (memoryOutput && hasGraphicalSubs)
             {
-                if (hasGraphicalSubs)
-                {
-                    AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                }
+                AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
             }
 
             return (mainFilters, subFilters, overlayFilters);
@@ -5340,10 +5332,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var isVaapiVkSupported = isVaapiFullSupported && IsVulkanFullSupported();
 
             // legacy vaapi pipeline(copy-back)
-            if ((isSwDecoder && isSwEncoder)
-                || !isVaapiOclSupported
-                || !_mediaEncoder.SupportsFilter("alphasrc")
-                || IsSwVideo3DFlatteningRequired(state, options))
+            if (RequiresSwVidFilterChain(state, options, isSwDecoder, isSwEncoder, isVaapiOclSupported))
             {
                 var swFilterChain = GetSwVidFilterChain(state, options, vidEncoder);
 
@@ -5516,14 +5505,10 @@ namespace MediaBrowser.Controller.MediaEncoding
                 memoryOutput = true;
             }
 
-            if (memoryOutput)
+            // text subtitles burn in while the frames are in system memory
+            if (memoryOutput && hasTextSubs)
             {
-                // text subtitles
-                if (hasTextSubs)
-                {
-                    var textSubtitlesFilter = GetTextSubtitlesFilter(state, false, false);
-                    mainFilters.Add(textSubtitlesFilter);
-                }
+                mainFilters.Add(GetTextSubtitlesFilter(state, false, false));
             }
 
             if (memoryOutput && isVaapiEncoder)
@@ -5931,14 +5916,10 @@ namespace MediaBrowser.Controller.MediaEncoding
                 memoryOutput = true;
             }
 
-            if (memoryOutput)
+            // text subtitles burn in while the frames are in system memory
+            if (memoryOutput && hasTextSubs)
             {
-                // text subtitles
-                if (hasTextSubs)
-                {
-                    var textSubtitlesFilter = GetTextSubtitlesFilter(state, false, false);
-                    mainFilters.Add(textSubtitlesFilter);
-                }
+                mainFilters.Add(GetTextSubtitlesFilter(state, false, false));
             }
 
             if (isHwUnmapForTextSubs)
@@ -5998,10 +5979,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var isVtFullSupported = isMacOS && IsVideoToolboxFullSupported();
 
             // legacy videotoolbox pipeline (disable hw filters)
-            if (!(isVtEncoder || isVtDecoder)
-                || !isVtFullSupported
-                || !_mediaEncoder.SupportsFilter("alphasrc")
-                || IsSwVideo3DFlatteningRequired(state, options))
+            if (RequiresSwVidFilterChain(state, options, !isVtDecoder, !isVtEncoder, isVtFullSupported))
             {
                 return GetSwVidFilterChain(state, options, vidEncoder);
             }
@@ -6161,10 +6139,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var isSwEncoder = !vidEncoder.Contains("rkmpp", StringComparison.OrdinalIgnoreCase);
             var isRkmppOclSupported = isLinux && IsRkmppFullSupported() && IsOpenclFullSupported();
 
-            if ((isSwDecoder && isSwEncoder)
-                || !isRkmppOclSupported
-                || !_mediaEncoder.SupportsFilter("alphasrc")
-                || IsSwVideo3DFlatteningRequired(state, options))
+            if (RequiresSwVidFilterChain(state, options, isSwDecoder, isSwEncoder, isRkmppOclSupported))
             {
                 return GetSwVidFilterChain(state, options, vidEncoder);
             }
@@ -6324,14 +6299,10 @@ namespace MediaBrowser.Controller.MediaEncoding
                 memoryOutput = true;
             }
 
-            if (memoryOutput)
+            // text subtitles burn in while the frames are in system memory
+            if (memoryOutput && hasTextSubs)
             {
-                // text subtitles
-                if (hasTextSubs)
-                {
-                    var textSubtitlesFilter = GetTextSubtitlesFilter(state, false, false);
-                    mainFilters.Add(textSubtitlesFilter);
-                }
+                mainFilters.Add(GetTextSubtitlesFilter(state, false, false));
             }
 
             if (isDrmInDrmOut)
@@ -6374,12 +6345,9 @@ namespace MediaBrowser.Controller.MediaEncoding
                     overlayFilters.Add(hwOverlayFilter);
                 }
             }
-            else if (memoryOutput)
+            else if (memoryOutput && hasGraphicalSubs)
             {
-                if (hasGraphicalSubs)
-                {
-                    AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                }
+                AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
             }
 
             return (mainFilters, subFilters, overlayFilters);
