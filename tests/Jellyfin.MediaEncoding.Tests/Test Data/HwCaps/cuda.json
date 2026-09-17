@@ -1,0 +1,522 @@
+{
+    "hwaccel_devices": [
+        {
+            "device_index_cuda": 0,
+            "device_info_cuda": {
+                "device_name": "NVIDIA T600",
+                "device_driver_version": "595.91.07",
+                "device_nvml_version": "13.595.91.07",
+                "device_cuda_version": 13020,
+                "device_uuid": "841fce44-fd4b-6fb1-70cc-742782273be0",
+                "device_memory": 3896180736,
+                "device_clock_rate": 1335000,
+                "device_texture_alignment": 512,
+                "device_multiprocessor_count": 10,
+                "device_integrated": 0,
+                "device_can_map_host_memory": 1,
+                "device_compute_mode": 0,
+                "device_concurrent_kernels": 1,
+                "device_pci_bus_id": 9,
+                "device_pci_device_id": 0,
+                "device_tcc_driver": 0,
+                "device_memory_clock_rate": 5001000,
+                "device_global_memory_bus_width": 128,
+                "device_async_engine_count": 3,
+                "device_unified_addressing": 1,
+                "device_pci_domain_id": 0,
+                "device_texture_pitch_alignment": 32,
+                "device_compute_capability_major": 7,
+                "device_compute_capability_minor": 5,
+                "device_managed_memory": 1,
+                "device_multi_gpu_board": 0,
+                "device_multi_gpu_board_group_id": 0
+            },
+            "device_util_cuda": {
+                "device_name": "NVIDIA T600",
+                "device_uuid": "GPU-841fce44-fd4b-6fb1-70cc-742782273be0",
+                "device_memory_total": 4294967296,
+                "device_memory_used": 448987136,
+                "device_memory_free": 3845980160,
+                "device_gpu_utilization": 0,
+                "device_memory_utilization": 0,
+                "device_decoder_utilization": 0,
+                "device_encoder_utilization": 0,
+                "device_encoder_sessions": 0,
+                "device_encoder_avg_fps": 0,
+                "device_encoder_avg_latency": 0,
+                "device_pcie_tx_throughput": 439,
+                "device_pcie_rx_throughput": 292
+            },
+            "device_decoders_cuda": [
+                {
+                    "codec_name": "mpeg1video",
+                    "codec_id": 1,
+                    "codec_desc": "NVDEC/CUVID MPEG-1 Decoder",
+                    "min_width": 48,
+                    "min_height": 16,
+                    "max_width": 4080,
+                    "max_height": 4080,
+                    "max_mb_count": 65280,
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23
+                        }
+                    ]
+                },
+                {
+                    "codec_name": "mpeg2video",
+                    "codec_id": 2,
+                    "codec_desc": "NVDEC/CUVID MPEG-2 Decoder",
+                    "min_width": 48,
+                    "min_height": 16,
+                    "max_width": 4080,
+                    "max_height": 4080,
+                    "max_mb_count": 65280,
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23
+                        }
+                    ]
+                },
+                {
+                    "codec_name": "mpeg4",
+                    "codec_id": 12,
+                    "codec_desc": "NVDEC/CUVID MPEG-4 Decoder",
+                    "min_width": 48,
+                    "min_height": 16,
+                    "max_width": 2048,
+                    "max_height": 2048,
+                    "max_mb_count": 8192,
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23
+                        }
+                    ]
+                },
+                {
+                    "codec_name": "vc1",
+                    "codec_id": 70,
+                    "codec_desc": "NVDEC/CUVID VC-1 Decoder",
+                    "min_width": 48,
+                    "min_height": 16,
+                    "max_width": 2048,
+                    "max_height": 2048,
+                    "max_mb_count": 8192,
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23
+                        }
+                    ]
+                },
+                {
+                    "codec_name": "h264",
+                    "codec_id": 27,
+                    "codec_desc": "NVDEC/CUVID H.264 Decoder",
+                    "min_width": 48,
+                    "min_height": 16,
+                    "max_width": 4096,
+                    "max_height": 4096,
+                    "max_mb_count": 65536,
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23
+                        }
+                    ]
+                },
+                {
+                    "codec_name": "mjpeg",
+                    "codec_id": 7,
+                    "codec_desc": "NVDEC/CUVID MJPEG Decoder",
+                    "min_width": 64,
+                    "min_height": 64,
+                    "max_width": 32768,
+                    "max_height": 16384,
+                    "max_mb_count": 67108864,
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23
+                        }
+                    ]
+                },
+                {
+                    "codec_name": "hevc",
+                    "codec_id": 173,
+                    "codec_desc": "NVDEC/CUVID HEVC Decoder",
+                    "min_width": 144,
+                    "min_height": 144,
+                    "max_width": 8192,
+                    "max_height": 8192,
+                    "max_mb_count": 262144,
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23
+                        },
+                        {
+                            "format_name": "yuv444p",
+                            "format_id": 5
+                        },
+                        {
+                            "format_name": "p010le",
+                            "format_id": 158
+                        },
+                        {
+                            "format_name": "p016le",
+                            "format_id": 169
+                        },
+                        {
+                            "format_name": "yuv444p16le",
+                            "format_id": 49
+                        }
+                    ]
+                },
+                {
+                    "codec_name": "vp8",
+                    "codec_id": 139,
+                    "codec_desc": "NVDEC/CUVID VP8 Decoder",
+                    "min_width": 48,
+                    "min_height": 16,
+                    "max_width": 4096,
+                    "max_height": 4096,
+                    "max_mb_count": 65536,
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23
+                        }
+                    ]
+                },
+                {
+                    "codec_name": "vp9",
+                    "codec_id": 167,
+                    "codec_desc": "NVDEC/CUVID VP9 Decoder",
+                    "min_width": 128,
+                    "min_height": 128,
+                    "max_width": 8192,
+                    "max_height": 8192,
+                    "max_mb_count": 262144,
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23
+                        },
+                        {
+                            "format_name": "p010le",
+                            "format_id": 158
+                        },
+                        {
+                            "format_name": "p016le",
+                            "format_id": 169
+                        }
+                    ]
+                }
+            ],
+            "device_encoders_cuda": [
+                {
+                    "codec_name": "h264",
+                    "codec_id": 27,
+                    "codec_desc": "NVENC H.264 Encoder",
+                    "max_b_frames": 4,
+                    "rate_control_modes_mask": 3,
+                    "support_field_encoding": 1,
+                    "support_monochrome": 0,
+                    "support_fmo": 0,
+                    "support_qp_motion_estimation": 1,
+                    "support_bi_direct": 1,
+                    "support_cabac": 1,
+                    "support_adaptive_transform": 1,
+                    "support_stereo_mvc": 1,
+                    "support_max_temporal_layers": 4,
+                    "support_hierarchical_p_frames": 1,
+                    "support_hierarchical_b_frames": 1,
+                    "max_level": 62,
+                    "min_level": 10,
+                    "support_separate_colour_plane": 1,
+                    "max_width": 4096,
+                    "max_height": 4096,
+                    "support_temporal_svc": 1,
+                    "support_dyn_res_change": 1,
+                    "support_dyn_bitrate_change": 1,
+                    "support_dyn_force_const_qp": 1,
+                    "support_dyn_rc_mode_change": 0,
+                    "support_sub_frame_readback": 1,
+                    "support_constrained_encoding": 1,
+                    "support_intra_refresh": 1,
+                    "support_custom_vbv_buf_size": 1,
+                    "support_dyn_slice_mode": 1,
+                    "support_ref_pic_invalidation": 1,
+                    "pre_proc_mask": 0,
+                    "support_async_encode": 0,
+                    "max_mb_per_frame": 65536,
+                    "max_mb_per_sec": 983040,
+                    "support_yuv444_encode": 1,
+                    "support_lossless_encode": 1,
+                    "support_sao": 0,
+                    "support_me_only_mode": 1,
+                    "support_lookahead": 1,
+                    "support_intra_temporal_aq": 1,
+                    "support_10bit_encode": 0,
+                    "max_ltr_frames": 8,
+                    "support_weight_prediction": 1,
+                    "support_dyn_query_encoder_capacity": 100,
+                    "support_bframe_ref_mode": 3,
+                    "support_emphasis_level_map": 1,
+                    "min_width": 33,
+                    "min_height": 17,
+                    "support_multi_ref_frames": 0,
+                    "support_alpha_layer_encoding": 0,
+                    "encoder_engines": 1,
+                    "support_single_slice_intra_refresh": 1,
+                    "profiles": [
+                        {
+                            "profile_name": "Baseline",
+                            "profile_id": 66
+                        },
+                        {
+                            "profile_name": "Main",
+                            "profile_id": 77
+                        },
+                        {
+                            "profile_name": "High",
+                            "profile_id": 100
+                        },
+                        {
+                            "profile_name": "High 4:4:4 Predictive",
+                            "profile_id": 244
+                        }
+                    ],
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23
+                        },
+                        {
+                            "format_name": "yuv420p",
+                            "format_id": 0
+                        },
+                        {
+                            "format_name": "yuv444p",
+                            "format_id": 5
+                        },
+                        {
+                            "format_name": "bgra",
+                            "format_id": 28
+                        },
+                        {
+                            "format_name": "bgr0",
+                            "format_id": 121
+                        },
+                        {
+                            "format_name": "rgba",
+                            "format_id": 26
+                        },
+                        {
+                            "format_name": "rgb0",
+                            "format_id": 119
+                        },
+                        {
+                            "format_name": "gbrp",
+                            "format_id": 71
+                        },
+                        {
+                            "format_name": "x2rgb10le",
+                            "format_id": 193
+                        },
+                        {
+                            "format_name": "x2bgr10le",
+                            "format_id": 195
+                        }
+                    ],
+                    "presets": [
+                        {
+                            "preset_name": "p1"
+                        },
+                        {
+                            "preset_name": "p2"
+                        },
+                        {
+                            "preset_name": "p3"
+                        },
+                        {
+                            "preset_name": "p4"
+                        },
+                        {
+                            "preset_name": "p5"
+                        },
+                        {
+                            "preset_name": "p6"
+                        },
+                        {
+                            "preset_name": "p7"
+                        }
+                    ]
+                },
+                {
+                    "codec_name": "hevc",
+                    "codec_id": 173,
+                    "codec_desc": "NVENC HEVC Encoder",
+                    "max_b_frames": 0,
+                    "rate_control_modes_mask": 3,
+                    "support_field_encoding": 0,
+                    "support_monochrome": 0,
+                    "support_fmo": 0,
+                    "support_qp_motion_estimation": 1,
+                    "support_bi_direct": 0,
+                    "support_cabac": 1,
+                    "support_adaptive_transform": 0,
+                    "support_stereo_mvc": 0,
+                    "support_max_temporal_layers": 4,
+                    "support_hierarchical_p_frames": 0,
+                    "support_hierarchical_b_frames": 0,
+                    "max_level": 186,
+                    "min_level": 30,
+                    "support_separate_colour_plane": 0,
+                    "max_width": 8192,
+                    "max_height": 8192,
+                    "support_temporal_svc": 1,
+                    "support_dyn_res_change": 1,
+                    "support_dyn_bitrate_change": 1,
+                    "support_dyn_force_const_qp": 1,
+                    "support_dyn_rc_mode_change": 0,
+                    "support_sub_frame_readback": 1,
+                    "support_constrained_encoding": 1,
+                    "support_intra_refresh": 1,
+                    "support_custom_vbv_buf_size": 1,
+                    "support_dyn_slice_mode": 1,
+                    "support_ref_pic_invalidation": 1,
+                    "pre_proc_mask": 0,
+                    "support_async_encode": 0,
+                    "max_mb_per_frame": 262144,
+                    "max_mb_per_sec": 983040,
+                    "support_yuv444_encode": 1,
+                    "support_lossless_encode": 1,
+                    "support_sao": 1,
+                    "support_me_only_mode": 1,
+                    "support_lookahead": 1,
+                    "support_intra_temporal_aq": 0,
+                    "support_10bit_encode": 1,
+                    "max_ltr_frames": 7,
+                    "support_weight_prediction": 1,
+                    "support_dyn_query_encoder_capacity": 100,
+                    "support_bframe_ref_mode": 0,
+                    "support_emphasis_level_map": 0,
+                    "min_width": 65,
+                    "min_height": 33,
+                    "support_multi_ref_frames": 0,
+                    "support_alpha_layer_encoding": 0,
+                    "encoder_engines": 1,
+                    "support_single_slice_intra_refresh": 1,
+                    "profiles": [
+                        {
+                            "profile_name": "Main",
+                            "profile_id": 1
+                        },
+                        {
+                            "profile_name": "Main 10",
+                            "profile_id": 2
+                        },
+                        {
+                            "profile_name": "Rext",
+                            "profile_id": 4
+                        }
+                    ],
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23
+                        },
+                        {
+                            "format_name": "yuv420p",
+                            "format_id": 0
+                        },
+                        {
+                            "format_name": "yuv444p",
+                            "format_id": 5
+                        },
+                        {
+                            "format_name": "bgra",
+                            "format_id": 28
+                        },
+                        {
+                            "format_name": "bgr0",
+                            "format_id": 121
+                        },
+                        {
+                            "format_name": "rgba",
+                            "format_id": 26
+                        },
+                        {
+                            "format_name": "rgb0",
+                            "format_id": 119
+                        },
+                        {
+                            "format_name": "gbrp",
+                            "format_id": 71
+                        },
+                        {
+                            "format_name": "p010le",
+                            "format_id": 158
+                        },
+                        {
+                            "format_name": "p016le",
+                            "format_id": 169
+                        },
+                        {
+                            "format_name": "yuv444p10msble",
+                            "format_id": 259
+                        },
+                        {
+                            "format_name": "yuv444p16le",
+                            "format_id": 49
+                        },
+                        {
+                            "format_name": "x2rgb10le",
+                            "format_id": 193
+                        },
+                        {
+                            "format_name": "x2bgr10le",
+                            "format_id": 195
+                        },
+                        {
+                            "format_name": "gbrp10msble",
+                            "format_id": 263
+                        },
+                        {
+                            "format_name": "gbrp16le",
+                            "format_id": 77
+                        }
+                    ],
+                    "presets": [
+                        {
+                            "preset_name": "p1"
+                        },
+                        {
+                            "preset_name": "p2"
+                        },
+                        {
+                            "preset_name": "p3"
+                        },
+                        {
+                            "preset_name": "p4"
+                        },
+                        {
+                            "preset_name": "p5"
+                        },
+                        {
+                            "preset_name": "p6"
+                        },
+                        {
+                            "preset_name": "p7"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

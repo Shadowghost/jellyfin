@@ -1,0 +1,140 @@
+{
+    "hwaccel_devices": [
+        {
+            "device_path_drm": "/dev/dri/renderD128",
+            "device_info_vaapi": {
+                "device_name": "Mesa Gallium driver 25.0.0 for AMD Radeon Graphics",
+                "device_driver_name": "radeonsi",
+                "device_driver_version": "1.22",
+                "device_vendor_id": 4098
+            },
+            "device_decoders_vaapi": [
+                {
+                    "codec_name": "h264",
+                    "codec_id": 27,
+                    "codec_desc": "VAAPI H.264 Decoder",
+                    "min_width": 64,
+                    "min_height": 64,
+                    "max_width": 4096,
+                    "max_height": 4096,
+                    "profiles": [
+                        {
+                            "profile_name": "Main",
+                            "profile_id": 77
+                        },
+                        {
+                            "profile_name": "High",
+                            "profile_id": 100
+                        }
+                    ],
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23,
+                            "format_fourcc": "NV12"
+                        }
+                    ]
+                },
+                {
+                    "codec_name": "hevc",
+                    "codec_id": 173,
+                    "codec_desc": "VAAPI HEVC Decoder",
+                    "min_width": 64,
+                    "min_height": 64,
+                    "max_width": 8192,
+                    "max_height": 4352,
+                    "profiles": [
+                        {
+                            "profile_name": "Main",
+                            "profile_id": 1
+                        },
+                        {
+                            "profile_name": "Main 10",
+                            "profile_id": 2
+                        }
+                    ],
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23,
+                            "format_fourcc": "NV12"
+                        },
+                        {
+                            "format_name": "p010le",
+                            "format_id": 161,
+                            "format_fourcc": "P010"
+                        }
+                    ]
+                }
+            ],
+            "device_encoders_vaapi": [
+                {
+                    "codec_name": "h264",
+                    "codec_id": 27,
+                    "codec_desc": "VAAPI H.264 Encoder",
+                    "min_width": 128,
+                    "min_height": 128,
+                    "max_width": 4096,
+                    "max_height": 4096,
+                    "profiles": [
+                        {
+                            "profile_name": "High",
+                            "profile_id": 100
+                        }
+                    ],
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23,
+                            "format_fourcc": "NV12"
+                        }
+                    ]
+                }
+            ],
+            "device_filters_vaapi": [
+                {
+                    "filter_name": "scale",
+                    "filter_desc": "VAAPI VPP Scale Filter",
+                    "min_width": 32,
+                    "min_height": 32,
+                    "max_width": 4096,
+                    "max_height": 4096,
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23,
+                            "format_fourcc": "NV12"
+                        }
+                    ]
+                },
+                {
+                    "filter_name": "deinterlace",
+                    "filter_desc": "VAAPI VPP Deinterlace Filter",
+                    "deint_mode_bob": 1,
+                    "deint_mode_weave": 0,
+                    "deint_mode_motion_adaptive": 1,
+                    "deint_mode_motion_compensated": 0,
+                    "pix_fmts": [
+                        {
+                            "format_name": "nv12",
+                            "format_id": 23,
+                            "format_fourcc": "NV12"
+                        }
+                    ]
+                },
+                {
+                    "filter_name": "procamp",
+                    "filter_desc": "VAAPI VPP Procamp Filter",
+                    "procamp_mode_hue": 1,
+                    "procamp_mode_saturation": 1,
+                    "procamp_mode_brightness": 1,
+                    "procamp_mode_contrast": 1
+                },
+                {
+                    "filter_name": "overlay",
+                    "filter_desc": "VAAPI VPP Overlay Filter"
+                }
+            ]
+        }
+    ]
+}
