@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using MediaBrowser.Model.Configuration;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.MediaEncoding.Hardware;
@@ -16,6 +17,11 @@ public interface IHardwareCapabilitiesProvider
     /// While this is <c>false</c> every query returns <c>true</c> so callers keep their static behaviour.
     /// </remarks>
     bool IsPopulated { get; }
+
+    /// <summary>
+    /// Gets the task tracking capability detection that is still running in the background.
+    /// </summary>
+    Task DetectionTask { get; }
 
     /// <summary>
     /// Collects the capabilities of the configured hardware acceleration type.

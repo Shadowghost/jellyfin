@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Extensions.Json;
 using MediaBrowser.Common.Configuration;
@@ -34,6 +35,7 @@ public class HardwareCapabilitiesProvider : IHardwareCapabilitiesProvider
     private readonly ConcurrentDictionary<string, byte> _knownBadDecodes = new(StringComparer.Ordinal);
 
     private volatile bool _isPopulated;
+    private CancellationTokenSource? _detectionCancellation;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="HardwareCapabilitiesProvider"/> class.
@@ -48,6 +50,9 @@ public class HardwareCapabilitiesProvider : IHardwareCapabilitiesProvider
 
     /// <inheritdoc />
     public bool IsPopulated => _isPopulated;
+
+    /// <inheritdoc />
+    public Task DetectionTask { get; private set; } = Task.CompletedTask;
 
     /// <inheritdoc />
     public void Refresh(string ffmpegPath, string ffprobePath, string encoderVersion, bool canReportHwCaps, EncodingOptions options)
@@ -70,6 +75,7 @@ public class HardwareCapabilitiesProvider : IHardwareCapabilitiesProvider
 
         var deviceKey = GetDeviceKey(options);
         var useReport = canReportHwCaps && options.HardwareCapabilityDetection == HardwareCapabilityDetectionMode.Auto;
+        var probed = false;
 
         foreach (var probeType in probeTypes)
         {
@@ -81,12 +87,54 @@ public class HardwareCapabilitiesProvider : IHardwareCapabilitiesProvider
                 continue;
             }
 
+            probed = true;
             _capabilities[probeType] = caps;
             Save(probeType, encoderVersion, deviceKey, caps);
             LogSummary(probeType, caps);
         }
 
         _isPopulated = !_capabilities.IsEmpty;
+
+        if (!probed && !useReport)
+        {
+            StartFallbackProbe(ffmpegPath, probeTypes[0], encoderVersion, deviceKey, options);
+        }
+    }
+
+    private void StartFallbackProbe(string ffmpegPath, string probeType, string encoderVersion, string deviceKey, EncodingOptions options)
+    {
+        // Running ffmpeg for every preset is far too slow to hold up startup, so it happens in the background.
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _detectionCancellation, cancellation);
+        if (previous is not null)
+        {
+            previous.Cancel();
+            previous.Dispose();
+        }
+
+        DetectionTask = Task.Run(
+            () =>
+            {
+                var prober = new HardwareCapabilitiesFallbackProber(_logger, ffmpegPath);
+                var caps = prober.Probe(options, encoderVersion, cancellation.Token);
+                if (caps is null)
+                {
+                    return;
+                }
+
+                _capabilities[probeType] = caps;
+                Save(probeType, encoderVersion, deviceKey, caps);
+                _isPopulated = true;
+            },
+            cancellation.Token).ContinueWith(
+            _ =>
+            {
+                if (Interlocked.CompareExchange(ref _detectionCancellation, null, cancellation) == cancellation)
+                {
+                    cancellation.Dispose();
+                }
+            },
+            TaskScheduler.Default);
     }
 
     /// <inheritdoc />
