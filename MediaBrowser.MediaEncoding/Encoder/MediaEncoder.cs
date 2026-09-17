@@ -104,6 +104,8 @@ namespace MediaBrowser.MediaEncoding.Encoder
             "VK_EXT_external_memory_host"
         };
 
+        private readonly IHardwareCapabilitiesProvider _hardwareCapabilities;
+
         private Version _ffmpegVersion = null;
         private string _ffmpegPath = string.Empty;
         private string _ffprobePath;
@@ -116,9 +118,11 @@ namespace MediaBrowser.MediaEncoding.Encoder
             IBlurayExaminer blurayExaminer,
             ILocalizationManager localization,
             IConfiguration config,
-            IServerConfigurationManager serverConfig)
+            IServerConfigurationManager serverConfig,
+            IHardwareCapabilitiesProvider hardwareCapabilities)
         {
             _logger = logger;
+            _hardwareCapabilities = hardwareCapabilities;
             _configurationManager = configurationManager;
             _fileSystem = fileSystem;
             _blurayExaminer = blurayExaminer;
@@ -138,6 +142,8 @@ namespace MediaBrowser.MediaEncoding.Encoder
             }
 
             _thumbnailResourcePool = new(semaphoreCount);
+
+            _configurationManager.NamedConfigurationUpdated += OnNamedConfigurationUpdated;
         }
 
         /// <inheritdoc />
@@ -283,10 +289,31 @@ namespace MediaBrowser.MediaEncoding.Encoder
                 {
                     _isVideoToolboxAv1DecodeAvailable = validator.CheckIsVideoToolboxAv1DecodeAvailable();
                 }
+
+                _hardwareCapabilities.Refresh(
+                    _ffmpegPath,
+                    _ffprobePath,
+                    _ffmpegVersion?.ToString() ?? string.Empty,
+                    _proberSupportsHwCaps,
+                    options);
             }
 
             _logger.LogInformation("FFmpeg: {FfmpegPath}", _ffmpegPath ?? string.Empty);
             return !string.IsNullOrWhiteSpace(ffmpegPath);
+        }
+
+        private void OnNamedConfigurationUpdated(object sender, ConfigurationUpdateEventArgs e)
+        {
+            // The selected device and acceleration type decide what is probed, so the report has to be rebuilt.
+            if (string.Equals(e.Key, "encoding", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(_ffprobePath))
+            {
+                _hardwareCapabilities.Refresh(
+                    _ffmpegPath,
+                    _ffprobePath,
+                    _ffmpegVersion?.ToString() ?? string.Empty,
+                    _proberSupportsHwCaps,
+                    _configurationManager.GetEncodingOptions());
+            }
         }
 
         /// <summary>
@@ -1246,6 +1273,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
         {
             if (dispose)
             {
+                _configurationManager.NamedConfigurationUpdated -= OnNamedConfigurationUpdated;
                 StopProcesses();
                 _thumbnailResourcePool.Dispose();
             }
