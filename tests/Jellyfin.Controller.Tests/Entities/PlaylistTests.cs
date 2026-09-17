@@ -15,6 +15,8 @@ using Xunit;
 
 namespace Jellyfin.Controller.Tests.Entities;
 
+// Shares the BaseItem statics with the other entity tests, so it must not run beside them.
+[Collection("LibraryManagerTests")]
 public class PlaylistTests
 {
     [Fact]

@@ -40,15 +40,26 @@ public class BaseItemTests
         var previousLibrary = BaseItem.LibraryManager;
         var previousRepository = BaseItem.ItemRepository;
         var previousLogger = BaseItem.Logger;
+        var previousConfigManager = BaseItem.ConfigurationManager;
+        var previousMediaSourceManager = BaseItem.MediaSourceManager;
         var library = new Mock<ILibraryManager>(MockBehavior.Strict);
         var repository = new Mock<MediaBrowser.Controller.Persistence.IItemRepository>(MockBehavior.Strict);
         var directory = new Mock<IDirectoryService>();
         directory.Setup(d => d.IsAccessible(It.IsAny<string>())).Returns(true);
+        var configManager = new Mock<IServerConfigurationManager>();
+        configManager.Setup(x => x.Configuration).Returns(new ServerConfiguration());
+        var mediaSourceManager = new Mock<IMediaSourceManager>();
+        mediaSourceManager.Setup(x => x.GetPathProtocol(It.IsAny<string>())).Returns(MediaProtocol.File);
         try
         {
             BaseItem.LibraryManager = library.Object;
             BaseItem.ItemRepository = repository.Object;
             BaseItem.Logger = Microsoft.Extensions.Logging.Abstractions.NullLogger<BaseItem>.Instance;
+
+            // Set every static this path reads, so the test does not depend on what ran before it.
+            BaseItem.ConfigurationManager = configManager.Object;
+            BaseItem.MediaSourceManager = mediaSourceManager.Object;
+            SetupPassThroughFileSystem();
             var folder = new FailingEnumerationFolder(failAfterFirstChild, accessDenied)
             {
                 Id = Guid.NewGuid(),
@@ -64,6 +75,8 @@ public class BaseItemTests
             BaseItem.LibraryManager = previousLibrary;
             BaseItem.ItemRepository = previousRepository;
             BaseItem.Logger = previousLogger;
+            BaseItem.ConfigurationManager = previousConfigManager;
+            BaseItem.MediaSourceManager = previousMediaSourceManager;
         }
     }
 
