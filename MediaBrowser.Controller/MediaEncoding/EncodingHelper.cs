@@ -2698,7 +2698,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var requestedRotations = state.GetRequestedRotations(videoStream.Codec);
             if (requestedRotations.Length > 0)
             {
-                var rotation = state.VideoStream?.Rotation ?? 0;
+                var (rotation, _) = GetChainRotation(state);
                 if (rotation != 0
                     && !requestedRotations.Contains(rotation.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal))
                 {
@@ -3559,6 +3559,35 @@ namespace MediaBrowser.Controller.MediaEncoding
             return string.Empty;
         }
 
+        /// <summary>
+        /// Gets the filters that fit a graphical subtitle to the frame the chain will produce.
+        /// </summary>
+        /// <param name="state">The encoding job info, which carries the subtitle size.</param>
+        /// <param name="videoWidth">The frame width the chain produces.</param>
+        /// <param name="videoHeight">The frame height the chain produces.</param>
+        /// <param name="requestedWidth">The requested width.</param>
+        /// <param name="requestedHeight">The requested height.</param>
+        /// <param name="requestedMaxWidth">The requested maximum width.</param>
+        /// <param name="requestedMaxHeight">The requested maximum height.</param>
+        /// <returns>The subtitle pre-processing filters.</returns>
+        public static string GetGraphicalSubPreProcessFilters(
+            EncodingJobInfo state,
+            int? videoWidth,
+            int? videoHeight,
+            int? requestedWidth,
+            int? requestedHeight,
+            int? requestedMaxWidth,
+            int? requestedMaxHeight)
+            => GetGraphicalSubPreProcessFilters(
+                videoWidth,
+                videoHeight,
+                state.SubtitleStream?.Width,
+                state.SubtitleStream?.Height,
+                requestedWidth,
+                requestedHeight,
+                requestedMaxWidth,
+                requestedMaxHeight);
+
         public static string GetGraphicalSubPreProcessFilters(
             int? videoWidth,
             int? videoHeight,
@@ -4076,6 +4105,52 @@ namespace MediaBrowser.Controller.MediaEncoding
         }
 
         /// <summary>
+        /// Gets the frame geometry every filter chain builder works from.
+        /// </summary>
+        /// <param name="state">The encoding job info.</param>
+        /// <returns>The source size, the requested size and the 3D format.</returns>
+        private static (int? InWidth, int? InHeight, int? ReqWidth, int? ReqHeight, int? ReqMaxWidth, int? ReqMaxHeight, Video3DFormat? ThreeDFormat)
+            GetChainGeometry(EncodingJobInfo state)
+            => (state.VideoStream?.Width,
+                state.VideoStream?.Height,
+                state.BaseRequest.Width,
+                state.BaseRequest.Height,
+                state.BaseRequest.MaxWidth,
+                state.BaseRequest.MaxHeight,
+                state.MediaSource?.Video3DFormat);
+
+        /// <summary>
+        /// Gets what every filter chain builder needs to know about the subtitle stream.
+        /// </summary>
+        /// <param name="state">The encoding job info.</param>
+        /// <returns>The subtitle kind.</returns>
+        private static (bool HasSubs, bool HasTextSubs, bool HasGraphicalSubs, bool HasAssSubs)
+            GetChainSubtitles(EncodingJobInfo state)
+        {
+            var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
+            var hasTextSubs = hasSubs && state.SubtitleStream.IsTextSubtitleStream;
+
+            return (hasSubs,
+                hasTextSubs,
+                hasSubs && !state.SubtitleStream.IsTextSubtitleStream,
+                hasSubs
+                    && (string.Equals(state.SubtitleStream.Codec, "ass", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(state.SubtitleStream.Codec, "ssa", StringComparison.OrdinalIgnoreCase)));
+        }
+
+        /// <summary>
+        /// Gets the rotation every filter chain builder has to undo.
+        /// </summary>
+        /// <param name="state">The encoding job info.</param>
+        /// <returns>The rotation and the transpose direction it maps to.</returns>
+        private (int Rotation, string TransposeDirection) GetChainRotation(EncodingJobInfo state)
+        {
+            var rotation = state.VideoStream?.Rotation ?? 0;
+
+            return (rotation, rotation == 0 ? string.Empty : GetVideoTransposeDirection(state));
+        }
+
+        /// <summary>
         /// Gets the parameter of software filter chain.
         /// </summary>
         /// <param name="state">Encoding state.</param>
@@ -4087,13 +4162,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             EncodingOptions options,
             string vidEncoder)
         {
-            var inW = state.VideoStream?.Width;
-            var inH = state.VideoStream?.Height;
-            var reqW = state.BaseRequest.Width;
-            var reqH = state.BaseRequest.Height;
-            var reqMaxW = state.BaseRequest.MaxWidth;
-            var reqMaxH = state.BaseRequest.MaxHeight;
-            var threeDFormat = state.MediaSource.Video3DFormat;
+            var (inW, inH, reqW, reqH, reqMaxW, reqMaxH, threeDFormat) = GetChainGeometry(state);
 
             var vidDecoder = GetHardwareVideoDecoder(state, options) ?? string.Empty;
             var isSwDecoder = string.IsNullOrEmpty(vidDecoder);
@@ -4104,11 +4173,9 @@ namespace MediaBrowser.Controller.MediaEncoding
             var doToneMap = IsSwTonemapAvailable(state, options);
             var requireDoviReshaping = doToneMap && state.VideoStream.VideoRangeType == VideoRangeType.DOVI;
 
-            var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
-            var hasTextSubs = hasSubs && state.SubtitleStream.IsTextSubtitleStream;
-            var hasGraphicalSubs = hasSubs && !state.SubtitleStream.IsTextSubtitleStream;
+            var (hasSubs, hasTextSubs, hasGraphicalSubs, _) = GetChainSubtitles(state);
 
-            var rotation = state.VideoStream?.Rotation ?? 0;
+            var (rotation, _) = GetChainRotation(state);
             var swapWAndH = Math.Abs(rotation) == 90;
             var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
 
@@ -4189,9 +4256,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             }
             else if (hasGraphicalSubs)
             {
-                var subW = state.SubtitleStream?.Width;
-                var subH = state.SubtitleStream?.Height;
-                var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, reqMaxH);
+                var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                 subFilters.Add(subPreProcFilters);
                 overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
             }
@@ -4239,13 +4304,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             string vidDecoder,
             string vidEncoder)
         {
-            var inW = state.VideoStream?.Width;
-            var inH = state.VideoStream?.Height;
-            var reqW = state.BaseRequest.Width;
-            var reqH = state.BaseRequest.Height;
-            var reqMaxW = state.BaseRequest.MaxWidth;
-            var reqMaxH = state.BaseRequest.MaxHeight;
-            var threeDFormat = state.MediaSource.Video3DFormat;
+            var (inW, inH, reqW, reqH, reqMaxW, reqMaxH, threeDFormat) = GetChainGeometry(state);
 
             var isNvDecoder = vidDecoder.Contains("cuda", StringComparison.OrdinalIgnoreCase);
             var isNvencEncoder = vidEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase);
@@ -4258,17 +4317,9 @@ namespace MediaBrowser.Controller.MediaEncoding
             var doDeintH2645 = IsDeinterlaceAvailable(state);
             var doCuTonemap = IsHwTonemapAvailable(state, options);
 
-            var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
-            var hasTextSubs = hasSubs && state.SubtitleStream.IsTextSubtitleStream;
-            var hasGraphicalSubs = hasSubs && !state.SubtitleStream.IsTextSubtitleStream;
-            var hasAssSubs = hasSubs
-                && (string.Equals(state.SubtitleStream.Codec, "ass", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(state.SubtitleStream.Codec, "ssa", StringComparison.OrdinalIgnoreCase));
-            var subW = state.SubtitleStream?.Width;
-            var subH = state.SubtitleStream?.Height;
+            var (hasSubs, hasTextSubs, hasGraphicalSubs, hasAssSubs) = GetChainSubtitles(state);
 
-            var rotation = state.VideoStream?.Rotation ?? 0;
-            var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
+            var (rotation, transposeDir) = GetChainRotation(state);
             var doCuTranspose = !string.IsNullOrEmpty(transposeDir) && _mediaEncoder.SupportsFilter("transpose_cuda");
             var swapWAndH = Math.Abs(rotation) == 90 && (isSwDecoder || (isNvDecoder && doCuTranspose));
             var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
@@ -4377,7 +4428,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                     var alphaFormatOpt = string.Empty;
                     if (hasGraphicalSubs)
                     {
-                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, reqMaxH);
+                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                         subFilters.Add(subPreProcFilters);
                         subFilters.Add("format=yuva420p");
                     }
@@ -4405,7 +4456,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasGraphicalSubs)
                 {
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, reqMaxH);
+                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                     subFilters.Add(subPreProcFilters);
                     overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
                 }
@@ -4456,13 +4507,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             string vidDecoder,
             string vidEncoder)
         {
-            var inW = state.VideoStream?.Width;
-            var inH = state.VideoStream?.Height;
-            var reqW = state.BaseRequest.Width;
-            var reqH = state.BaseRequest.Height;
-            var reqMaxW = state.BaseRequest.MaxWidth;
-            var reqMaxH = state.BaseRequest.MaxHeight;
-            var threeDFormat = state.MediaSource.Video3DFormat;
+            var (inW, inH, reqW, reqH, reqMaxW, reqMaxH, threeDFormat) = GetChainGeometry(state);
 
             var isD3d11vaDecoder = vidDecoder.Contains("d3d11va", StringComparison.OrdinalIgnoreCase);
             var isAmfEncoder = vidEncoder.Contains("amf", StringComparison.OrdinalIgnoreCase);
@@ -4474,17 +4519,9 @@ namespace MediaBrowser.Controller.MediaEncoding
             var doDeintH2645 = IsDeinterlaceAvailable(state);
             var doOclTonemap = IsHwTonemapAvailable(state, options);
 
-            var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
-            var hasTextSubs = hasSubs && state.SubtitleStream.IsTextSubtitleStream;
-            var hasGraphicalSubs = hasSubs && !state.SubtitleStream.IsTextSubtitleStream;
-            var hasAssSubs = hasSubs
-                && (string.Equals(state.SubtitleStream.Codec, "ass", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(state.SubtitleStream.Codec, "ssa", StringComparison.OrdinalIgnoreCase));
-            var subW = state.SubtitleStream?.Width;
-            var subH = state.SubtitleStream?.Height;
+            var (hasSubs, hasTextSubs, hasGraphicalSubs, hasAssSubs) = GetChainSubtitles(state);
 
-            var rotation = state.VideoStream?.Rotation ?? 0;
-            var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
+            var (rotation, transposeDir) = GetChainRotation(state);
             var doOclTranspose = !string.IsNullOrEmpty(transposeDir)
                 && _mediaEncoder.SupportsFilterWithOption(FilterOptionType.TransposeOpenclReversal);
             var swapWAndH = Math.Abs(rotation) == 90 && (isSwDecoder || (isD3d11vaDecoder && doOclTranspose));
@@ -4608,7 +4645,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                     var alphaFormatOpt = string.Empty;
                     if (hasGraphicalSubs)
                     {
-                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, reqMaxH);
+                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                         subFilters.Add(subPreProcFilters);
                         subFilters.Add("format=yuva420p");
                     }
@@ -4638,7 +4675,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasGraphicalSubs)
                 {
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, reqMaxH);
+                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                     subFilters.Add(subPreProcFilters);
                     overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
                 }
@@ -4707,13 +4744,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             string vidDecoder,
             string vidEncoder)
         {
-            var inW = state.VideoStream?.Width;
-            var inH = state.VideoStream?.Height;
-            var reqW = state.BaseRequest.Width;
-            var reqH = state.BaseRequest.Height;
-            var reqMaxW = state.BaseRequest.MaxWidth;
-            var reqMaxH = state.BaseRequest.MaxHeight;
-            var threeDFormat = state.MediaSource.Video3DFormat;
+            var (inW, inH, reqW, reqH, reqMaxW, reqMaxH, threeDFormat) = GetChainGeometry(state);
 
             var isD3d11vaDecoder = vidDecoder.Contains("d3d11va", StringComparison.OrdinalIgnoreCase);
             var isQsvDecoder = vidDecoder.Contains("qsv", StringComparison.OrdinalIgnoreCase);
@@ -4729,17 +4760,9 @@ namespace MediaBrowser.Controller.MediaEncoding
             var doOclTonemap = !doVppTonemap && IsHwTonemapAvailable(state, options);
             var doTonemap = doVppTonemap || doOclTonemap;
 
-            var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
-            var hasTextSubs = hasSubs && state.SubtitleStream.IsTextSubtitleStream;
-            var hasGraphicalSubs = hasSubs && !state.SubtitleStream.IsTextSubtitleStream;
-            var hasAssSubs = hasSubs
-                && (string.Equals(state.SubtitleStream.Codec, "ass", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(state.SubtitleStream.Codec, "ssa", StringComparison.OrdinalIgnoreCase));
-            var subW = state.SubtitleStream?.Width;
-            var subH = state.SubtitleStream?.Height;
+            var (hasSubs, hasTextSubs, hasGraphicalSubs, hasAssSubs) = GetChainSubtitles(state);
 
-            var rotation = state.VideoStream?.Rotation ?? 0;
-            var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
+            var (rotation, transposeDir) = GetChainRotation(state);
             var doVppTranspose = !string.IsNullOrEmpty(transposeDir);
             var swapWAndH = Math.Abs(rotation) == 90 && (isSwDecoder || ((isD3d11vaDecoder || isQsvDecoder) && doVppTranspose));
             var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
@@ -4956,7 +4979,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                     if (hasGraphicalSubs)
                     {
                         // overlay_qsv can handle overlay scaling, setup a smaller height to reduce transfer overhead
-                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, 1080);
+                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, 1080);
                         subFilters.Add(subPreProcFilters);
                         subFilters.Add("format=bgra");
                     }
@@ -4992,7 +5015,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasGraphicalSubs)
                 {
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, reqMaxH);
+                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                     subFilters.Add(subPreProcFilters);
                     overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
                 }
@@ -5007,13 +5030,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             string vidDecoder,
             string vidEncoder)
         {
-            var inW = state.VideoStream?.Width;
-            var inH = state.VideoStream?.Height;
-            var reqW = state.BaseRequest.Width;
-            var reqH = state.BaseRequest.Height;
-            var reqMaxW = state.BaseRequest.MaxWidth;
-            var reqMaxH = state.BaseRequest.MaxHeight;
-            var threeDFormat = state.MediaSource.Video3DFormat;
+            var (inW, inH, reqW, reqH, reqMaxW, reqMaxH, threeDFormat) = GetChainGeometry(state);
 
             var isVaapiDecoder = vidDecoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase);
             var isQsvDecoder = vidDecoder.Contains("qsv", StringComparison.OrdinalIgnoreCase);
@@ -5029,17 +5046,9 @@ namespace MediaBrowser.Controller.MediaEncoding
             var doTonemap = doVaVppTonemap || doOclTonemap;
             var doDeintH2645 = IsDeinterlaceAvailable(state);
 
-            var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
-            var hasTextSubs = hasSubs && state.SubtitleStream.IsTextSubtitleStream;
-            var hasGraphicalSubs = hasSubs && !state.SubtitleStream.IsTextSubtitleStream;
-            var hasAssSubs = hasSubs
-                && (string.Equals(state.SubtitleStream.Codec, "ass", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(state.SubtitleStream.Codec, "ssa", StringComparison.OrdinalIgnoreCase));
-            var subW = state.SubtitleStream?.Width;
-            var subH = state.SubtitleStream?.Height;
+            var (hasSubs, hasTextSubs, hasGraphicalSubs, hasAssSubs) = GetChainSubtitles(state);
 
-            var rotation = state.VideoStream?.Rotation ?? 0;
-            var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
+            var (rotation, transposeDir) = GetChainRotation(state);
             var doVppTranspose = !string.IsNullOrEmpty(transposeDir);
             var swapWAndH = Math.Abs(rotation) == 90 && (isSwDecoder || ((isVaapiDecoder || isQsvDecoder) && doVppTranspose));
             var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
@@ -5228,7 +5237,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                     if (hasGraphicalSubs)
                     {
                         // overlay_qsv can handle overlay scaling, setup a smaller height to reduce transfer overhead
-                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, 1080);
+                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, 1080);
                         subFilters.Add(subPreProcFilters);
                         subFilters.Add("format=bgra");
                     }
@@ -5263,7 +5272,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasGraphicalSubs)
                 {
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, reqMaxH);
+                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                     subFilters.Add(subPreProcFilters);
                     overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
                 }
@@ -5347,13 +5356,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             string vidDecoder,
             string vidEncoder)
         {
-            var inW = state.VideoStream?.Width;
-            var inH = state.VideoStream?.Height;
-            var reqW = state.BaseRequest.Width;
-            var reqH = state.BaseRequest.Height;
-            var reqMaxW = state.BaseRequest.MaxWidth;
-            var reqMaxH = state.BaseRequest.MaxHeight;
-            var threeDFormat = state.MediaSource.Video3DFormat;
+            var (inW, inH, reqW, reqH, reqMaxW, reqMaxH, threeDFormat) = GetChainGeometry(state);
 
             var isVaapiDecoder = vidDecoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase);
             var isVaapiEncoder = vidEncoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase);
@@ -5367,17 +5370,9 @@ namespace MediaBrowser.Controller.MediaEncoding
             var doTonemap = doVaVppTonemap || doOclTonemap;
             var doDeintH2645 = IsDeinterlaceAvailable(state);
 
-            var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
-            var hasTextSubs = hasSubs && state.SubtitleStream.IsTextSubtitleStream;
-            var hasGraphicalSubs = hasSubs && !state.SubtitleStream.IsTextSubtitleStream;
-            var hasAssSubs = hasSubs
-                && (string.Equals(state.SubtitleStream.Codec, "ass", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(state.SubtitleStream.Codec, "ssa", StringComparison.OrdinalIgnoreCase));
-            var subW = state.SubtitleStream?.Width;
-            var subH = state.SubtitleStream?.Height;
+            var (hasSubs, hasTextSubs, hasGraphicalSubs, hasAssSubs) = GetChainSubtitles(state);
 
-            var rotation = state.VideoStream?.Rotation ?? 0;
-            var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
+            var (rotation, transposeDir) = GetChainRotation(state);
             var doVaVppTranspose = !string.IsNullOrEmpty(transposeDir);
             var swapWAndH = Math.Abs(rotation) == 90 && (isSwDecoder || (isVaapiDecoder && doVaVppTranspose));
             var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
@@ -5536,7 +5531,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                     if (hasGraphicalSubs)
                     {
                         // overlay_vaapi can handle overlay scaling, setup a smaller height to reduce transfer overhead
-                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, 1080);
+                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, 1080);
                         subFilters.Add(subPreProcFilters);
                         subFilters.Add("format=bgra");
                     }
@@ -5569,7 +5564,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasGraphicalSubs)
                 {
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, reqMaxH);
+                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                     subFilters.Add(subPreProcFilters);
                     overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
 
@@ -5589,13 +5584,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             string vidDecoder,
             string vidEncoder)
         {
-            var inW = state.VideoStream?.Width;
-            var inH = state.VideoStream?.Height;
-            var reqW = state.BaseRequest.Width;
-            var reqH = state.BaseRequest.Height;
-            var reqMaxW = state.BaseRequest.MaxWidth;
-            var reqMaxH = state.BaseRequest.MaxHeight;
-            var threeDFormat = state.MediaSource.Video3DFormat;
+            var (inW, inH, reqW, reqH, reqMaxW, reqMaxH, threeDFormat) = GetChainGeometry(state);
 
             var isVaapiDecoder = vidDecoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase);
             var isVaapiEncoder = vidEncoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase);
@@ -5611,15 +5600,12 @@ namespace MediaBrowser.Controller.MediaEncoding
             var hwCrop3DFilter = GetHwVideo3DCropFilter(state, options);
             var doVk3DFlatten = !string.IsNullOrEmpty(hwCrop3DFilter);
 
-            var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
-            var hasTextSubs = hasSubs && state.SubtitleStream.IsTextSubtitleStream;
-            var hasGraphicalSubs = hasSubs && !state.SubtitleStream.IsTextSubtitleStream;
+            var (hasSubs, hasTextSubs, hasGraphicalSubs, _) = GetChainSubtitles(state);
             var hasAssSubs = hasSubs
                 && (string.Equals(state.SubtitleStream.Codec, "ass", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(state.SubtitleStream.Codec, "ssa", StringComparison.OrdinalIgnoreCase));
 
-            var rotation = state.VideoStream?.Rotation ?? 0;
-            var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
+            var (rotation, transposeDir) = GetChainRotation(state);
             var doVkTranspose = isVaapiDecoder && !string.IsNullOrEmpty(transposeDir);
             var swapWAndH = Math.Abs(rotation) == 90 && (isSwDecoder || (isVaapiDecoder && doVkTranspose));
             var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
@@ -5783,9 +5769,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasGraphicalSubs)
                 {
-                    var subW = state.SubtitleStream?.Width;
-                    var subH = state.SubtitleStream?.Height;
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, reqMaxH);
+                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                     subFilters.Add(subPreProcFilters);
                     subFilters.Add("format=bgra");
                 }
@@ -5848,13 +5832,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             string vidDecoder,
             string vidEncoder)
         {
-            var inW = state.VideoStream?.Width;
-            var inH = state.VideoStream?.Height;
-            var reqW = state.BaseRequest.Width;
-            var reqH = state.BaseRequest.Height;
-            var reqMaxW = state.BaseRequest.MaxWidth;
-            var reqMaxH = state.BaseRequest.MaxHeight;
-            var threeDFormat = state.MediaSource.Video3DFormat;
+            var (inW, inH, reqW, reqH, reqMaxW, reqMaxH, threeDFormat) = GetChainGeometry(state);
 
             var isVaapiDecoder = vidDecoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase);
             var isVaapiEncoder = vidEncoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase);
@@ -5868,11 +5846,9 @@ namespace MediaBrowser.Controller.MediaEncoding
             var doDeintH2645 = IsDeinterlaceAvailable(state);
             var doOclTonemap = IsHwTonemapAvailable(state, options);
 
-            var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
-            var hasTextSubs = hasSubs && state.SubtitleStream.IsTextSubtitleStream;
-            var hasGraphicalSubs = hasSubs && !state.SubtitleStream.IsTextSubtitleStream;
+            var (hasSubs, hasTextSubs, hasGraphicalSubs, _) = GetChainSubtitles(state);
 
-            var rotation = state.VideoStream?.Rotation ?? 0;
+            var (rotation, _) = GetChainRotation(state);
             var swapWAndH = Math.Abs(rotation) == 90 && isSwDecoder;
             var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
 
@@ -6033,9 +6009,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasGraphicalSubs)
                 {
-                    var subW = state.SubtitleStream?.Width;
-                    var subH = state.SubtitleStream?.Height;
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, reqMaxH);
+                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                     subFilters.Add(subPreProcFilters);
                     overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
 
@@ -6096,20 +6070,14 @@ namespace MediaBrowser.Controller.MediaEncoding
             var isVtDecoder = vidDecoder.Contains("videotoolbox", StringComparison.OrdinalIgnoreCase);
             var isMjpegEncoder = vidEncoder.Contains("mjpeg", StringComparison.OrdinalIgnoreCase);
 
-            var inW = state.VideoStream?.Width;
-            var inH = state.VideoStream?.Height;
-            var reqW = state.BaseRequest.Width;
-            var reqH = state.BaseRequest.Height;
-            var reqMaxW = state.BaseRequest.MaxWidth;
-            var reqMaxH = state.BaseRequest.MaxHeight;
+            var (inW, inH, reqW, reqH, reqMaxW, reqMaxH, threeDFormat) = GetChainGeometry(state);
 
             var doDeintH2645 = IsDeinterlaceAvailable(state);
             var doVtTonemap = IsVideoToolboxTonemapAvailable(state, options);
             var doMetalTonemap = !doVtTonemap && IsHwTonemapAvailable(state, options);
             var usingHwSurface = isVtDecoder && (_mediaEncoder.EncoderVersion >= _minFFmpegWorkingVtHwSurface);
 
-            var rotation = state.VideoStream?.Rotation ?? 0;
-            var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
+            var (rotation, transposeDir) = GetChainRotation(state);
             var doVtTranspose = !string.IsNullOrEmpty(transposeDir) && _mediaEncoder.SupportsFilter("transpose_vt");
             var swapWAndH = Math.Abs(rotation) == 90 && doVtTranspose;
             var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
@@ -6135,9 +6103,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var hwCrop3DFilter = GetHwVideo3DCropFilter(state, options);
             var hwScaleFilter = GetHwScaleFilter("scale", "vt", scaleFormat, false, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, !string.IsNullOrEmpty(hwCrop3DFilter));
 
-            var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
-            var hasTextSubs = hasSubs && state.SubtitleStream.IsTextSubtitleStream;
-            var hasGraphicalSubs = hasSubs && !state.SubtitleStream.IsTextSubtitleStream;
+            var (hasSubs, hasTextSubs, hasGraphicalSubs, _) = GetChainSubtitles(state);
             var hasAssSubs = hasSubs
                 && (string.Equals(state.SubtitleStream.Codec, "ass", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(state.SubtitleStream.Codec, "ssa", StringComparison.OrdinalIgnoreCase));
@@ -6186,9 +6152,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasGraphicalSubs)
                 {
-                    var subW = state.SubtitleStream?.Width;
-                    var subH = state.SubtitleStream?.Height;
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, reqMaxH);
+                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                     subFilters.Add(subPreProcFilters);
                     subFilters.Add("format=bgra");
                 }
@@ -6286,13 +6250,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             string vidDecoder,
             string vidEncoder)
         {
-            var inW = state.VideoStream?.Width;
-            var inH = state.VideoStream?.Height;
-            var reqW = state.BaseRequest.Width;
-            var reqH = state.BaseRequest.Height;
-            var reqMaxW = state.BaseRequest.MaxWidth;
-            var reqMaxH = state.BaseRequest.MaxHeight;
-            var threeDFormat = state.MediaSource.Video3DFormat;
+            var (inW, inH, reqW, reqH, reqMaxW, reqMaxH, threeDFormat) = GetChainGeometry(state);
 
             var isRkmppDecoder = vidDecoder.Contains("rkmpp", StringComparison.OrdinalIgnoreCase);
             var isRkmppEncoder = vidEncoder.Contains("rkmpp", StringComparison.OrdinalIgnoreCase);
@@ -6307,17 +6265,9 @@ namespace MediaBrowser.Controller.MediaEncoding
             var doDeintH2645 = IsDeinterlaceAvailable(state);
             var doOclTonemap = IsHwTonemapAvailable(state, options);
 
-            var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
-            var hasTextSubs = hasSubs && state.SubtitleStream.IsTextSubtitleStream;
-            var hasGraphicalSubs = hasSubs && !state.SubtitleStream.IsTextSubtitleStream;
-            var hasAssSubs = hasSubs
-                && (string.Equals(state.SubtitleStream.Codec, "ass", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(state.SubtitleStream.Codec, "ssa", StringComparison.OrdinalIgnoreCase));
-            var subW = state.SubtitleStream?.Width;
-            var subH = state.SubtitleStream?.Height;
+            var (hasSubs, hasTextSubs, hasGraphicalSubs, hasAssSubs) = GetChainSubtitles(state);
 
-            var rotation = state.VideoStream?.Rotation ?? 0;
-            var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
+            var (rotation, transposeDir) = GetChainRotation(state);
             var doRkVppTranspose = !string.IsNullOrEmpty(transposeDir);
             var swapWAndH = Math.Abs(rotation) == 90 && (isSwDecoder || (isRkmppDecoder && doRkVppTranspose));
             var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
@@ -6483,7 +6433,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                     var subMaxH = 1080;
                     if (hasGraphicalSubs)
                     {
-                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, subMaxH);
+                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, subMaxH);
                         subFilters.Add(subPreProcFilters);
                         subFilters.Add("format=bgra");
                     }
@@ -6523,7 +6473,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasGraphicalSubs)
                 {
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(swpInW, swpInH, subW, subH, reqW, reqH, reqMaxW, reqMaxH);
+                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                     subFilters.Add(subPreProcFilters);
                     overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
                 }
@@ -6550,9 +6500,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 return string.Empty;
             }
 
-            var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
-            var hasTextSubs = hasSubs && state.SubtitleStream.IsTextSubtitleStream;
-            var hasGraphicalSubs = hasSubs && !state.SubtitleStream.IsTextSubtitleStream;
+            var (hasSubs, hasTextSubs, hasGraphicalSubs, _) = GetChainSubtitles(state);
 
             List<string> mainFilters;
             List<string> subFilters;
@@ -7427,12 +7375,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 return null;
             }
 
-            var inW = state.VideoStream?.Width;
-            var inH = state.VideoStream?.Height;
-            var reqW = state.BaseRequest.Width;
-            var reqH = state.BaseRequest.Height;
-            var reqMaxW = state.BaseRequest.MaxWidth;
-            var reqMaxH = state.BaseRequest.MaxHeight;
+            var (inW, inH, reqW, reqH, reqMaxW, reqMaxH, threeDFormat) = GetChainGeometry(state);
 
             // rkrga RGA2e supports range from 1/16 to 16
             if (!IsScaleRatioSupported(inW, inH, reqW, reqH, reqMaxW, reqMaxH, 16.0f))
