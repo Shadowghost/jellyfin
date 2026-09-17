@@ -220,7 +220,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             // Only use alternative encoders for video files.
             // When using concat with folder rips, if the mfx session fails to initialize, ffmpeg will be stuck retrying and will not exit gracefully
             // Since transcoding of folder rips is experimental anyway, it's not worth adding additional variables such as this.
-            if (state.VideoType == VideoType.VideoFile)
+            if (state.VideoType == VideoType.VideoFile && !state.HardwareAccelerationDisabled)
             {
                 var hwType = encodingOptions.HardwareAccelerationType;
 
@@ -442,7 +442,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <returns>The pipeline plan.</returns>
         private HwPipelinePlan BuildHwPipelinePlan(EncodingJobInfo state, EncodingOptions options)
         {
-            var device = GetHwFilterDevice(options);
+            var device = state.HardwareAccelerationDisabled ? HwFilterDevice.None : GetHwFilterDevice(options);
             var ops = HwOps.Scale;
 
             if (!string.IsNullOrEmpty(GetVideo3DFilter(state.MediaSource?.Video3DFormat)))
@@ -6733,7 +6733,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 return null;
             }
 
-            if (IsCopyCodec(state.OutputVideoCodec))
+            if (IsCopyCodec(state.OutputVideoCodec) || state.HardwareAccelerationDisabled)
             {
                 return null;
             }
@@ -6875,6 +6875,11 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <returns>Hardware accelerator type.</returns>
         public string GetHwaccelType(EncodingJobInfo state, EncodingOptions options, string videoCodec, int bitDepth, bool outputHwSurface)
         {
+            if (state.HardwareAccelerationDisabled)
+            {
+                return null;
+            }
+
             var isWindows = OperatingSystem.IsWindows();
             var isLinux = OperatingSystem.IsLinux();
             var isMacOS = OperatingSystem.IsMacOS();

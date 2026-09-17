@@ -490,7 +490,8 @@ public class VideosController : BaseJellyfinApiController
             _transcodeManager,
             ffmpegCommandLineArguments,
             _transcodingJobType,
-            cancellationTokenSource).ConfigureAwait(false);
+            cancellationTokenSource,
+            () => _encodingHelper.GetProgressiveVideoFullCommandLine(state, encodingOptions, EncoderPreset.superfast)).ConfigureAwait(false);
     }
 
     /// <summary>

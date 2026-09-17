@@ -136,6 +136,11 @@ namespace MediaBrowser.Controller.MediaEncoding
 
         public bool IsVideoRequest { get; set; }
 
+        /// <summary>
+        /// Gets or sets a value indicating whether this job must stay in software after a hardware attempt failed.
+        /// </summary>
+        public bool HardwareAccelerationDisabled { get; set; }
+
         public TranscodingJobType TranscodingType { get; set; }
 
         public long? StartTimeTicks => BaseRequest.StartTimeTicks;

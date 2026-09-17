@@ -38,6 +38,7 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
     private readonly IFileSystem _fileSystem;
     private readonly IApplicationPaths _appPaths;
     private readonly IServerConfigurationManager _serverConfigurationManager;
+    private readonly IHardwareCapabilitiesProvider _hardwareCapabilities;
     private readonly IUserManager _userManager;
     private readonly ISessionManager _sessionManager;
     private readonly EncodingHelper _encodingHelper;
@@ -53,6 +54,7 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
     });
 
     private readonly Version _maxFFmpegCkeyPauseSupported = new Version(6, 1);
+    private readonly TimeSpan _hardwareStartTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TranscodeManager"/> class.
@@ -67,6 +69,7 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
     /// <param name="mediaEncoder">The <see cref="IMediaEncoder"/>.</param>
     /// <param name="mediaSourceManager">The <see cref="IMediaSourceManager"/>.</param>
     /// <param name="attachmentExtractor">The <see cref="IAttachmentExtractor"/>.</param>
+    /// <param name="hardwareCapabilities">The <see cref="IHardwareCapabilitiesProvider"/>.</param>
     public TranscodeManager(
         ILoggerFactory loggerFactory,
         IFileSystem fileSystem,
@@ -77,7 +80,8 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
         EncodingHelper encodingHelper,
         IMediaEncoder mediaEncoder,
         IMediaSourceManager mediaSourceManager,
-        IAttachmentExtractor attachmentExtractor)
+        IAttachmentExtractor attachmentExtractor,
+        IHardwareCapabilitiesProvider hardwareCapabilities)
     {
         _loggerFactory = loggerFactory;
         _fileSystem = fileSystem;
@@ -89,6 +93,7 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
         _mediaEncoder = mediaEncoder;
         _mediaSourceManager = mediaSourceManager;
         _attachmentExtractor = attachmentExtractor;
+        _hardwareCapabilities = hardwareCapabilities;
 
         _logger = loggerFactory.CreateLogger<TranscodeManager>();
         DeleteEncodedMediaCache();
@@ -375,7 +380,8 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
         Guid userId,
         TranscodingJobType transcodingJobType,
         CancellationTokenSource cancellationTokenSource,
-        string? workingDirectory = null)
+        string? workingDirectory = null,
+        Func<string>? rebuildCommandLineArguments = null)
     {
         var directory = Path.GetDirectoryName(outputPath) ?? throw new ArgumentException($"Provided path ({outputPath}) is not valid.", nameof(outputPath));
         Directory.CreateDirectory(directory);
@@ -507,9 +513,27 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
 
         // Wait for the file to exist before proceeding
         var ffmpegTargetFile = state.WaitForPath ?? outputPath;
+        var canRetryInSoftware = CanRetryInSoftware(state, rebuildCommandLineArguments);
+        var startedAt = Stopwatch.StartNew();
         _logger.LogDebug("Waiting for the creation of {0}", ffmpegTargetFile);
         while (!File.Exists(ffmpegTargetFile) && !transcodingJob.HasExited)
         {
+            // A hardware job that never produces its first output is as dead as one that exited.
+            if (canRetryInSoftware && startedAt.Elapsed > _hardwareStartTimeout)
+            {
+                _logger.LogWarning("Hardware transcoding produced no output in {Timeout}, retrying in software", _hardwareStartTimeout);
+
+                return await RestartInSoftware(
+                    state,
+                    transcodingJob,
+                    outputPath,
+                    rebuildCommandLineArguments!,
+                    userId,
+                    transcodingJobType,
+                    cancellationTokenSource,
+                    workingDirectory).ConfigureAwait(false);
+            }
+
             await Task.Delay(100, cancellationTokenSource.Token).ConfigureAwait(false);
         }
 
@@ -532,12 +556,90 @@ public sealed class TranscodeManager : ITranscodeManager, IDisposable
         }
         else if (transcodingJob.ExitCode != 0)
         {
+            if (canRetryInSoftware)
+            {
+                _logger.LogWarning(
+                    "Hardware transcoding failed with code {ExitCode}, retrying in software: {Arguments}",
+                    transcodingJob.ExitCode,
+                    commandLineArguments);
+
+                return await RestartInSoftware(
+                    state,
+                    transcodingJob,
+                    outputPath,
+                    rebuildCommandLineArguments!,
+                    userId,
+                    transcodingJobType,
+                    cancellationTokenSource,
+                    workingDirectory).ConfigureAwait(false);
+            }
+
             throw new FfmpegException(string.Format(CultureInfo.InvariantCulture, "FFmpeg exited with code {0}", transcodingJob.ExitCode));
         }
 
         _logger.LogDebug("StartFfMpeg() finished successfully");
 
         return transcodingJob;
+    }
+
+    /// <summary>
+    /// Whether a failed job was a hardware one that can be started over in software.
+    /// </summary>
+    /// <remarks>
+    /// The job never produced its first segment, so nothing has reached the client yet and a restart is safe.
+    /// </remarks>
+    /// <param name="state">The stream state.</param>
+    /// <param name="rebuildCommandLineArguments">The argument builder, when the caller supplied one.</param>
+    /// <returns><c>true</c> if the job can be retried, <c>false</c> otherwise.</returns>
+    private bool CanRetryInSoftware(StreamState state, Func<string>? rebuildCommandLineArguments)
+    {
+        return rebuildCommandLineArguments is not null
+            && !state.HardwareAccelerationDisabled
+            && state.IsInputVideo
+            && !EncodingHelper.IsCopyCodec(state.OutputVideoCodec)
+            && _serverConfigurationManager.GetEncodingOptions().HardwareAccelerationType != HardwareAccelerationType.none;
+    }
+
+    private void RecordHardwareFailure(StreamState state)
+    {
+        _hardwareCapabilities.RecordDecodeFailure(
+            _serverConfigurationManager.GetEncodingOptions().HardwareAccelerationType,
+            state.VideoStream?.Codec,
+            state.VideoStream?.Width ?? 0,
+            state.VideoStream?.Height ?? 0);
+    }
+
+    private async Task<TranscodingJob> RestartInSoftware(
+        StreamState state,
+        TranscodingJob failedJob,
+        string outputPath,
+        Func<string> rebuildCommandLineArguments,
+        Guid userId,
+        TranscodingJobType transcodingJobType,
+        CancellationTokenSource cancellationTokenSource,
+        string? workingDirectory)
+    {
+        RecordHardwareFailure(state);
+        state.HardwareAccelerationDisabled = true;
+
+        // Tear the failed job down without cancelling the token the retry needs.
+        failedJob.DisposeKillTimer();
+        lock (_activeTranscodingJobs)
+        {
+            _activeTranscodingJobs.Remove(failedJob);
+        }
+
+        failedJob.Stop();
+        await DeletePartialStreamFiles(outputPath, transcodingJobType, 0, 0).ConfigureAwait(false);
+
+        return await StartFfMpeg(
+            state,
+            outputPath,
+            rebuildCommandLineArguments(),
+            userId,
+            transcodingJobType,
+            cancellationTokenSource,
+            workingDirectory).ConfigureAwait(false);
     }
 
     private void StartThrottler(StreamState state, TranscodingJob transcodingJob)

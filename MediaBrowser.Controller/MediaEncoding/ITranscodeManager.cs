@@ -71,6 +71,7 @@ public interface ITranscodeManager
     /// <param name="transcodingJobType">The <see cref="TranscodingJobType"/>.</param>
     /// <param name="cancellationTokenSource">The cancellation token source.</param>
     /// <param name="workingDirectory">The working directory.</param>
+    /// <param name="rebuildCommandLineArguments">Rebuilds the arguments when the job is retried in software.</param>
     /// <returns>Task.</returns>
     public Task<TranscodingJob> StartFfMpeg(
         StreamState state,
@@ -79,7 +80,8 @@ public interface ITranscodeManager
         Guid userId,
         TranscodingJobType transcodingJobType,
         CancellationTokenSource cancellationTokenSource,
-        string? workingDirectory = null);
+        string? workingDirectory = null,
+        Func<string>? rebuildCommandLineArguments = null);
 
     /// <summary>
     /// Called when [transcode begin request].

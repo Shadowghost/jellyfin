@@ -119,6 +119,7 @@ public static class FileStreamResponseHelpers
     /// <param name="ffmpegCommandLineArguments">The command line arguments to start ffmpeg.</param>
     /// <param name="transcodingJobType">The <see cref="TranscodingJobType"/>.</param>
     /// <param name="cancellationTokenSource">The <see cref="CancellationTokenSource"/>.</param>
+    /// <param name="rebuildCommandLineArguments">Rebuilds the arguments when the job is retried in software.</param>
     /// <returns>A <see cref="Task{ActionResult}"/> containing the transcoded file.</returns>
     public static async Task<ActionResult> GetTranscodedFile(
         StreamState state,
@@ -127,7 +128,8 @@ public static class FileStreamResponseHelpers
         ITranscodeManager transcodeManager,
         string ffmpegCommandLineArguments,
         TranscodingJobType transcodingJobType,
-        CancellationTokenSource cancellationTokenSource)
+        CancellationTokenSource cancellationTokenSource,
+        Func<string>? rebuildCommandLineArguments = null)
     {
         // Use the command line args with a dummy playlist path
         var outputPath = state.OutputFilePath;
@@ -154,7 +156,8 @@ public static class FileStreamResponseHelpers
                     ffmpegCommandLineArguments,
                     httpContext.User.GetUserId(),
                     transcodingJobType,
-                    cancellationTokenSource).ConfigureAwait(false);
+                    cancellationTokenSource,
+                    rebuildCommandLineArguments: rebuildCommandLineArguments).ConfigureAwait(false);
             }
             else
             {

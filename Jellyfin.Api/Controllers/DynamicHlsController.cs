@@ -312,7 +312,8 @@ public class DynamicHlsController : BaseJellyfinApiController
                                 GetCommandLineArguments(playlistPath, state, true, 0),
                                 Request.HttpContext.User.GetUserId(),
                                 TranscodingJobType,
-                                cancellationTokenSource)
+                                cancellationTokenSource,
+                                rebuildCommandLineArguments: () => GetCommandLineArguments(playlistPath, state, true, 0))
                             .ConfigureAwait(false);
                         job.IsLiveOutput = true;
                     }
@@ -1518,7 +1519,8 @@ public class DynamicHlsController : BaseJellyfinApiController
                         GetCommandLineArguments(playlistPath, state, false, segmentId),
                         Request.HttpContext.User.GetUserId(),
                         TranscodingJobType,
-                        cancellationTokenSource).ConfigureAwait(false);
+                        cancellationTokenSource,
+                        rebuildCommandLineArguments: () => GetCommandLineArguments(playlistPath, state, false, segmentId)).ConfigureAwait(false);
                 }
                 catch
                 {
