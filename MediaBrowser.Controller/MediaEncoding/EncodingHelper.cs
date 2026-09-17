@@ -4105,6 +4105,132 @@ namespace MediaBrowser.Controller.MediaEncoding
         }
 
         /// <summary>
+        /// Appends the filters that turn the subtitle stream into a frame the hardware overlays can take.
+        /// </summary>
+        /// <param name="subFilters">The subtitle filter list to append to.</param>
+        /// <param name="state">The encoding job info.</param>
+        /// <param name="subFormat">The pixel format the overlay filter expects.</param>
+        /// <param name="hasGraphicalSubs">Whether the subtitle stream is graphical.</param>
+        /// <param name="hasTextSubs">Whether the subtitle stream is text.</param>
+        /// <param name="hasAssSubs">Whether the subtitle stream is ASS or SSA, which needs the video frame rate.</param>
+        /// <param name="videoWidth">The frame width the chain produces.</param>
+        /// <param name="videoHeight">The frame height the chain produces.</param>
+        /// <param name="requestedWidth">The requested width.</param>
+        /// <param name="requestedHeight">The requested height.</param>
+        /// <param name="requestedMaxWidth">The requested maximum width.</param>
+        /// <param name="requestedMaxHeight">The requested maximum height, lowered where the overlay filter can scale.</param>
+        private void AppendHwSubtitleSource(
+            List<string> subFilters,
+            EncodingJobInfo state,
+            string subFormat,
+            bool hasGraphicalSubs,
+            bool hasTextSubs,
+            bool hasAssSubs,
+            int? videoWidth,
+            int? videoHeight,
+            int? requestedWidth,
+            int? requestedHeight,
+            int? requestedMaxWidth,
+            int? requestedMaxHeight)
+        {
+            if (hasGraphicalSubs)
+            {
+                subFilters.Add(GetGraphicalSubPreProcessFilters(
+                    state,
+                    videoWidth,
+                    videoHeight,
+                    requestedWidth,
+                    requestedHeight,
+                    requestedMaxWidth,
+                    requestedMaxHeight));
+                subFilters.Add("format=" + subFormat);
+            }
+            else if (hasTextSubs)
+            {
+                // alphasrc=s=1280x720:r=10:start=0,format=<subFormat>,subtitles
+                var framerate = state.VideoStream?.RealFrameRate;
+                var subFramerate = hasAssSubs ? Math.Min(framerate ?? 25, 60) : 10;
+
+                subFilters.Add(GetAlphaSrcFilter(
+                    state,
+                    videoWidth,
+                    videoHeight,
+                    requestedWidth,
+                    requestedHeight,
+                    requestedMaxWidth,
+                    requestedMaxHeight,
+                    subFramerate));
+                subFilters.Add("format=" + subFormat);
+                subFilters.Add(GetTextSubtitlesFilter(state, true, true));
+            }
+        }
+
+        /// <summary>
+        /// Appends the software overlay of a graphical subtitle, for the chains that end in system memory.
+        /// </summary>
+        /// <param name="subFilters">The subtitle filter list to append to.</param>
+        /// <param name="overlayFilters">The overlay filter list to append to.</param>
+        /// <param name="state">The encoding job info.</param>
+        /// <param name="videoWidth">The frame width the chain produces.</param>
+        /// <param name="videoHeight">The frame height the chain produces.</param>
+        /// <param name="requestedWidth">The requested width.</param>
+        /// <param name="requestedHeight">The requested height.</param>
+        /// <param name="requestedMaxWidth">The requested maximum width.</param>
+        /// <param name="requestedMaxHeight">The requested maximum height.</param>
+        private static void AppendSwOverlayFilters(
+            List<string> subFilters,
+            List<string> overlayFilters,
+            EncodingJobInfo state,
+            int? videoWidth,
+            int? videoHeight,
+            int? requestedWidth,
+            int? requestedHeight,
+            int? requestedMaxWidth,
+            int? requestedMaxHeight)
+        {
+            subFilters.Add(GetGraphicalSubPreProcessFilters(
+                state,
+                videoWidth,
+                videoHeight,
+                requestedWidth,
+                requestedHeight,
+                requestedMaxWidth,
+                requestedMaxHeight));
+            overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
+        }
+
+        /// <summary>
+        /// Gets the size arguments for the hardware overlay filters that scale the overlay themselves.
+        /// </summary>
+        /// <param name="videoWidth">The frame width the chain produces.</param>
+        /// <param name="videoHeight">The frame height the chain produces.</param>
+        /// <param name="requestedWidth">The requested width.</param>
+        /// <param name="requestedHeight">The requested height.</param>
+        /// <param name="requestedMaxWidth">The requested maximum width.</param>
+        /// <param name="requestedMaxHeight">The requested maximum height.</param>
+        /// <returns>The size arguments, or an empty string when the size is not fixed.</returns>
+        private static string GetHwOverlaySizeArgs(
+            int? videoWidth,
+            int? videoHeight,
+            int? requestedWidth,
+            int? requestedHeight,
+            int? requestedMaxWidth,
+            int? requestedMaxHeight)
+        {
+            var (overlayW, overlayH) = GetFixedOutputSize(
+                videoWidth,
+                videoHeight,
+                requestedWidth,
+                requestedHeight,
+                requestedMaxWidth,
+                requestedMaxHeight);
+
+            return overlayW.HasValue && overlayH.HasValue
+                ? string.Create(CultureInfo.InvariantCulture, $":w={overlayW.Value}:h={overlayH.Value}")
+                : string.Empty;
+        }
+
+        /// <summary>
         /// Appends the input filters every chain shares while the frames are still in system memory.
         /// </summary>
         /// <param name="mainFilters">The main filter list to append to.</param>
@@ -4323,9 +4449,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             }
             else if (hasGraphicalSubs)
             {
-                var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                subFilters.Add(subPreProcFilters);
-                overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
+                AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
             }
 
             return (mainFilters, subFilters, overlayFilters);
@@ -4478,28 +4602,11 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasSubs)
                 {
-                    var alphaFormatOpt = string.Empty;
-                    if (hasGraphicalSubs)
-                    {
-                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                        subFilters.Add(subPreProcFilters);
-                        subFilters.Add("format=yuva420p");
-                    }
-                    else if (hasTextSubs)
-                    {
-                        var framerate = state.VideoStream?.RealFrameRate;
-                        var subFramerate = hasAssSubs ? Math.Min(framerate ?? 25, 60) : 10;
+                    AppendHwSubtitleSource(subFilters, state, "yuva420p", hasGraphicalSubs, hasTextSubs, hasAssSubs, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
 
-                        // alphasrc=s=1280x720:r=10:start=0,format=yuva420p,subtitles,hwupload
-                        var alphaSrcFilter = GetAlphaSrcFilter(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, subFramerate);
-                        var subTextSubtitlesFilter = GetTextSubtitlesFilter(state, true, true);
-                        subFilters.Add(alphaSrcFilter);
-                        subFilters.Add("format=yuva420p");
-                        subFilters.Add(subTextSubtitlesFilter);
-
-                        alphaFormatOpt = _mediaEncoder.SupportsFilterWithOption(FilterOptionType.OverlayCudaAlphaFormat)
-                            ? ":alpha_format=premultiplied" : string.Empty;
-                    }
+                    // Only the alphasrc path produces premultiplied alpha.
+                    var alphaFormatOpt = hasTextSubs && _mediaEncoder.SupportsFilterWithOption(FilterOptionType.OverlayCudaAlphaFormat)
+                        ? ":alpha_format=premultiplied" : string.Empty;
 
                     subFilters.Add("hwupload=derive_device=cuda");
                     overlayFilters.Add($"overlay_cuda=eof_action=pass:repeatlast=0{alphaFormatOpt}");
@@ -4509,9 +4616,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasGraphicalSubs)
                 {
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                    subFilters.Add(subPreProcFilters);
-                    overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
+                    AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                 }
             }
 
@@ -4681,28 +4786,11 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasSubs)
                 {
-                    var alphaFormatOpt = string.Empty;
-                    if (hasGraphicalSubs)
-                    {
-                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                        subFilters.Add(subPreProcFilters);
-                        subFilters.Add("format=yuva420p");
-                    }
-                    else if (hasTextSubs)
-                    {
-                        var framerate = state.VideoStream?.RealFrameRate;
-                        var subFramerate = hasAssSubs ? Math.Min(framerate ?? 25, 60) : 10;
+                    AppendHwSubtitleSource(subFilters, state, "yuva420p", hasGraphicalSubs, hasTextSubs, hasAssSubs, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
 
-                        // alphasrc=s=1280x720:r=10:start=0,format=yuva420p,subtitles,hwupload
-                        var alphaSrcFilter = GetAlphaSrcFilter(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, subFramerate);
-                        var subTextSubtitlesFilter = GetTextSubtitlesFilter(state, true, true);
-                        subFilters.Add(alphaSrcFilter);
-                        subFilters.Add("format=yuva420p");
-                        subFilters.Add(subTextSubtitlesFilter);
-
-                        alphaFormatOpt = _mediaEncoder.SupportsFilterWithOption(FilterOptionType.OverlayOpenclAlphaFormat)
-                            ? ":alpha_format=premultiplied" : string.Empty;
-                    }
+                    // Only the alphasrc path produces premultiplied alpha.
+                    var alphaFormatOpt = hasTextSubs && _mediaEncoder.SupportsFilterWithOption(FilterOptionType.OverlayOpenclAlphaFormat)
+                        ? ":alpha_format=premultiplied" : string.Empty;
 
                     subFilters.Add("hwupload=derive_device=opencl");
                     overlayFilters.Add($"overlay_opencl=eof_action=pass:repeatlast=0{alphaFormatOpt}");
@@ -4714,9 +4802,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasGraphicalSubs)
                 {
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                    subFilters.Add(subPreProcFilters);
-                    overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
+                    AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                 }
             }
 
@@ -4995,48 +5081,22 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasSubs)
                 {
-                    if (hasGraphicalSubs)
-                    {
-                        // overlay_qsv can handle overlay scaling, setup a smaller height to reduce transfer overhead
-                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, 1080);
-                        subFilters.Add(subPreProcFilters);
-                        subFilters.Add("format=bgra");
-                    }
-                    else if (hasTextSubs)
-                    {
-                        var framerate = state.VideoStream?.RealFrameRate;
-                        var subFramerate = hasAssSubs ? Math.Min(framerate ?? 25, 60) : 10;
-
-                        // alphasrc=s=1280x720:r=10:start=0,format=bgra,subtitles,hwupload
-                        var alphaSrcFilter = GetAlphaSrcFilter(state, swpInW, swpInH, reqW, reqH, reqMaxW, 1080, subFramerate);
-                        var subTextSubtitlesFilter = GetTextSubtitlesFilter(state, true, true);
-                        subFilters.Add(alphaSrcFilter);
-                        subFilters.Add("format=bgra");
-                        subFilters.Add(subTextSubtitlesFilter);
-                    }
+                    // overlay_qsv can handle overlay scaling, setup a smaller height to reduce transfer overhead
+                    AppendHwSubtitleSource(subFilters, state, "bgra", hasGraphicalSubs, hasTextSubs, hasAssSubs, swpInW, swpInH, reqW, reqH, reqMaxW, 1080);
 
                     // qsv requires a fixed pool size.
                     // default to 64 otherwise it will fail on certain iGPU.
                     subFilters.Add("hwupload=derive_device=qsv:extra_hw_frames=64");
 
-                    var (overlayW, overlayH) = GetFixedOutputSize(swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                    var overlaySize = (overlayW.HasValue && overlayH.HasValue)
-                        ? $":w={overlayW.Value}:h={overlayH.Value}"
-                        : string.Empty;
-                    var overlayQsvFilter = string.Format(
-                        CultureInfo.InvariantCulture,
-                        "overlay_qsv=eof_action=pass:repeatlast=0{0}",
-                        overlaySize);
-                    overlayFilters.Add(overlayQsvFilter);
+                    var overlaySize = GetHwOverlaySizeArgs(swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
+                    overlayFilters.Add("overlay_qsv=eof_action=pass:repeatlast=0" + overlaySize);
                 }
             }
             else if (memoryOutput)
             {
                 if (hasGraphicalSubs)
                 {
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                    subFilters.Add(subPreProcFilters);
-                    overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
+                    AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                 }
             }
 
@@ -5233,47 +5293,21 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasSubs)
                 {
-                    if (hasGraphicalSubs)
-                    {
-                        // overlay_qsv can handle overlay scaling, setup a smaller height to reduce transfer overhead
-                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, 1080);
-                        subFilters.Add(subPreProcFilters);
-                        subFilters.Add("format=bgra");
-                    }
-                    else if (hasTextSubs)
-                    {
-                        var framerate = state.VideoStream?.RealFrameRate;
-                        var subFramerate = hasAssSubs ? Math.Min(framerate ?? 25, 60) : 10;
-
-                        var alphaSrcFilter = GetAlphaSrcFilter(state, swpInW, swpInH, reqW, reqH, reqMaxW, 1080, subFramerate);
-                        var subTextSubtitlesFilter = GetTextSubtitlesFilter(state, true, true);
-                        subFilters.Add(alphaSrcFilter);
-                        subFilters.Add("format=bgra");
-                        subFilters.Add(subTextSubtitlesFilter);
-                    }
+                    AppendHwSubtitleSource(subFilters, state, "bgra", hasGraphicalSubs, hasTextSubs, hasAssSubs, swpInW, swpInH, reqW, reqH, reqMaxW, 1080);
 
                     // qsv requires a fixed pool size.
                     // default to 64 otherwise it will fail on certain iGPU.
                     subFilters.Add("hwupload=derive_device=qsv:extra_hw_frames=64");
 
-                    var (overlayW, overlayH) = GetFixedOutputSize(swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                    var overlaySize = (overlayW.HasValue && overlayH.HasValue)
-                        ? $":w={overlayW.Value}:h={overlayH.Value}"
-                        : string.Empty;
-                    var overlayQsvFilter = string.Format(
-                        CultureInfo.InvariantCulture,
-                        "overlay_qsv=eof_action=pass:repeatlast=0{0}",
-                        overlaySize);
-                    overlayFilters.Add(overlayQsvFilter);
+                    var overlaySize = GetHwOverlaySizeArgs(swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
+                    overlayFilters.Add("overlay_qsv=eof_action=pass:repeatlast=0" + overlaySize);
                 }
             }
             else if (memoryOutput)
             {
                 if (hasGraphicalSubs)
                 {
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                    subFilters.Add(subPreProcFilters);
-                    overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
+                    AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                 }
             }
 
@@ -5507,45 +5541,19 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasSubs)
                 {
-                    if (hasGraphicalSubs)
-                    {
-                        // overlay_vaapi can handle overlay scaling, setup a smaller height to reduce transfer overhead
-                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, 1080);
-                        subFilters.Add(subPreProcFilters);
-                        subFilters.Add("format=bgra");
-                    }
-                    else if (hasTextSubs)
-                    {
-                        var framerate = state.VideoStream?.RealFrameRate;
-                        var subFramerate = hasAssSubs ? Math.Min(framerate ?? 25, 60) : 10;
-
-                        var alphaSrcFilter = GetAlphaSrcFilter(state, swpInW, swpInH, reqW, reqH, reqMaxW, 1080, subFramerate);
-                        var subTextSubtitlesFilter = GetTextSubtitlesFilter(state, true, true);
-                        subFilters.Add(alphaSrcFilter);
-                        subFilters.Add("format=bgra");
-                        subFilters.Add(subTextSubtitlesFilter);
-                    }
+                    AppendHwSubtitleSource(subFilters, state, "bgra", hasGraphicalSubs, hasTextSubs, hasAssSubs, swpInW, swpInH, reqW, reqH, reqMaxW, 1080);
 
                     subFilters.Add("hwupload=derive_device=vaapi");
 
-                    var (overlayW, overlayH) = GetFixedOutputSize(swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                    var overlaySize = (overlayW.HasValue && overlayH.HasValue)
-                        ? $":w={overlayW.Value}:h={overlayH.Value}"
-                        : string.Empty;
-                    var overlayVaapiFilter = string.Format(
-                        CultureInfo.InvariantCulture,
-                        "overlay_vaapi=eof_action=pass:repeatlast=0{0}",
-                        overlaySize);
-                    overlayFilters.Add(overlayVaapiFilter);
+                    var overlaySize = GetHwOverlaySizeArgs(swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
+                    overlayFilters.Add("overlay_vaapi=eof_action=pass:repeatlast=0" + overlaySize);
                 }
             }
             else if (memoryOutput)
             {
                 if (hasGraphicalSubs)
                 {
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                    subFilters.Add(subPreProcFilters);
-                    overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
+                    AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
 
                     if (isVaapiEncoder)
                     {
@@ -5746,23 +5754,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var overlayFilters = new List<string>();
             if (hasSubs)
             {
-                if (hasGraphicalSubs)
-                {
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                    subFilters.Add(subPreProcFilters);
-                    subFilters.Add("format=bgra");
-                }
-                else if (hasTextSubs)
-                {
-                    var framerate = state.VideoStream?.RealFrameRate;
-                    var subFramerate = hasAssSubs ? Math.Min(framerate ?? 25, 60) : 10;
-
-                    var alphaSrcFilter = GetAlphaSrcFilter(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, subFramerate);
-                    var subTextSubtitlesFilter = GetTextSubtitlesFilter(state, true, true);
-                    subFilters.Add(alphaSrcFilter);
-                    subFilters.Add("format=bgra");
-                    subFilters.Add(subTextSubtitlesFilter);
-                }
+                AppendHwSubtitleSource(subFilters, state, "bgra", hasGraphicalSubs, hasTextSubs, hasAssSubs, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
 
                 subFilters.Add("hwupload=derive_device=vulkan");
                 subFilters.Add("format=vulkan");
@@ -5969,9 +5961,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasGraphicalSubs)
                 {
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                    subFilters.Add(subPreProcFilters);
-                    overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
+                    AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
 
                     if (isVaapiEncoder)
                     {
@@ -6110,23 +6100,7 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             if (hasSubs)
             {
-                if (hasGraphicalSubs)
-                {
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                    subFilters.Add(subPreProcFilters);
-                    subFilters.Add("format=bgra");
-                }
-                else if (hasTextSubs)
-                {
-                    var framerate = state.VideoStream?.RealFrameRate;
-                    var subFramerate = hasAssSubs ? Math.Min(framerate ?? 25, 60) : 10;
-
-                    var alphaSrcFilter = GetAlphaSrcFilter(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, subFramerate);
-                    var subTextSubtitlesFilter = GetTextSubtitlesFilter(state, true, true);
-                    subFilters.Add(alphaSrcFilter);
-                    subFilters.Add("format=bgra");
-                    subFilters.Add(subTextSubtitlesFilter);
-                }
+                AppendHwSubtitleSource(subFilters, state, "bgra", hasGraphicalSubs, hasTextSubs, hasAssSubs, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
 
                 subFilters.Add("hwupload");
                 overlayFilters.Add("overlay_videotoolbox=eof_action=pass:repeatlast=0");
@@ -6379,24 +6353,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 if (hasSubs)
                 {
                     var subMaxH = 1080;
-                    if (hasGraphicalSubs)
-                    {
-                        var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, subMaxH);
-                        subFilters.Add(subPreProcFilters);
-                        subFilters.Add("format=bgra");
-                    }
-                    else if (hasTextSubs)
-                    {
-                        var framerate = state.VideoStream?.RealFrameRate;
-                        var subFramerate = hasAssSubs ? Math.Min(framerate ?? 25, 60) : 10;
-
-                        // alphasrc=s=1280x720:r=10:start=0,format=bgra,subtitles,hwupload
-                        var alphaSrcFilter = GetAlphaSrcFilter(state, swpInW, swpInH, reqW, reqH, reqMaxW, subMaxH, subFramerate);
-                        var subTextSubtitlesFilter = GetTextSubtitlesFilter(state, true, true);
-                        subFilters.Add(alphaSrcFilter);
-                        subFilters.Add("format=bgra");
-                        subFilters.Add(subTextSubtitlesFilter);
-                    }
+                    AppendHwSubtitleSource(subFilters, state, "bgra", hasGraphicalSubs, hasTextSubs, hasAssSubs, swpInW, swpInH, reqW, reqH, reqMaxW, subMaxH);
 
                     subFilters.Add("hwupload=derive_device=rkmpp");
 
@@ -6421,9 +6378,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 if (hasGraphicalSubs)
                 {
-                    var subPreProcFilters = GetGraphicalSubPreProcessFilters(state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                    subFilters.Add(subPreProcFilters);
-                    overlayFilters.Add("overlay=eof_action=pass:repeatlast=0");
+                    AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
                 }
             }
 
