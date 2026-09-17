@@ -4105,6 +4105,73 @@ namespace MediaBrowser.Controller.MediaEncoding
         }
 
         /// <summary>
+        /// Appends the input filters every chain shares while the frames are still in system memory.
+        /// </summary>
+        /// <param name="mainFilters">The main filter list to append to.</param>
+        /// <param name="state">The encoding job info.</param>
+        /// <param name="options">The encoding options.</param>
+        /// <param name="vidEncoder">The video encoder.</param>
+        /// <param name="outFormat">The pixel format to hand to whatever comes next.</param>
+        /// <param name="videoWidth">The frame width after 3D flattening and rotation.</param>
+        /// <param name="videoHeight">The frame height after 3D flattening and rotation.</param>
+        /// <param name="requestedWidth">The requested width.</param>
+        /// <param name="requestedHeight">The requested height.</param>
+        /// <param name="requestedMaxWidth">The requested maximum width.</param>
+        /// <param name="requestedMaxHeight">The requested maximum height.</param>
+        /// <param name="forceFullRange">Whether the scaler has to output full range, for the hw mjpeg encoders.</param>
+        /// <param name="fastBilinear">Whether the scaler should trade quality for speed.</param>
+        private void AppendSwInputFilters(
+            List<string> mainFilters,
+            EncodingJobInfo state,
+            EncodingOptions options,
+            string vidEncoder,
+            string outFormat,
+            int? videoWidth,
+            int? videoHeight,
+            int? requestedWidth,
+            int? requestedHeight,
+            int? requestedMaxWidth,
+            int? requestedMaxHeight,
+            bool forceFullRange = false,
+            bool fastBilinear = false)
+        {
+            // sw deint
+            if (IsDeinterlaceAvailable(state))
+            {
+                mainFilters.Add(GetSwDeinterlaceFilter(state, options));
+            }
+
+            // sw 3d to 2d
+            mainFilters.Add(GetVideo3DFilter(state.MediaSource?.Video3DFormat));
+
+            var swScaleFilter = GetSwScaleFilter(
+                state,
+                options,
+                vidEncoder,
+                videoWidth,
+                videoHeight,
+                requestedWidth,
+                requestedHeight,
+                requestedMaxWidth,
+                requestedMaxHeight);
+
+            if (forceFullRange)
+            {
+                // sw decoder + hw mjpeg encoder
+                swScaleFilter = string.IsNullOrEmpty(swScaleFilter) ? "scale=out_range=pc" : $"{swScaleFilter}:out_range=pc";
+            }
+
+            if (fastBilinear && !string.IsNullOrEmpty(swScaleFilter))
+            {
+                swScaleFilter += ":flags=fast_bilinear";
+            }
+
+            // sw scale
+            mainFilters.Add(swScaleFilter);
+            mainFilters.Add("format=" + outFormat);
+        }
+
+        /// <summary>
         /// Gets the frame geometry every filter chain builder works from.
         /// </summary>
         /// <param name="state">The encoding job info.</param>
@@ -4332,21 +4399,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             if (isSwDecoder)
             {
                 // INPUT sw surface(memory)
-                // sw deint
-                if (doDeintH2645)
-                {
-                    var swDeintFilter = GetSwDeinterlaceFilter(state, options);
-                    mainFilters.Add(swDeintFilter);
-                }
-
-                // sw 3d to 2d
-                mainFilters.Add(GetVideo3DFilter(threeDFormat));
-
-                var outFormat = doCuTonemap ? "p010le" : "yuv420p";
-                var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                // sw scale
-                mainFilters.Add(swScaleFilter);
-                mainFilters.Add($"format={outFormat}");
+                AppendSwInputFilters(mainFilters, state, options, vidEncoder, doCuTonemap ? "p010le" : "yuv420p", swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
 
                 // sw => hw
                 if (doCuTonemap)
@@ -4535,21 +4588,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             if (isSwDecoder)
             {
                 // INPUT sw surface(memory)
-                // sw deint
-                if (doDeintH2645)
-                {
-                    var swDeintFilter = GetSwDeinterlaceFilter(state, options);
-                    mainFilters.Add(swDeintFilter);
-                }
-
-                // sw 3d to 2d
-                mainFilters.Add(GetVideo3DFilter(threeDFormat));
-
-                var outFormat = doOclTonemap ? "yuv420p10le" : "yuv420p";
-                var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                // sw scale
-                mainFilters.Add(swScaleFilter);
-                mainFilters.Add($"format={outFormat}");
+                AppendSwInputFilters(mainFilters, state, options, vidEncoder, doOclTonemap ? "yuv420p10le" : "yuv420p", swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
 
                 // keep video at memory except ocl tonemap,
                 // since the overhead caused by hwupload >>> using sw filter.
@@ -4777,27 +4816,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             if (isSwDecoder)
             {
                 // INPUT sw surface(memory)
-                // sw deint
-                if (doDeintH2645)
-                {
-                    var swDeintFilter = GetSwDeinterlaceFilter(state, options);
-                    mainFilters.Add(swDeintFilter);
-                }
-
-                // sw 3d to 2d
-                mainFilters.Add(GetVideo3DFilter(threeDFormat));
-
-                var outFormat = doOclTonemap ? "yuv420p10le" : (hasGraphicalSubs ? "yuv420p" : "nv12");
-                var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                if (isMjpegEncoder && !doOclTonemap)
-                {
-                    // sw decoder + hw mjpeg encoder
-                    swScaleFilter = string.IsNullOrEmpty(swScaleFilter) ? "scale=out_range=pc" : $"{swScaleFilter}:out_range=pc";
-                }
-
-                // sw scale
-                mainFilters.Add(swScaleFilter);
-                mainFilters.Add($"format={outFormat}");
+                AppendSwInputFilters(mainFilters, state, options, vidEncoder, doOclTonemap ? "yuv420p10le" : (hasGraphicalSubs ? "yuv420p" : "nv12"), swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, isMjpegEncoder && !doOclTonemap);
 
                 // keep video at memory except ocl tonemap,
                 // since the overhead caused by hwupload >>> using sw filter.
@@ -5061,27 +5080,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             if (isSwDecoder)
             {
                 // INPUT sw surface(memory)
-                // sw deint
-                if (doDeintH2645)
-                {
-                    var swDeintFilter = GetSwDeinterlaceFilter(state, options);
-                    mainFilters.Add(swDeintFilter);
-                }
-
-                // sw 3d to 2d
-                mainFilters.Add(GetVideo3DFilter(threeDFormat));
-
-                var outFormat = doOclTonemap ? "yuv420p10le" : (hasGraphicalSubs ? "yuv420p" : "nv12");
-                var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                if (isMjpegEncoder && !doOclTonemap)
-                {
-                    // sw decoder + hw mjpeg encoder
-                    swScaleFilter = string.IsNullOrEmpty(swScaleFilter) ? "scale=out_range=pc" : $"{swScaleFilter}:out_range=pc";
-                }
-
-                // sw scale
-                mainFilters.Add(swScaleFilter);
-                mainFilters.Add($"format={outFormat}");
+                AppendSwInputFilters(mainFilters, state, options, vidEncoder, doOclTonemap ? "yuv420p10le" : (hasGraphicalSubs ? "yuv420p" : "nv12"), swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, isMjpegEncoder && !doOclTonemap);
 
                 // keep video at memory except ocl tonemap,
                 // since the overhead caused by hwupload >>> using sw filter.
@@ -5385,27 +5384,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             if (isSwDecoder)
             {
                 // INPUT sw surface(memory)
-                // sw deint
-                if (doDeintH2645)
-                {
-                    var swDeintFilter = GetSwDeinterlaceFilter(state, options);
-                    mainFilters.Add(swDeintFilter);
-                }
-
-                // sw 3d to 2d
-                mainFilters.Add(GetVideo3DFilter(threeDFormat));
-
-                var outFormat = doOclTonemap ? "yuv420p10le" : "nv12";
-                var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                if (isMjpegEncoder && !doOclTonemap)
-                {
-                    // sw decoder + hw mjpeg encoder
-                    swScaleFilter = string.IsNullOrEmpty(swScaleFilter) ? "scale=out_range=pc" : $"{swScaleFilter}:out_range=pc";
-                }
-
-                // sw scale
-                mainFilters.Add(swScaleFilter);
-                mainFilters.Add($"format={outFormat}");
+                AppendSwInputFilters(mainFilters, state, options, vidEncoder, doOclTonemap ? "yuv420p10le" : "nv12", swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, isMjpegEncoder && !doOclTonemap);
 
                 // keep video at memory except ocl tonemap,
                 // since the overhead caused by hwupload >>> using sw filter.
@@ -5861,27 +5840,8 @@ namespace MediaBrowser.Controller.MediaEncoding
             if (isSwDecoder)
             {
                 // INPUT sw surface(memory)
-                // sw deint
-                if (doDeintH2645)
-                {
-                    var swDeintFilter = GetSwDeinterlaceFilter(state, options);
-                    mainFilters.Add(swDeintFilter);
-                }
-
-                // sw 3d to 2d
-                mainFilters.Add(GetVideo3DFilter(threeDFormat));
-
                 outFormat = doOclTonemap ? "yuv420p10le" : "nv12";
-                var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                if (isMjpegEncoder && !doOclTonemap)
-                {
-                    // sw decoder + hw mjpeg encoder
-                    swScaleFilter = string.IsNullOrEmpty(swScaleFilter) ? "scale=out_range=pc" : $"{swScaleFilter}:out_range=pc";
-                }
-
-                // sw scale
-                mainFilters.Add(swScaleFilter);
-                mainFilters.Add("format=" + outFormat);
+                AppendSwInputFilters(mainFilters, state, options, vidEncoder, outFormat, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, isMjpegEncoder && !doOclTonemap);
 
                 // keep video at memory except ocl tonemap,
                 // since the overhead caused by hwupload >>> using sw filter.
@@ -6280,32 +6240,20 @@ namespace MediaBrowser.Controller.MediaEncoding
             if (isSwDecoder)
             {
                 // INPUT sw surface(memory)
-                // sw deint
-                if (doDeintH2645)
-                {
-                    var swDeintFilter = GetSwDeinterlaceFilter(state, options);
-                    mainFilters.Add(swDeintFilter);
-                }
-
-                // sw 3d to 2d
-                mainFilters.Add(GetVideo3DFilter(threeDFormat));
-
-                var outFormat = doOclTonemap ? "yuv420p10le" : (hasGraphicalSubs ? "yuv420p" : "nv12");
-                var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
-                if (isMjpegEncoder && !doOclTonemap)
-                {
-                    // sw decoder + hw mjpeg encoder
-                    swScaleFilter = string.IsNullOrEmpty(swScaleFilter) ? "scale=out_range=pc" : $"{swScaleFilter}:out_range=pc";
-                }
-
-                if (!string.IsNullOrEmpty(swScaleFilter))
-                {
-                    swScaleFilter += ":flags=fast_bilinear";
-                }
-
-                // sw scale
-                mainFilters.Add(swScaleFilter);
-                mainFilters.Add($"format={outFormat}");
+                AppendSwInputFilters(
+                    mainFilters,
+                    state,
+                    options,
+                    vidEncoder,
+                    doOclTonemap ? "yuv420p10le" : (hasGraphicalSubs ? "yuv420p" : "nv12"),
+                    swpInW,
+                    swpInH,
+                    reqW,
+                    reqH,
+                    reqMaxW,
+                    reqMaxH,
+                    isMjpegEncoder && !doOclTonemap,
+                    fastBilinear: true);
 
                 // keep video at memory except ocl tonemap,
                 // since the overhead caused by hwupload >>> using sw filter.
