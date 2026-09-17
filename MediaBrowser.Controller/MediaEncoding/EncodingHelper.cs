@@ -90,7 +90,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         private readonly Version _minFFmpegRkmppHevcDecDoviRpu = new Version(7, 1, 1);
         private readonly Version _minFFmpegReadrateCatchupOption = new Version(8, 0);
         private readonly Version _minFFmpegNoiseBsfDrop = new Version(5, 0);
-        private readonly Version _minFFmpegHwCrop = new Version(7, 0, 1);
+        private readonly Version _minFFmpegHwCrop = new Version(8, 0);
         private readonly Version _minFFmpegHwCapsProbe = new Version(8, 1, 2);
 
         private static readonly string[] _videoProfilesH264 =
@@ -420,19 +420,21 @@ namespace MediaBrowser.Controller.MediaEncoding
         }
 
         /// <summary>
-        /// Whether the given device can change the frame geometry without a round trip through system memory.
+        /// Whether the given device applies the crop rectangle of its input frames, keeping the crop in VRAM.
         /// </summary>
         /// <remarks>
-        /// vpp_qsv crops with cw/ch/cx/cy and libplacebo with crop_w/crop_h. scale_vaapi, scale_cuda,
-        /// scale_opencl, scale_vt and scale_rkrga all expect a preceding software crop filter instead.
+        /// Cropping is an implicit feature of the scale filter: the fixed function VPP scalers have always
+        /// honoured it, the shader and kernel based ones only from FFmpeg 8.
         /// </remarks>
         /// <param name="device">The filter device.</param>
         /// <returns><c>true</c> if the device can crop, <c>false</c> otherwise.</returns>
-        private bool CanCropOnDevice(HwFilterDevice device)
+        private bool CanCropOnDevice(HwFilterDevice device) => device switch
         {
-            return device is HwFilterDevice.Qsv or HwFilterDevice.Vulkan
-                && _mediaEncoder.EncoderVersion >= _minFFmpegHwCrop;
-        }
+            HwFilterDevice.Qsv or HwFilterDevice.Vaapi or HwFilterDevice.Rkrga => true,
+            HwFilterDevice.Cuda or HwFilterDevice.OpenCl or HwFilterDevice.Vulkan or HwFilterDevice.VideoToolbox
+                => _mediaEncoder.EncoderVersion >= _minFFmpegHwCrop,
+            _ => false
+        };
 
         /// <summary>
         /// Decides what a job intends to do in hardware, before any filter chain is built.
@@ -455,7 +457,10 @@ namespace MediaBrowser.Controller.MediaEncoding
                 ops |= HwOps.Deinterlace;
             }
 
-            if (IsHwTonemapAvailable(state, options))
+            // Deliberately not IsHwTonemapAvailable: its DoVi branch asks for the decoder, which asks for this plan.
+            if (options.EnableTonemapping
+                && state.VideoStream?.VideoRange == VideoRange.HDR
+                && GetVideoColorBitDepth(state) >= 10)
             {
                 ops |= HwOps.Tonemap;
             }
@@ -470,20 +475,10 @@ namespace MediaBrowser.Controller.MediaEncoding
                 ops |= HwOps.Transpose;
             }
 
+            // This must not consult the decoder: the decoders gate their hardware surface output on the plan.
             var width = state.VideoStream?.Width ?? 0;
             var height = state.VideoStream?.Height ?? 0;
-
-            // Software decoded frames are already in system memory, so they crop there for free.
-            var vidDecoder = GetHardwareVideoDecoder(state, options) ?? string.Empty;
-            var decodesOntoDevice = device switch
-            {
-                HwFilterDevice.Qsv => vidDecoder.Contains("qsv", StringComparison.OrdinalIgnoreCase),
-                HwFilterDevice.Vulkan => vidDecoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase),
-                _ => false
-            };
-
-            var canCrop = decodesOntoDevice
-                && CanCropOnDevice(device)
+            var canCrop = CanCropOnDevice(device)
                 && CanDeviceFilter(options.HardwareAccelerationType, HwVppKind.Scale, width, height);
 
             return new HwPipelinePlan(options.HardwareAccelerationType, device, ops, canCrop);
@@ -3513,7 +3508,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             int? requestedHeight,
             int? requestedMaxWidth,
             int? requestedMaxHeight,
-            string cropArgs = null)
+            bool isCropped = false)
         {
             var (outWidth, outHeight) = GetFixedOutputSize(
                 videoWidth,
@@ -3525,8 +3520,7 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             var isFormatFixed = !string.IsNullOrEmpty(videoFormat);
 
-            // Cropping always needs an explicit output size, the filters derive it from the crop rectangle otherwise.
-            var isCropped = !string.IsNullOrEmpty(cropArgs);
+            // A preceding crop makes the sizes match again, so the scaler has to be told to resize anyway.
             var isSizeFixed = isCropped
                 || !videoWidth.HasValue
                 || outWidth.Value != videoWidth.Value
@@ -3537,7 +3531,6 @@ namespace MediaBrowser.Controller.MediaEncoding
             var swpOutH = swapOutputWandH ? outWidth.Value : outHeight.Value;
 
             var arg1 = isSizeFixed ? $"=w={swpOutW}:h={swpOutH}" : string.Empty;
-            var argCrop = isCropped ? ":" + cropArgs : string.Empty;
             var arg2 = isFormatFixed ? $"format={videoFormat}" : string.Empty;
             if (isFormatFixed)
             {
@@ -3548,11 +3541,10 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 return string.Format(
                     CultureInfo.InvariantCulture,
-                    "{0}_{1}{2}{3}{4}",
+                    "{0}_{1}{2}{3}",
                     hwScalePrefix ?? "scale",
                     hwScaleSuffix,
                     arg1,
-                    argCrop,
                     arg2);
             }
 
@@ -3800,38 +3792,42 @@ namespace MediaBrowser.Controller.MediaEncoding
         }
 
         /// <summary>
-        /// Gets the rectangle covering the left/top view of a frame packed 3D frame, for the hardware croppers.
+        /// Gets the frame size the filters downstream of the 3D flattening see, rotation included.
         /// </summary>
+        /// <remarks>
+        /// Subtitle pre-scaling and overlay placement have to follow the flattened frame, not the packed one.
+        /// </remarks>
+        /// <param name="state">The encoding job info.</param>
+        /// <param name="swapWidthAndHeight">Whether the chain rotates the frame by a quarter turn.</param>
+        /// <returns>The frame size.</returns>
+        private static (int? Width, int? Height) GetFlattenedFilterInputSize(EncodingJobInfo state, bool swapWidthAndHeight)
+        {
+            var (flatWidth, flatHeight) = GetVideo3DFlattenedSize(
+                state.MediaSource?.Video3DFormat,
+                state.VideoStream?.Width,
+                state.VideoStream?.Height);
+
+            return swapWidthAndHeight ? (flatHeight, flatWidth) : (flatWidth, flatHeight);
+        }
+
+        /// <summary>
+        /// Gets the crop filter that drops the second view of a frame packed 3D frame.
+        /// </summary>
+        /// <remarks>
+        /// Unlike <see cref="GetVideo3DFilter"/> this never stretches the remaining view back with a software
+        /// scale filter, because the hardware scaler downstream already targets the flattened frame size.
+        /// The crop filter itself only rewrites frame metadata, so it works on hardware frames too.
+        /// </remarks>
         /// <param name="threedFormat">The 3D format of the source.</param>
-        /// <param name="videoWidth">The width of the source.</param>
-        /// <param name="videoHeight">The height of the source.</param>
-        /// <returns>The crop rectangle, or null when the source needs no flattening.</returns>
-        public static (int Width, int Height)? GetVideo3DCropSize(Video3DFormat? threedFormat, int? videoWidth, int? videoHeight)
+        /// <returns>The crop filter, or an empty string when the source needs no flattening.</returns>
+        public static string GetVideo3DCropFilter(Video3DFormat? threedFormat)
         {
-            if (videoWidth is not int width
-                || videoHeight is not int height
-                || string.IsNullOrEmpty(GetVideo3DFilter(threedFormat)))
+            return threedFormat switch
             {
-                return null;
-            }
-
-            return threedFormat is Video3DFormat.FullSideBySide or Video3DFormat.HalfSideBySide
-                ? (width / 4 * 2, height)
-                : (width, height / 4 * 2);
-        }
-
-        private static string GetVideo3DVppQsvCropArgs(Video3DFormat? threedFormat, int? videoWidth, int? videoHeight)
-        {
-            return GetVideo3DCropSize(threedFormat, videoWidth, videoHeight) is (int width, int height)
-                ? string.Format(CultureInfo.InvariantCulture, "cw={0}:ch={1}:cx=0:cy=0", width, height)
-                : null;
-        }
-
-        private static string GetVideo3DLibplaceboCropArgs(Video3DFormat? threedFormat, int? videoWidth, int? videoHeight)
-        {
-            return GetVideo3DCropSize(threedFormat, videoWidth, videoHeight) is (int width, int height)
-                ? string.Format(CultureInfo.InvariantCulture, "crop_w={0}:crop_h={1}:crop_x=0:crop_y=0", width, height)
-                : null;
+                Video3DFormat.FullSideBySide or Video3DFormat.HalfSideBySide => "crop=trunc(iw/4)*2:ih:0:0",
+                Video3DFormat.FullTopAndBottom or Video3DFormat.HalfTopAndBottom => "crop=iw:trunc(ih/4)*2:0:0",
+                _ => string.Empty
+            };
         }
 
         public static string GetSwDeinterlaceFilter(EncodingJobInfo state, EncodingOptions options)
@@ -3992,7 +3988,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             int? requestedMaxWidth,
             int? requestedMaxHeight,
             bool forceFullRange,
-            string cropArgs = null)
+            bool isCropped = false)
         {
             var (outWidth, outHeight) = GetFixedOutputSize(
                 videoWidth,
@@ -4004,8 +4000,7 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             var isFormatFixed = !string.IsNullOrEmpty(videoFormat);
 
-            // libplacebo scales the crop rectangle up to w/h, which default to the full input size.
-            var isCropped = !string.IsNullOrEmpty(cropArgs);
+            // A preceding crop makes the sizes match again, so libplacebo has to be told to resize anyway.
             var isSizeFixed = isCropped
                 || !videoWidth.HasValue
                 || outWidth.Value != videoWidth.Value
@@ -4013,7 +4008,6 @@ namespace MediaBrowser.Controller.MediaEncoding
                 || outHeight.Value != videoHeight.Value;
 
             var sizeArg = isSizeFixed ? (":w=" + outWidth.Value + ":h=" + outHeight.Value) : string.Empty;
-            var cropArg = isCropped ? (":" + cropArgs) : string.Empty;
             var formatArg = isFormatFixed ? (":format=" + videoFormat) : string.Empty;
             var tonemapArg = string.Empty;
 
@@ -4052,9 +4046,8 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "libplacebo=upscaler=none:downscaler=none{0}{1}{2}{3}",
+                "libplacebo=upscaler=none:downscaler=none{0}{1}{2}",
                 sizeArg,
-                cropArg,
                 formatArg,
                 tonemapArg);
         }
@@ -4106,8 +4099,7 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             var rotation = state.VideoStream?.Rotation ?? 0;
             var swapWAndH = Math.Abs(rotation) == 90;
-            var swpInW = swapWAndH ? inH : inW;
-            var swpInH = swapWAndH ? inW : inH;
+            var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
 
             /* Make main filters for video stream */
             var mainFilters = new List<string>();
@@ -4268,8 +4260,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
             var doCuTranspose = !string.IsNullOrEmpty(transposeDir) && _mediaEncoder.SupportsFilter("transpose_cuda");
             var swapWAndH = Math.Abs(rotation) == 90 && (isSwDecoder || (isNvDecoder && doCuTranspose));
-            var swpInW = swapWAndH ? inH : inW;
-            var swpInH = swapWAndH ? inW : inH;
+            var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
 
             /* Make main filters for video stream */
             var mainFilters = new List<string>();
@@ -4320,7 +4311,11 @@ namespace MediaBrowser.Controller.MediaEncoding
 
                 var isRext = IsVideoStreamHevcRext(state);
                 var outFormat = doCuTonemap ? (isRext ? "p010" : string.Empty) : "yuv420p";
-                var hwScaleFilter = GetHwScaleFilter("scale", "cuda", outFormat, false, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
+                // hw 3d to 2d, the crop rectangle travels with the frame and the scaler applies it in vram
+                var hwCrop3DFilter = CanFlatten3DInVram(state, options) ? GetVideo3DCropFilter(threeDFormat) : null;
+                mainFilters.Add(hwCrop3DFilter);
+
+                var hwScaleFilter = GetHwScaleFilter("scale", "cuda", outFormat, false, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, !string.IsNullOrEmpty(hwCrop3DFilter));
                 // hw scale
                 mainFilters.Add(hwScaleFilter);
             }
@@ -4482,8 +4477,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var doOclTranspose = !string.IsNullOrEmpty(transposeDir)
                 && _mediaEncoder.SupportsFilterWithOption(FilterOptionType.TransposeOpenclReversal);
             var swapWAndH = Math.Abs(rotation) == 90 && (isSwDecoder || (isD3d11vaDecoder && doOclTranspose));
-            var swpInW = swapWAndH ? inH : inW;
-            var swpInH = swapWAndH ? inW : inH;
+            var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
 
             /* Make main filters for video stream */
             var mainFilters = new List<string>();
@@ -4540,7 +4534,11 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
 
                 var outFormat = doOclTonemap ? string.Empty : "nv12";
-                var hwScaleFilter = GetHwScaleFilter("scale", "opencl", outFormat, false, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
+                // hw 3d to 2d, the crop rectangle travels with the frame and the scaler applies it in vram
+                var hwCrop3DFilter = CanFlatten3DInVram(state, options) ? GetVideo3DCropFilter(threeDFormat) : null;
+                mainFilters.Add(hwCrop3DFilter);
+
+                var hwScaleFilter = GetHwScaleFilter("scale", "opencl", outFormat, false, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, !string.IsNullOrEmpty(hwCrop3DFilter));
                 // hw scale
                 mainFilters.Add(hwScaleFilter);
             }
@@ -4733,10 +4731,9 @@ namespace MediaBrowser.Controller.MediaEncoding
             var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
             var doVppTranspose = !string.IsNullOrEmpty(transposeDir);
             var swapWAndH = Math.Abs(rotation) == 90 && (isSwDecoder || ((isD3d11vaDecoder || isQsvDecoder) && doVppTranspose));
-            var (flatInW, flatInH) = GetVideo3DFlattenedSize(threeDFormat, inW, inH);
-            var swpInW = swapWAndH ? flatInH : flatInW;
-            var swpInH = swapWAndH ? flatInW : flatInH;
-            var crop3DArgs = CanFlatten3DInVram(state, options) ? GetVideo3DVppQsvCropArgs(threeDFormat, inW, inH) : null;
+            var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
+            var hwCrop3DFilter = CanFlatten3DInVram(state, options) ? GetVideo3DCropFilter(threeDFormat) : null;
+            var doHw3DFlatten = !string.IsNullOrEmpty(hwCrop3DFilter);
 
             /* Make main filters for video stream */
             var mainFilters = new List<string>();
@@ -4825,8 +4822,11 @@ namespace MediaBrowser.Controller.MediaEncoding
                 outFormat = twoPassVppTonemap ? "p010" : outFormat;
 
                 var swapOutputWandH = doVppTranspose && swapWAndH;
-                // hw 3d to 2d, vpp_qsv crops the second view away in vram
-                var hwScaleFilter = GetHwScaleFilter("vpp", "qsv", outFormat, swapOutputWandH, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, crop3DArgs);
+
+                // hw 3d to 2d, the crop rectangle travels with the frame and vpp_qsv applies it in vram
+                mainFilters.Add(hwCrop3DFilter);
+
+                var hwScaleFilter = GetHwScaleFilter("vpp", "qsv", outFormat, swapOutputWandH, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, doHw3DFlatten);
 
                 // d3d11va doesn't support dynamic pool size, use vpp filter ctx to relay
                 // to prevent encoder async and bframes from exhausting the decoder pool.
@@ -5031,9 +5031,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
             var doVppTranspose = !string.IsNullOrEmpty(transposeDir);
             var swapWAndH = Math.Abs(rotation) == 90 && (isSwDecoder || ((isVaapiDecoder || isQsvDecoder) && doVppTranspose));
-            var (flatInW, flatInH) = GetVideo3DFlattenedSize(threeDFormat, inW, inH);
-            var swpInW = swapWAndH ? flatInH : flatInW;
-            var swpInH = swapWAndH ? flatInW : flatInH;
+            var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
 
             /* Make main filters for video stream */
             var mainFilters = new List<string>();
@@ -5101,8 +5099,11 @@ namespace MediaBrowser.Controller.MediaEncoding
                 var hwScalePrefix = isQsvDecoder ? "vpp" : "scale";
 
                 // hw 3d to 2d, only vpp_qsv can crop the second view away in vram
-                var crop3DArgs = CanFlatten3DInVram(state, options) ? GetVideo3DVppQsvCropArgs(threeDFormat, inW, inH) : null;
-                var hwScaleFilter = GetHwScaleFilter(hwScalePrefix, hwFilterSuffix, outFormat, swapOutputWandH, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, crop3DArgs);
+                // hw 3d to 2d, the crop rectangle travels with the frame and the vpp scaler applies it in vram
+                var hwCrop3DFilter = CanFlatten3DInVram(state, options) ? GetVideo3DCropFilter(threeDFormat) : null;
+                mainFilters.Add(hwCrop3DFilter);
+
+                var hwScaleFilter = GetHwScaleFilter(hwScalePrefix, hwFilterSuffix, outFormat, swapOutputWandH, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, !string.IsNullOrEmpty(hwCrop3DFilter));
 
                 if (!string.IsNullOrEmpty(hwScaleFilter) && isQsvDecoder && doVppTranspose)
                 {
@@ -5368,8 +5369,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
             var doVaVppTranspose = !string.IsNullOrEmpty(transposeDir);
             var swapWAndH = Math.Abs(rotation) == 90 && (isSwDecoder || (isVaapiDecoder && doVaVppTranspose));
-            var swpInW = swapWAndH ? inH : inW;
-            var swpInH = swapWAndH ? inW : inH;
+            var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
 
             /* Make main filters for video stream */
             var mainFilters = new List<string>();
@@ -5428,7 +5428,11 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
 
                 var outFormat = doTonemap ? (isRext ? "p010" : string.Empty) : "nv12";
-                var hwScaleFilter = GetHwScaleFilter("scale", "vaapi", outFormat, false, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
+                // hw 3d to 2d, the crop rectangle travels with the frame and the scaler applies it in vram
+                var hwCrop3DFilter = CanFlatten3DInVram(state, options) ? GetVideo3DCropFilter(threeDFormat) : null;
+                mainFilters.Add(hwCrop3DFilter);
+
+                var hwScaleFilter = GetHwScaleFilter("scale", "vaapi", outFormat, false, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, !string.IsNullOrEmpty(hwCrop3DFilter));
 
                 if (!string.IsNullOrEmpty(hwScaleFilter) && isMjpegEncoder)
                 {
@@ -5593,8 +5597,8 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             // scale_vaapi cannot crop, so a frame packed 3D source has to take the vulkan route and
             // let libplacebo crop the second view away.
-            var crop3DArgs = CanFlatten3DInVram(state, options) ? GetVideo3DLibplaceboCropArgs(threeDFormat, inW, inH) : null;
-            var doVk3DFlatten = !string.IsNullOrEmpty(crop3DArgs);
+            var hwCrop3DFilter = CanFlatten3DInVram(state, options) ? GetVideo3DCropFilter(threeDFormat) : null;
+            var doVk3DFlatten = !string.IsNullOrEmpty(hwCrop3DFilter);
 
             var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
             var hasTextSubs = hasSubs && state.SubtitleStream.IsTextSubtitleStream;
@@ -5607,9 +5611,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
             var doVkTranspose = isVaapiDecoder && !string.IsNullOrEmpty(transposeDir);
             var swapWAndH = Math.Abs(rotation) == 90 && (isSwDecoder || (isVaapiDecoder && doVkTranspose));
-            var (flatInW, flatInH) = GetVideo3DFlattenedSize(threeDFormat, inW, inH);
-            var swpInW = swapWAndH ? flatInH : flatInW;
-            var swpInH = swapWAndH ? flatInW : flatInH;
+            var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
 
             /* Make main filters for video stream */
             var mainFilters = new List<string>();
@@ -5717,7 +5719,8 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 // Only the tonemap and overlay paths need RGB, a plain 3D crop stays in nv12.
                 var libplaceboFormat = (doVkTonemap || hasSubs) ? "bgra" : "nv12";
-                var libplaceboFilter = GetLibplaceboFilter(options, libplaceboFormat, doVkTonemap, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, isMjpegEncoder, crop3DArgs);
+                mainFilters.Add(hwCrop3DFilter);
+                var libplaceboFilter = GetLibplaceboFilter(options, libplaceboFormat, doVkTonemap, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, isMjpegEncoder, doVk3DFlatten);
                 mainFilters.Add(libplaceboFilter);
                 mainFilters.Add("format=vulkan");
             }
@@ -5860,8 +5863,7 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             var rotation = state.VideoStream?.Rotation ?? 0;
             var swapWAndH = Math.Abs(rotation) == 90 && isSwDecoder;
-            var swpInW = swapWAndH ? inH : inW;
-            var swpInH = swapWAndH ? inW : inH;
+            var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
 
             /* Make main filters for video stream */
             var mainFilters = new List<string>();
@@ -5913,7 +5915,12 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
 
                 outFormat = doOclTonemap ? string.Empty : "nv12";
-                var hwScaleFilter = GetHwScaleFilter("scale", "vaapi", outFormat, false, inW, inH, reqW, reqH, reqMaxW, reqMaxH);
+
+                // hw 3d to 2d, the crop rectangle travels with the frame and scale_vaapi applies it in vram
+                var hwCrop3DFilter = CanFlatten3DInVram(state, options) ? GetVideo3DCropFilter(threeDFormat) : null;
+                mainFilters.Add(hwCrop3DFilter);
+
+                var hwScaleFilter = GetHwScaleFilter("scale", "vaapi", outFormat, false, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, !string.IsNullOrEmpty(hwCrop3DFilter));
 
                 if (!string.IsNullOrEmpty(hwScaleFilter) && isMjpegEncoder)
                 {
@@ -6094,8 +6101,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
             var doVtTranspose = !string.IsNullOrEmpty(transposeDir) && _mediaEncoder.SupportsFilter("transpose_vt");
             var swapWAndH = Math.Abs(rotation) == 90 && doVtTranspose;
-            var swpInW = swapWAndH ? inH : inW;
-            var swpInH = swapWAndH ? inW : inH;
+            var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
 
             var scaleFormat = string.Empty;
             // Use P010 for Metal tone mapping, otherwise force an 8bit output.
@@ -6114,7 +6120,9 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
             }
 
-            var hwScaleFilter = GetHwScaleFilter("scale", "vt", scaleFormat, false, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
+            // hw 3d to 2d, the crop rectangle travels with the frame and scale_vt applies it in vram
+            var hwCrop3DFilter = CanFlatten3DInVram(state, options) ? GetVideo3DCropFilter(state.MediaSource?.Video3DFormat) : null;
+            var hwScaleFilter = GetHwScaleFilter("scale", "vt", scaleFormat, false, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, !string.IsNullOrEmpty(hwCrop3DFilter));
 
             var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
             var hasTextSubs = hasSubs && state.SubtitleStream.IsTextSubtitleStream;
@@ -6301,8 +6309,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
             var doRkVppTranspose = !string.IsNullOrEmpty(transposeDir);
             var swapWAndH = Math.Abs(rotation) == 90 && (isSwDecoder || (isRkmppDecoder && doRkVppTranspose));
-            var swpInW = swapWAndH ? inH : inW;
-            var swpInH = swapWAndH ? inW : inH;
+            var (swpInW, swpInH) = GetFlattenedFilterInputSize(state, swapWAndH);
 
             /* Make main filters for video stream */
             var mainFilters = new List<string>();
@@ -6354,7 +6361,11 @@ namespace MediaBrowser.Controller.MediaEncoding
                 var isFullAfbcPipeline = isEncoderSupportAfbc && isDrmInDrmOut && !doOclTonemap;
                 var swapOutputWandH = doRkVppTranspose && swapWAndH;
                 var outFormat = doOclTonemap ? "p010" : "nv12";
-                var hwScaleFilter = GetHwScaleFilter("vpp", "rkrga", outFormat, swapOutputWandH, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
+                // hw 3d to 2d, the crop rectangle travels with the frame and the scaler applies it in vram
+                var hwCrop3DFilter = CanFlatten3DInVram(state, options) ? GetVideo3DCropFilter(threeDFormat) : null;
+                mainFilters.Add(hwCrop3DFilter);
+
+                var hwScaleFilter = GetHwScaleFilter("vpp", "rkrga", outFormat, swapOutputWandH, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, !string.IsNullOrEmpty(hwCrop3DFilter));
                 var doScaling = !string.IsNullOrEmpty(GetHwScaleFilter("vpp", "rkrga", string.Empty, swapOutputWandH, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH));
 
                 if (!hasSubs
