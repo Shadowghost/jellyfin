@@ -492,15 +492,4 @@ public class HardwareCapabilitiesProvider : IHardwareCapabilitiesProvider
             _logger.LogDebug(ex, "Could not cache the {ProbeType} hardware capabilities", probeType);
         }
     }
-
-    private sealed class HwCapsCacheEntry
-    {
-        public int CacheVersion { get; set; }
-
-        public string? EncoderVersion { get; set; }
-
-        public string? DeviceKey { get; set; }
-
-        public HwAccelCapabilities? Capabilities { get; set; }
-    }
 }
