@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../MediaBrowser.Controller/MediaBrowser.Controller.csproj" />
+    <ProjectReference Include="../../src/Jellyfin.MediaEncoding.Pipeline/Jellyfin.MediaEncoding.Pipeline.csproj" />
   </ItemGroup>
 
 </Project>
