@@ -15,6 +15,20 @@ namespace MediaBrowser.MediaEncoding.Probing
         public string? SideDataType { get; set; }
 
         /// <summary>
+        /// Gets or sets the stereoscopic layout a <c>Stereo 3D</c> side data reports.
+        /// </summary>
+        /// <value>The layout, such as <c>side by side</c>.</value>
+        [JsonPropertyName("type")]
+        public string? Stereo3DType { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the two views of a <c>Stereo 3D</c> side data are swapped.
+        /// </summary>
+        /// <value>Whether the views are swapped.</value>
+        [JsonPropertyName("inverted")]
+        public int? Stereo3DInverted { get; set; }
+
+        /// <summary>
         /// Gets or sets the DvVersionMajor.
         /// </summary>
         /// <value>The DvVersionMajor.</value>

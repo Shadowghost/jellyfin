@@ -245,10 +245,7 @@ namespace MediaBrowser.MediaEncoding.Probing
 
                 ExtractTimestamp(info);
 
-                if (tags.TryGetValue("stereo_mode", out var stereoMode) && string.Equals(stereoMode, "left_right", StringComparison.OrdinalIgnoreCase))
-                {
-                    info.Video3DFormat = Video3DFormat.FullSideBySide;
-                }
+                info.Video3DFormat ??= GetVideo3DFormat(data, tags);
 
                 foreach (var mediaStream in info.MediaStreams)
                 {
@@ -1614,6 +1611,96 @@ namespace MediaBrowser.MediaEncoding.Probing
             }
 
             return info;
+        }
+
+        /// <summary>
+        /// Gets how a frame packed 3D source carries its two views.
+        /// </summary>
+        /// <remarks>
+        /// A container can describe the layout either as a stream tag or as <c>Stereo 3D</c> side
+        /// data; the side data also covers top and bottom, which the tag lookup alone misses.
+        /// H.264 additionally carries the layout in-stream as a frame packing arrangement SEI, which
+        /// ffprobe reports as frame side data without naming the layout, so it cannot be read here.
+        /// </remarks>
+        /// <param name="data">The probe result.</param>
+        /// <param name="tags">The merged stream and container tags.</param>
+        /// <returns>The layout, or <c>null</c> when the source is not frame packed.</returns>
+        private static Video3DFormat? GetVideo3DFormat(InternalMediaInfoResult data, IReadOnlyDictionary<string, string> tags)
+        {
+            var videoStream = data.Streams?.FirstOrDefault(i => i.CodecType == CodecType.Video);
+
+            var layout = videoStream?.SideDataList?
+                .FirstOrDefault(i => string.Equals(i.SideDataType, "Stereo 3D", StringComparison.OrdinalIgnoreCase))?
+                .Stereo3DType;
+
+            if (string.IsNullOrEmpty(layout) && tags.TryGetValue("stereo_mode", out var stereoMode))
+            {
+                layout = stereoMode.ToLowerInvariant() switch
+                {
+                    "left_right" or "right_left" => "side by side",
+                    "top_bottom" or "bottom_top" => "top and bottom",
+                    _ => null
+                };
+            }
+
+            return ResolveFramePacking(layout, videoStream?.Width, videoStream?.Height, videoStream?.DisplayAspectRatio);
+        }
+
+        /// <summary>
+        /// Works out whether a frame packed source squeezed both views into one picture or carries
+        /// them at full size.
+        /// </summary>
+        /// <remarks>
+        /// A frame that displays about twice as wide, or twice as tall, as a picture normally does
+        /// is holding both views at full size. Anything else squeezed them, and the view that
+        /// survives cropping has to be stretched back out.
+        /// </remarks>
+        /// <param name="layout">The layout ffprobe reported.</param>
+        /// <param name="width">The coded width.</param>
+        /// <param name="height">The coded height.</param>
+        /// <param name="displayAspectRatio">The display aspect ratio, which already accounts for non square pixels.</param>
+        /// <returns>The layout, or <c>null</c> when it is not one that can be flattened.</returns>
+        internal static Video3DFormat? ResolveFramePacking(string layout, int? width, int? height, string displayAspectRatio)
+        {
+            if (string.IsNullOrEmpty(layout))
+            {
+                return null;
+            }
+
+            var sideBySide = layout.Contains("side by side", StringComparison.OrdinalIgnoreCase);
+            var topAndBottom = layout.Contains("top and bottom", StringComparison.OrdinalIgnoreCase);
+
+            if (!sideBySide && !topAndBottom)
+            {
+                return null;
+            }
+
+            var aspect = GetDisplayAspect(width, height, displayAspectRatio);
+
+            if (sideBySide)
+            {
+                return aspect >= 2.5 ? Video3DFormat.FullSideBySide : Video3DFormat.HalfSideBySide;
+            }
+
+            return aspect > 0 && aspect <= 1.2 ? Video3DFormat.FullTopAndBottom : Video3DFormat.HalfTopAndBottom;
+        }
+
+        private static double GetDisplayAspect(int? width, int? height, string displayAspectRatio)
+        {
+            if (!string.IsNullOrEmpty(displayAspectRatio))
+            {
+                var parts = displayAspectRatio.Split(':');
+                if (parts.Length == 2
+                    && int.TryParse(parts[0], CultureInfo.InvariantCulture, out var numerator)
+                    && int.TryParse(parts[1], CultureInfo.InvariantCulture, out var denominator)
+                    && numerator > 0
+                    && denominator > 0)
+                {
+                    return (double)numerator / denominator;
+                }
+            }
+
+            return width > 0 && height > 0 ? (double)width.Value / height.Value : 0;
         }
 
         private void FetchWtvInfo(MediaInfo video, InternalMediaInfoResult data)
