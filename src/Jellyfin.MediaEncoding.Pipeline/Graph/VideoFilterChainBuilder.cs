@@ -323,7 +323,7 @@ public sealed class VideoFilterChainBuilder
                 target,
                 uploadFormat,
                 state.PixelFormat != uploadFormat,
-                target != _accelerator.Surface),
+                target != _accelerator.EncoderSurface),
             resolved,
             ref state);
     }

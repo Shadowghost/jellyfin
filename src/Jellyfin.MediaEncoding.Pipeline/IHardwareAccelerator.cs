@@ -23,6 +23,17 @@ public interface IHardwareAccelerator
     bool DeclaresColorProperties => true;
 
     /// <summary>
+    /// Gets the memory a hardware decoder leaves frames in, which is the surface the chain starts on.
+    /// </summary>
+    FrameSurface DecodeSurface => Surface;
+
+    /// <summary>
+    /// Gets the memory the encoder reads from, which differs from the filtering surface on the
+    /// devices that are handed their frames by mapping.
+    /// </summary>
+    FrameSurface EncoderSurface => Surface;
+
+    /// <summary>
     /// Gets the suffix the device's encoders are named with, or <c>null</c> when it has none.
     /// </summary>
     string? EncoderSuffix => null;
@@ -60,6 +71,12 @@ public interface IHardwareAccelerator
     /// <param name="request">What the job needs.</param>
     /// <returns>The plan.</returns>
     InputPlan CreateInputPlan(InputPlanRequest request) => InputPlan.Empty;
+
+    /// <summary>
+    /// Gets the chain to build when the source is decoded in system memory instead of on the device.
+    /// </summary>
+    /// <returns>The accelerator to build with.</returns>
+    IHardwareAccelerator ForSoftwareDecode() => Accelerators.SoftwareAccelerator.Instance;
 
     /// <summary>
     /// Settles anything the device has to decide for the chain as a whole before any one filter is

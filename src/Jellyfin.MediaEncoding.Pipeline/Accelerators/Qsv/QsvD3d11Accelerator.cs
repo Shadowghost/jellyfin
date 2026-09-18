@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Jellyfin.MediaEncoding.Pipeline;
+using Jellyfin.MediaEncoding.Pipeline.Accelerators;
 using Jellyfin.MediaEncoding.Pipeline.Filters;
 using Jellyfin.MediaEncoding.Pipeline.Filters.Devices;
 using Jellyfin.MediaEncoding.Pipeline.Filters.Transfers;
@@ -24,6 +25,9 @@ public sealed record QsvD3d11Accelerator : IHardwareAccelerator
 
     /// <inheritdoc />
     public FrameSurface Surface => FrameSurface.Qsv;
+
+    /// <inheritdoc />
+    public FrameSurface DecodeSurface => FrameSurface.Qsv;
 
     /// <inheritdoc />
     public string? EncoderSuffix => "qsv";
@@ -56,6 +60,10 @@ public sealed record QsvD3d11Accelerator : IHardwareAccelerator
             Decoder = request.HardwareDecode ? new VideoDecoder("qsv", FrameSurface.Qsv, "qsv") { StripDisplayRotation = request.Rotation != 0 } : null
         };
     }
+
+    /// <inheritdoc />
+    public IHardwareAccelerator ForSoftwareDecode()
+        => new CopyBackAccelerator(PixelFormat.Nv12, FrameSurface.System, "qsv");
 
     /// <inheritdoc />
     public IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities)

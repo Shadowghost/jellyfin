@@ -30,6 +30,9 @@ public sealed record CudaAccelerator(string DeinterlaceMethod = "yadif", bool Do
     public PixelFormat? SubtitleFormat => PixelFormat.Yuva420p;
 
     /// <inheritdoc />
+    public FrameSurface DecodeSurface => FrameSurface.Cuda;
+
+    /// <inheritdoc />
     public PixelFormat GetDeviceFormat(FrameState state) => PixelFormat.Yuv420p;
 
     /// <inheritdoc />
@@ -58,6 +61,10 @@ public sealed record CudaAccelerator(string DeinterlaceMethod = "yadif", bool Do
         // Only the canvas the text subtitle is drawn onto carries premultiplied alpha.
         ExtraOptions = subtitleIsRendered ? "alpha_format=premultiplied" : null
     };
+
+    /// <inheritdoc />
+    public IHardwareAccelerator ForSoftwareDecode()
+        => new CopyBackAccelerator(PixelFormat.Yuv420p, FrameSurface.System, "nvenc");
 
     /// <inheritdoc />
     public IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities)

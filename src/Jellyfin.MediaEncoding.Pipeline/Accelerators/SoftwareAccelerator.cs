@@ -22,7 +22,7 @@ public sealed class SoftwareAccelerator : IHardwareAccelerator
     public FrameSurface Surface => FrameSurface.System;
 
     /// <inheritdoc />
-    public PixelFormat GetDeviceFormat(FrameState state) => PixelFormat.Unknown;
+    public PixelFormat GetDeviceFormat(FrameState state) => PixelFormat.Yuv420p;
 
     /// <inheritdoc />
     public IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities) => filter;

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Jellyfin.MediaEncoding.Pipeline;
+using Jellyfin.MediaEncoding.Pipeline.Accelerators;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.Vaapi;
 using Jellyfin.MediaEncoding.Pipeline.Filters;
 using Jellyfin.MediaEncoding.Pipeline.Filters.Devices;
@@ -22,6 +23,9 @@ namespace Jellyfin.MediaEncoding.Pipeline.Accelerators.Qsv;
 public sealed record QsvVaapiAccelerator(bool DoubleRateDeinterlace = false)
     : VaapiAccelerator(DoubleRateDeinterlace, false)
 {
+    /// <inheritdoc />
+    public override FrameSurface EncoderSurface => FrameSurface.Qsv;
+
     /// <inheritdoc />
     public override string? EncoderSuffix => "qsv";
 
@@ -49,6 +53,10 @@ public sealed record QsvVaapiAccelerator(bool DoubleRateDeinterlace = false)
             Decoder = request.HardwareDecode ? new VideoDecoder("vaapi", FrameSurface.Vaapi, "vaapi") { StripDisplayRotation = request.Rotation != 0 } : null
         };
     }
+
+    /// <inheritdoc />
+    public override IHardwareAccelerator ForSoftwareDecode()
+        => new CopyBackAccelerator(PixelFormat.Nv12, FrameSurface.System, "qsv");
 
     /// <inheritdoc />
     public override IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities)

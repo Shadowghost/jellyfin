@@ -35,6 +35,9 @@ public sealed record RkrgaAccelerator(bool Afbc) : IHardwareAccelerator
     public bool OverlayPinsPixelFormat => true;
 
     /// <inheritdoc />
+    public FrameSurface DecodeSurface => FrameSurface.Rkmpp;
+
+    /// <inheritdoc />
     public PixelFormat GetDeviceFormat(FrameState state)
         => state.PixelFormat.BitDepth >= 10 ? _p010 : PixelFormat.Nv12;
 
@@ -60,6 +63,10 @@ public sealed record RkrgaAccelerator(bool Afbc) : IHardwareAccelerator
                 : null
         };
     }
+
+    /// <inheritdoc />
+    public IHardwareAccelerator ForSoftwareDecode()
+        => new CopyBackAccelerator(PixelFormat.Nv12, FrameSurface.System, "rkmpp", "fast_bilinear");
 
     /// <inheritdoc />
     public IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities)

@@ -1,5 +1,6 @@
 using System.Globalization;
 using Jellyfin.MediaEncoding.Pipeline;
+using Jellyfin.MediaEncoding.Pipeline.Accelerators;
 using Jellyfin.MediaEncoding.Pipeline.Filters;
 using Jellyfin.MediaEncoding.Pipeline.Filters.Devices;
 using Jellyfin.MediaEncoding.Pipeline.Filters.Transfers;
@@ -21,6 +22,9 @@ public sealed record VideoToolboxAccelerator(string DeinterlaceMethod = "yadif",
 
     /// <inheritdoc />
     public FrameSurface Surface => FrameSurface.VideoToolbox;
+
+    /// <inheritdoc />
+    public FrameSurface DecodeSurface => FrameSurface.VideoToolbox;
 
     /// <inheritdoc />
     public string? EncoderSuffix => "videotoolbox";
@@ -52,6 +56,10 @@ public sealed record VideoToolboxAccelerator(string DeinterlaceMethod = "yadif",
             ? new VideoDecoder("videotoolbox", FrameSurface.VideoToolbox, "videotoolbox") { StripDisplayRotation = request.Rotation != 0 }
             : null
     };
+
+    /// <inheritdoc />
+    public IHardwareAccelerator ForSoftwareDecode()
+        => new CopyBackAccelerator(PixelFormat.Nv12, FrameSurface.System, "videotoolbox");
 
     /// <inheritdoc />
     public IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities)

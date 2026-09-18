@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Jellyfin.MediaEncoding.Pipeline;
+using Jellyfin.MediaEncoding.Pipeline.Accelerators;
 using Jellyfin.MediaEncoding.Pipeline.Filters;
 using Jellyfin.MediaEncoding.Pipeline.Filters.Devices;
 using Jellyfin.MediaEncoding.Pipeline.Filters.Transfers;
@@ -28,6 +29,12 @@ public record VaapiAccelerator(bool DoubleRateDeinterlace = false, bool Graphica
 
     /// <inheritdoc />
     public virtual FrameSurface Surface => FrameSurface.Vaapi;
+
+    /// <inheritdoc />
+    public FrameSurface DecodeSurface => FrameSurface.Vaapi;
+
+    /// <inheritdoc />
+    public virtual FrameSurface EncoderSurface => FrameSurface.Vaapi;
 
     /// <inheritdoc />
     public virtual string? EncoderSuffix => "vaapi";
@@ -64,6 +71,10 @@ public record VaapiAccelerator(bool DoubleRateDeinterlace = false, bool Graphica
             Decoder = request.HardwareDecode ? new VideoDecoder("vaapi", FrameSurface.Vaapi, "vaapi") { StripDisplayRotation = request.Rotation != 0 } : null
         };
     }
+
+    /// <inheritdoc />
+    public virtual IHardwareAccelerator ForSoftwareDecode()
+        => new CopyBackAccelerator(PixelFormat.Nv12, FrameSurface.Vaapi, "vaapi");
 
     /// <inheritdoc />
     public virtual IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities)

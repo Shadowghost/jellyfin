@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using Jellyfin.MediaEncoding.Pipeline;
+using Jellyfin.MediaEncoding.Pipeline.Accelerators;
 using Jellyfin.MediaEncoding.Pipeline.Filters;
 using Jellyfin.MediaEncoding.Pipeline.Filters.Devices;
 using Jellyfin.MediaEncoding.Pipeline.Filters.Transfers;
@@ -28,6 +29,12 @@ public sealed record AmfD3d11Accelerator(string DeinterlaceMethod = "yadif", boo
     public FrameSurface Surface => FrameSurface.OpenCl;
 
     /// <inheritdoc />
+    public FrameSurface DecodeSurface => FrameSurface.D3d11;
+
+    /// <inheritdoc />
+    public FrameSurface EncoderSurface => FrameSurface.D3d11;
+
+    /// <inheritdoc />
     public string? EncoderSuffix => "amf";
 
     /// <inheritdoc />
@@ -46,6 +53,10 @@ public sealed record AmfD3d11Accelerator(string DeinterlaceMethod = "yadif", boo
             ? new VideoDecoder("d3d11va", FrameSurface.D3d11, "d3d11") { StripDisplayRotation = request.Rotation != 0 }
             : null
     };
+
+    /// <inheritdoc />
+    public IHardwareAccelerator ForSoftwareDecode()
+        => new CopyBackAccelerator(PixelFormat.Nv12, FrameSurface.System, "amf");
 
     /// <inheritdoc />
     public IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities)

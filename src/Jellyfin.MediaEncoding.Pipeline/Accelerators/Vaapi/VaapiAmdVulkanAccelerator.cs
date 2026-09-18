@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Jellyfin.MediaEncoding.Pipeline;
+using Jellyfin.MediaEncoding.Pipeline.Accelerators;
 using Jellyfin.MediaEncoding.Pipeline.Filters;
 using Jellyfin.MediaEncoding.Pipeline.Filters.Devices;
 using Jellyfin.MediaEncoding.Pipeline.Filters.Transfers;
@@ -38,11 +39,18 @@ public sealed record VaapiAmdVulkanAccelerator(
     public FrameSurface Surface => FrameSurface.Vaapi;
 
     /// <inheritdoc />
+    public FrameSurface DecodeSurface => FrameSurface.Vaapi;
+
+    /// <inheritdoc />
     public string? EncoderSuffix => "vaapi";
 
     /// <inheritdoc />
     public PixelFormat GetDeviceFormat(FrameState state)
         => state.PixelFormat.BitDepth >= 10 && !TakesVulkanRoute ? PixelFormat.P010le : PixelFormat.Nv12;
+
+    /// <inheritdoc />
+    public IHardwareAccelerator ForSoftwareDecode()
+        => new CopyBackAccelerator(PixelFormat.Nv12, FrameSurface.Vaapi, "vaapi");
 
     /// <inheritdoc />
     public (IHardwareAccelerator Accelerator, IReadOnlyList<IVideoFilter> Filters) Plan(

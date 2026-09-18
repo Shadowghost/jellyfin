@@ -18,6 +18,11 @@ public sealed record ScaleFilter(ScalingRequest Request) : IVideoFilter
     {
     }
 
+    /// <summary>
+    /// Gets the scaler to use, or <c>null</c> for the default one.
+    /// </summary>
+    public string? Flags { get; init; }
+
     /// <inheritdoc />
     public FrameSurface? RequiredSurface => FrameSurface.System;
 
@@ -36,5 +41,10 @@ public sealed record ScaleFilter(ScalingRequest Request) : IVideoFilter
     };
 
     /// <inheritdoc />
-    public string? ToFilterArgument() => Request.ToSoftwareFilterArgument();
+    public string? ToFilterArgument()
+    {
+        var argument = Request.ToSoftwareFilterArgument();
+
+        return argument is null || string.IsNullOrEmpty(Flags) ? argument : argument + ":flags=" + Flags;
+    }
 }
