@@ -1,0 +1,169 @@
+# The devices and decoder each job asks for, recorded on Linux.
+amf/deinterlace-1080i => 
+amf/deinterlace-and-downscale => 
+amf/downscale-720p => 
+amf/full-side-by-side => 
+amf/graphical-subs => 
+amf/graphical-subs-and-downscale => 
+amf/half-side-by-side-downscale => 
+amf/hdr10-tonemap => 
+amf/hdr10-tonemap-and-downscale => 
+amf/max-dimensions-720p => 
+amf/max-width-only => 
+amf/mjpeg => 
+amf/mjpeg-downscale => 
+amf/mjpeg-max-dimensions => 
+amf/passthrough-1080p => 
+amf/request-matches-source => 
+amf/rotate-180 => 
+amf/rotate-90 => 
+amf/rotate-90-and-downscale => 
+amf/software-decode => 
+amf/software-decode-and-downscale => 
+amf/software-decode-deinterlace => 
+amf/software-encoder-downscale => 
+amf/text-subs => 
+none/deinterlace-1080i => 
+none/deinterlace-and-downscale => 
+none/downscale-720p => 
+none/full-side-by-side => 
+none/graphical-subs => 
+none/graphical-subs-and-downscale => 
+none/half-side-by-side-downscale => 
+none/hdr10-tonemap => 
+none/hdr10-tonemap-and-downscale => 
+none/max-dimensions-720p => 
+none/max-width-only => 
+none/mjpeg => 
+none/mjpeg-downscale => 
+none/mjpeg-max-dimensions => 
+none/passthrough-1080p => 
+none/request-matches-source => 
+none/rotate-180 => 
+none/rotate-90 => 
+none/rotate-90-and-downscale => 
+none/software-decode => 
+none/software-decode-and-downscale => 
+none/software-decode-deinterlace => 
+none/software-encoder-downscale => 
+none/text-subs => 
+nvenc/deinterlace-1080i => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/deinterlace-and-downscale => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/downscale-720p => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/full-side-by-side => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/graphical-subs => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/graphical-subs-and-downscale => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/half-side-by-side-downscale => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/hdr10-tonemap => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/hdr10-tonemap-and-downscale => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/max-dimensions-720p => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/max-width-only => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/mjpeg => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/mjpeg-downscale => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/mjpeg-max-dimensions => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/passthrough-1080p => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/request-matches-source => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/rotate-180 => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -display_rotation 0 -hwaccel_flags +unsafe_output -threads 1
+nvenc/rotate-90 => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -display_rotation 0 -hwaccel_flags +unsafe_output -threads 1
+nvenc/rotate-90-and-downscale => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -display_rotation 0 -hwaccel_flags +unsafe_output -threads 1
+nvenc/software-decode => -init_hw_device cuda=cu:0 -filter_hw_device cu
+nvenc/software-decode-and-downscale => -init_hw_device cuda=cu:0 -filter_hw_device cu
+nvenc/software-decode-deinterlace => -init_hw_device cuda=cu:0 -filter_hw_device cu
+nvenc/software-encoder-downscale => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+nvenc/text-subs => -init_hw_device cuda=cu:0 -filter_hw_device cu -hwaccel cuda -hwaccel_output_format cuda -noautorotate -hwaccel_flags +unsafe_output -threads 1
+qsv/deinterlace-1080i => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/deinterlace-and-downscale => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/downscale-720p => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/full-side-by-side => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/graphical-subs => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/graphical-subs-and-downscale => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/half-side-by-side-downscale => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/hdr10-tonemap => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -init_hw_device opencl=ocl@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/hdr10-tonemap-and-downscale => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -init_hw_device opencl=ocl@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/max-dimensions-720p => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/max-width-only => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/mjpeg => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/mjpeg-downscale => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/mjpeg-max-dimensions => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/passthrough-1080p => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/request-matches-source => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/rotate-180 => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate -display_rotation 0
+qsv/rotate-90 => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate -display_rotation 0
+qsv/rotate-90-and-downscale => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate -display_rotation 0
+qsv/software-decode => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs
+qsv/software-decode-and-downscale => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs
+qsv/software-decode-deinterlace => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs
+qsv/software-encoder-downscale => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+qsv/text-subs => -init_hw_device vaapi=va:,vendor_id=0x8086,driver=iHD -init_hw_device qsv=qs@va -filter_hw_device qs -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+rkmpp/deinterlace-1080i => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/deinterlace-and-downscale => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/downscale-720p => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/full-side-by-side => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/graphical-subs => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/graphical-subs-and-downscale => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/half-side-by-side-downscale => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/hdr10-tonemap => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/hdr10-tonemap-and-downscale => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/max-dimensions-720p => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/max-width-only => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/mjpeg => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/mjpeg-downscale => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/mjpeg-max-dimensions => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/passthrough-1080p => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/request-matches-source => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/rotate-180 => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -display_rotation 0 -afbc rga
+rkmpp/rotate-90 => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -display_rotation 0 -afbc rga
+rkmpp/rotate-90-and-downscale => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -display_rotation 0 -afbc rga
+rkmpp/software-decode => -init_hw_device rkmpp=rk
+rkmpp/software-decode-and-downscale => -init_hw_device rkmpp=rk
+rkmpp/software-decode-deinterlace => -init_hw_device rkmpp=rk
+rkmpp/software-encoder-downscale => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+rkmpp/text-subs => -init_hw_device rkmpp=rk -hwaccel rkmpp -hwaccel_output_format drm_prime -noautorotate -afbc rga
+vaapi/deinterlace-1080i => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/deinterlace-and-downscale => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/downscale-720p => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/full-side-by-side => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/graphical-subs => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/graphical-subs-and-downscale => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/half-side-by-side-downscale => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/hdr10-tonemap => -init_hw_device opencl=ocl:0.0 -filter_hw_device ocl -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/hdr10-tonemap-and-downscale => -init_hw_device opencl=ocl:0.0 -filter_hw_device ocl -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/max-dimensions-720p => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/max-width-only => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/mjpeg => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/mjpeg-downscale => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/mjpeg-max-dimensions => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/passthrough-1080p => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/request-matches-source => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/rotate-180 => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate -display_rotation 0
+vaapi/rotate-90 => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate -display_rotation 0
+vaapi/rotate-90-and-downscale => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate -display_rotation 0
+vaapi/software-decode => 
+vaapi/software-decode-and-downscale => 
+vaapi/software-decode-deinterlace => 
+vaapi/software-encoder-downscale => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+vaapi/text-subs => -hwaccel vaapi -hwaccel_output_format vaapi -noautorotate
+videotoolbox/deinterlace-1080i => 
+videotoolbox/deinterlace-and-downscale => 
+videotoolbox/downscale-720p => 
+videotoolbox/full-side-by-side => 
+videotoolbox/graphical-subs => 
+videotoolbox/graphical-subs-and-downscale => 
+videotoolbox/half-side-by-side-downscale => 
+videotoolbox/hdr10-tonemap => 
+videotoolbox/hdr10-tonemap-and-downscale => 
+videotoolbox/max-dimensions-720p => 
+videotoolbox/max-width-only => 
+videotoolbox/mjpeg => 
+videotoolbox/mjpeg-downscale => 
+videotoolbox/mjpeg-max-dimensions => 
+videotoolbox/passthrough-1080p => 
+videotoolbox/request-matches-source => 
+videotoolbox/rotate-180 => 
+videotoolbox/rotate-90 => 
+videotoolbox/rotate-90-and-downscale => 
+videotoolbox/software-decode => 
+videotoolbox/software-decode-and-downscale => 
+videotoolbox/software-decode-deinterlace => 
+videotoolbox/software-encoder-downscale => 
+videotoolbox/text-subs => 

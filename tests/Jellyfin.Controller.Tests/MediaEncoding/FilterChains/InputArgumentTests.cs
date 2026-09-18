@@ -2,30 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using MediaBrowser.Model.Entities;
 using Xunit;
 
 namespace Jellyfin.Controller.Tests.MediaEncoding.FilterChains;
 
 /// <summary>
-/// Measures the pipeline package's device and decoder arguments against the ones
-/// <see cref="MediaBrowser.Controller.MediaEncoding.EncodingHelper"/> still builds.
+/// Holds the devices and decoder a job asks for to what the encoding helper produced before the
+/// pipeline package took them over.
 /// </summary>
-/// <remarks>
-/// The filter chains no longer have a second implementation to compare against, so they are held to
-/// <see cref="GoldenFilterChains"/> instead. The input arguments still have one.
-/// </remarks>
 public class InputArgumentTests
 {
-    private static readonly HashSet<HardwareAccelerationType> _onLinux =
-    [
-        HardwareAccelerationType.vaapi,
-        HardwareAccelerationType.qsv,
-        HardwareAccelerationType.rkmpp,
-        HardwareAccelerationType.nvenc,
-        HardwareAccelerationType.none
-    ];
-
     public static TheoryData<string> AllCases()
     {
         var data = new TheoryData<string>();
@@ -39,16 +25,31 @@ public class InputArgumentTests
 
     [Theory]
     [MemberData(nameof(AllCases))]
-    public void Pipeline_ReproducesTheInputArguments(string name)
+    public void EncodingHelper_ProducesTheRecordedInputArguments(string name)
     {
-        var testCase = TranscodeCorpus.All.Single(c => string.Equals(c.Name, name, StringComparison.Ordinal));
-        Assert.SkipUnless(
-            OperatingSystem.IsLinux() && _onLinux.Contains(testCase.Acceleration),
-            "the devices of this type are not reachable here");
+        Assert.SkipWhen(GoldenFilterChains.Updating, "recording");
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "the devices are only reachable on Linux");
 
-        Assert.Equal(
-            EncodingJobs.BuildInputArgs(testCase, TestEncodingHelper.Create()),
-            PipelineJobs.BuildInputArgs(testCase));
+        var testCase = TranscodeCorpus.All.Single(c => string.Equals(c.Name, name, StringComparison.Ordinal));
+        var recorded = GoldenFilterChains.Read("expected-input");
+
+        Assert.True(recorded.ContainsKey(name), $"{name} has no recorded arguments");
+        Assert.Equal(recorded[name], EncodingJobs.BuildInputArgs(testCase, TestEncodingHelper.Create()));
+    }
+
+    [Fact]
+    public void Record()
+    {
+        Assert.SkipUnless(GoldenFilterChains.Updating, "set JELLYFIN_UPDATE_GOLDEN=1 to re-record");
+
+        var helper = TestEncodingHelper.Create();
+
+        GoldenFilterChains.Write(
+            "expected-input",
+            "# The devices and decoder each job asks for, recorded on Linux.\n",
+            TranscodeCorpus.All
+                .Where(c => c.Variant == ChainVariant.Auto)
+                .Select(c => new KeyValuePair<string, string>(c.Name, EncodingJobs.BuildInputArgs(c, helper))));
     }
 
     [Fact]

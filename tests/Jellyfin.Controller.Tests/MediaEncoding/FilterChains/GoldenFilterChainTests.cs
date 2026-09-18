@@ -28,7 +28,7 @@ public class GoldenFilterChainTests
         Assert.SkipWhen(GoldenFilterChains.Updating, "recording");
 
         var testCase = TranscodeCorpus.All.Single(c => string.Equals(c.Name, name, StringComparison.Ordinal));
-        var recorded = GoldenFilterChains.Read();
+        var recorded = GoldenFilterChains.Read("expected");
 
         Assert.True(recorded.ContainsKey(name), $"{name} has no recorded chain");
         Assert.Equal(recorded[name], Build(testCase, TestEncodingHelper.Create()));
@@ -47,7 +47,13 @@ public class GoldenFilterChainTests
             chains.Add(new(testCase.Name, Build(testCase, helper)));
         }
 
-        GoldenFilterChains.Write(chains);
+        GoldenFilterChains.Write(
+            "expected",
+            "# Recorded from the vendor chains in EncodingHelper before they were replaced.\n"
+            + "# Five entries deliberately differ from what those chains produced, because they were\n"
+            + "# wrong: the VideoToolbox chain dropped the 3D crop it had computed, and the AMD Vulkan\n"
+            + "# chain left a rotated frame on a Vulkan surface.\n",
+            chains);
     }
 
     /// <summary>

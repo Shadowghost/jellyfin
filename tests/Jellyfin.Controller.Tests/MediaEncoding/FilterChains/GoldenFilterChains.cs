@@ -19,22 +19,22 @@ internal static class GoldenFilterChains
 {
     private const string Separator = " => ";
 
-    public static string Path { get; } = System.IO.Path.Combine(
-        AppContext.BaseDirectory,
-        "Test Data",
-        "FilterChains",
-        "expected.txt");
-
     public static bool Updating => string.Equals(
         Environment.GetEnvironmentVariable("JELLYFIN_UPDATE_GOLDEN"),
         "1",
         StringComparison.Ordinal);
 
-    public static IReadOnlyDictionary<string, string> Read()
+    public static string PathFor(string name) => System.IO.Path.Combine(
+        AppContext.BaseDirectory,
+        "Test Data",
+        "FilterChains",
+        name + ".txt");
+
+    public static IReadOnlyDictionary<string, string> Read(string name)
     {
         var recorded = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        foreach (var line in File.ReadAllLines(Path))
+        foreach (var line in File.ReadAllLines(PathFor(name)))
         {
             var at = line.IndexOf(Separator, StringComparison.Ordinal);
             if (at > 0)
@@ -46,16 +46,12 @@ internal static class GoldenFilterChains
         return recorded;
     }
 
-    public static void Write(IEnumerable<KeyValuePair<string, string>> chains)
+    public static void Write(string name, string header, IEnumerable<KeyValuePair<string, string>> chains)
     {
-        var contents = new StringBuilder()
-            .AppendLine("# Recorded from the vendor chains in EncodingHelper before they were replaced.")
-            .AppendLine("# Five entries deliberately differ from what those chains produced, because")
-            .AppendLine("# they were wrong: the VideoToolbox chain dropped the 3D crop it had computed,")
-            .AppendLine("# and the AMD Vulkan chain left a rotated frame on a Vulkan surface.");
-        foreach (var (name, chain) in chains.OrderBy(c => c.Key, StringComparer.Ordinal))
+        var contents = new StringBuilder(header);
+        foreach (var (key, chain) in chains.OrderBy(c => c.Key, StringComparer.Ordinal))
         {
-            contents.Append(name).Append(Separator).AppendLine(chain);
+            contents.Append(key).Append(Separator).AppendLine(chain);
         }
 
         var source = System.IO.Path.Combine(
@@ -65,7 +61,7 @@ internal static class GoldenFilterChains
             "..",
             "Test Data",
             "FilterChains",
-            "expected.txt");
+            name + ".txt");
 
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(source)!);
         File.WriteAllText(source, contents.ToString());

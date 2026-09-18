@@ -14,6 +14,7 @@ using Jellyfin.MediaEncoding.Pipeline.Accelerators.VideoToolbox;
 using Jellyfin.MediaEncoding.Pipeline.Filters;
 using Jellyfin.MediaEncoding.Pipeline.Frames;
 using Jellyfin.MediaEncoding.Pipeline.Graph;
+using Jellyfin.MediaEncoding.Pipeline.Input;
 using Jellyfin.MediaEncoding.Pipeline.Subtitles;
 using MediaBrowser.Model.Configuration;
 using MediaBrowser.Model.Entities;
@@ -66,6 +67,40 @@ public partial class EncodingHelper
             Render(graph.Main),
             graph.Subtitle is null ? [] : Render(graph.Subtitle),
             graph.Overlay is null ? [] : Render(graph.Overlay));
+    }
+
+    /// <summary>
+    /// Builds the devices a job runs on and the decoder that feeds it.
+    /// </summary>
+    /// <param name="state">Encoding state.</param>
+    /// <param name="options">Encoding options.</param>
+    /// <returns>The arguments, empty when the job asks nothing of a device.</returns>
+    internal string GetPipelineInputArgs(EncodingJobInfo state, EncodingOptions options)
+    {
+        var vidEncoder = GetVideoEncoder(state, options) ?? string.Empty;
+        if (!state.IsVideoRequest || IsCopyCodec(vidEncoder))
+        {
+            return string.Empty;
+        }
+
+        var vidDecoder = GetHardwareVideoDecoder(state, options) ?? string.Empty;
+        var accelerator = SelectPipelineAccelerator(state, options, vidDecoder, vidEncoder);
+        var decodesHere = !string.IsNullOrEmpty(vidDecoder);
+        var encodesHere = accelerator.EncoderSuffix is { } suffix
+            && vidEncoder.Contains(suffix, StringComparison.OrdinalIgnoreCase);
+
+        // A device is only worth initialising when the job actually reaches it.
+        if (accelerator.Surface == FrameSurface.System || (!decodesHere && !encodesHere))
+        {
+            return string.Empty;
+        }
+
+        var request = new InputPlanRequest(decodesHere, IsHwTonemapAvailable(state, options) && IsOpenclFullSupported())
+        {
+            Rotation = state.VideoStream?.Rotation ?? 0
+        };
+
+        return accelerator.CreateInputPlan(request).ToArgument();
     }
 
     private static IReadOnlyList<string> Render(VideoFilterChain chain)
