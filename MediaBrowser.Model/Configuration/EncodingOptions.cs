@@ -133,15 +133,6 @@ public class EncodingOptions
     public HardwareAccelerationType HardwareAccelerationType { get; set; }
 
     /// <summary>
-    /// Gets or sets a value indicating whether filter chains are built by the pipeline package
-    /// rather than by the vendor chains in the encoding helper.
-    /// </summary>
-    /// <remarks>
-    /// Only the devices that have been handed over take the new route; everything else falls back.
-    /// </remarks>
-    public bool EnableFilterChainBuilder { get; set; }
-
-    /// <summary>
     /// Gets or sets the hardware capability detection mode.
     /// </summary>
     public HardwareCapabilityDetectionMode HardwareCapabilityDetection { get; set; }

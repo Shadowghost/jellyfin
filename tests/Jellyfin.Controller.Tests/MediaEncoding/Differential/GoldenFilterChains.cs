@@ -48,7 +48,11 @@ internal static class GoldenFilterChains
 
     public static void Write(IEnumerable<KeyValuePair<string, string>> chains)
     {
-        var contents = new StringBuilder();
+        var contents = new StringBuilder()
+            .AppendLine("# Recorded from the vendor chains in EncodingHelper before they were replaced.")
+            .AppendLine("# Five entries deliberately differ from what those chains produced, because")
+            .AppendLine("# they were wrong: the VideoToolbox chain dropped the 3D crop it had computed,")
+            .AppendLine("# and the AMD Vulkan chain left a rotated frame on a Vulkan surface.");
         foreach (var (name, chain) in chains.OrderBy(c => c.Key, StringComparer.Ordinal))
         {
             contents.Append(name).Append(Separator).AppendLine(chain);

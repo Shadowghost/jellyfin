@@ -23,13 +23,12 @@ public class EncodingHelperDoviTests
     [InlineData("bt2020-10", false)]
     [InlineData("smpte2084", true)]
     [InlineData("arib-std-b67", true)]
-    public void GetSwVidFilterChain_InvalidDovi_OnlyTonemapsHdrBaseLayer(string? transfer, bool tonemap)
+    public void GetVideoProcessingFilterParam_InvalidDovi_OnlyTonemapsHdrBaseLayer(string? transfer, bool tonemap)
     {
         var state = CreateState("hevc", transfer);
         var helper = CreateHelper(true);
 
-        var (filters, _, _) = helper.GetSwVidFilterChain(state, new EncodingOptions(), "libx264");
-        var args = string.Join(',', filters);
+        var args = helper.GetVideoProcessingFilterParam(state, new EncodingOptions(), "libx264");
 
         Assert.Equal(VideoRangeType.DOVIInvalid, state.VideoStream.VideoRangeType);
         Assert.Equal(tonemap, args.Contains("tonemapx=", StringComparison.Ordinal));

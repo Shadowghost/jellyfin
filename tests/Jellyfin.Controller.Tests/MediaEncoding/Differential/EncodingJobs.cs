@@ -12,63 +12,15 @@ using MediaBrowser.Model.MediaInfo;
 namespace Jellyfin.Controller.Tests.MediaEncoding.Differential;
 
 /// <summary>
-/// Runs a case through the vendor chains in <see cref="EncodingHelper"/>, which stay the oracle
-/// until a vendor is cut over to the pipeline package.
+/// Turns a case into the job <see cref="EncodingHelper"/> takes, and asks it for the arguments.
 /// </summary>
-internal static class LegacyFilterChain
+internal static class EncodingJobs
 {
-    public static string Build(TranscodeCase testCase, EncodingHelper helper)
-    {
-        var state = BuildState(testCase);
-        var options = BuildOptions(testCase);
-        var outputCodec = OutputCodecName(testCase);
-
-        if (testCase.Variant != ChainVariant.Auto)
-        {
-            var decoder = testCase.EnableHardwareDecoding ? DecoderArgsFor(testCase.Variant) : string.Empty;
-            var variantChains = testCase.Variant switch
-            {
-                ChainVariant.VideoToolbox => helper.GetAppleVidFiltersPreferred(state, options, decoder, outputCodec),
-                ChainVariant.AmdD3d11 => helper.GetAmdDx11VidFiltersPrefered(state, options, decoder, outputCodec),
-                ChainVariant.QsvD3d11 => helper.GetIntelQsvDx11VidFiltersPrefered(state, options, decoder, outputCodec),
-                ChainVariant.VaapiIntelFull => helper.GetIntelVaapiFullVidFiltersPrefered(state, options, decoder, outputCodec),
-                _ => helper.GetAmdVaapiFullVidFiltersPrefered(state, options, decoder, outputCodec)
-            };
-
-            return string.Join(',', variantChains.Main.Where(f => !string.IsNullOrEmpty(f)));
-        }
-
-        var chains = options.HardwareAccelerationType switch
-        {
-            HardwareAccelerationType.vaapi => helper.GetVaapiVidFilterChain(state, options, outputCodec),
-            HardwareAccelerationType.amf => helper.GetAmdVidFilterChain(state, options, outputCodec),
-            HardwareAccelerationType.qsv => helper.GetIntelVidFilterChain(state, options, outputCodec),
-            HardwareAccelerationType.nvenc => helper.GetNvidiaVidFilterChain(state, options, outputCodec),
-            HardwareAccelerationType.videotoolbox => helper.GetAppleVidFilterChain(state, options, outputCodec),
-            HardwareAccelerationType.rkmpp => helper.GetRkmppVidFilterChain(state, options, outputCodec),
-            _ => helper.GetSwVidFilterChain(state, options, outputCodec)
-        };
-
-        return string.Join(',', chains.Main.Where(f => !string.IsNullOrEmpty(f)));
-    }
-
     public static string BuildFullParam(TranscodeCase testCase, EncodingHelper helper)
         => helper.GetVideoProcessingFilterParam(BuildState(testCase), BuildOptions(testCase), OutputCodecName(testCase)).Trim();
 
     public static string BuildInputArgs(TranscodeCase testCase, EncodingHelper helper)
         => helper.GetInputVideoHwaccelArgs(BuildState(testCase), BuildOptions(testCase));
-
-    /// <summary>
-    /// The decoder arguments the matching hardware decoder would have produced, which the vendor
-    /// chains only ever inspect for the device name.
-    /// </summary>
-    private static string DecoderArgsFor(ChainVariant variant) => variant switch
-    {
-        ChainVariant.VideoToolbox => " -hwaccel videotoolbox -hwaccel_output_format videotoolbox",
-        ChainVariant.AmdD3d11 => " -hwaccel d3d11va -hwaccel_output_format d3d11",
-        ChainVariant.QsvD3d11 => " -hwaccel qsv -hwaccel_output_format qsv",
-        _ => " -hwaccel vaapi -hwaccel_output_format vaapi"
-    };
 
     public static string OutputCodecName(TranscodeCase testCase)
     {

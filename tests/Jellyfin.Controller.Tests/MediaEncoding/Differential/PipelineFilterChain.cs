@@ -54,7 +54,7 @@ internal static class PipelineFilterChain
 
         var encodesHere = testCase.EnableHardwareEncoding
             && accelerator.EncoderSuffix is { } suffix
-            && LegacyFilterChain.OutputCodecName(testCase).Contains(suffix, System.StringComparison.OrdinalIgnoreCase);
+            && EncodingJobs.OutputCodecName(testCase).Contains(suffix, System.StringComparison.OrdinalIgnoreCase);
         var outputSurface = encodesHere ? accelerator.EncoderSurface : FrameSurface.System;
         var outputFormat = accelerator.GetDeviceFormat(new FrameState { PixelFormat = PixelFormat.Yuv420p });
 
