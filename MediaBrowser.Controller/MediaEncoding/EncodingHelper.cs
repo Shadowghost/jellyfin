@@ -17,6 +17,7 @@ using Jellyfin.Data;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Enums;
 using Jellyfin.Extensions;
+using Jellyfin.MediaEncoding.Pipeline.BitStreams;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Extensions;
 using MediaBrowser.Controller.IO;
@@ -1659,74 +1660,27 @@ namespace MediaBrowser.Controller.MediaEncoding
                                                   && CanEncoderRemoveDynamicHdrMetadata(DynamicHdrMetadataRemovalPlan.RemoveHdr10Plus, state.VideoStream);
         }
 
+        /// <summary>
+        /// Gets the bitstream filters a copied stream needs.
+        /// </summary>
+        /// <param name="state">Encoding state.</param>
+        /// <param name="streamType">The stream being copied.</param>
+        /// <returns>The argument, or <c>null</c> when the stream needs no filter.</returns>
         public string GetBitStreamArgs(EncodingJobInfo state, MediaStreamType streamType)
         {
-            if (state is null)
+            var stream = streamType == MediaStreamType.Audio ? state?.AudioStream : state?.VideoStream;
+            if (stream is null)
             {
                 return null;
             }
 
-            var stream = streamType switch
-            {
-                MediaStreamType.Audio => state.AudioStream,
-                MediaStreamType.Video => state.VideoStream,
-                _ => state.VideoStream
-            };
-            // TODO This is auto inserted into the mpegts mux so it might not be needed.
-            // https://www.ffmpeg.org/ffmpeg-bitstream-filters.html#h264_005fmp4toannexb
-            if (IsH264(stream))
-            {
-                return "-bsf:v h264_mp4toannexb";
-            }
+            var copied = new CopiedTrack(
+                stream.Codec,
+                stream.VideoRange,
+                stream.VideoRangeType,
+                state.GetRequestedRangeTypes(state.VideoStream?.Codec));
 
-            if (IsAAC(stream))
-            {
-                // Convert adts header(mpegts) to asc header(mp4).
-                return "-bsf:a aac_adtstoasc";
-            }
-
-            if (IsH265(stream))
-            {
-                var filter = "-bsf:v hevc_mp4toannexb";
-
-                // The following checks are not complete because the copy would be rejected
-                // if the encoder cannot remove required metadata.
-                // And if bsf is used, we must already be using copy codec.
-                switch (ShouldRemoveDynamicHdrMetadata(state))
-                {
-                    default:
-                    case DynamicHdrMetadataRemovalPlan.None:
-                        break;
-                    case DynamicHdrMetadataRemovalPlan.RemoveDovi:
-                        filter += _mediaEncoder.SupportsBitStreamFilterWithOption(BitStreamFilterOptionType.HevcMetadataRemoveDovi)
-                            ? ",hevc_metadata=remove_dovi=1"
-                            : ",dovi_rpu=strip=1";
-                        break;
-                    case DynamicHdrMetadataRemovalPlan.RemoveHdr10Plus:
-                        filter += ",hevc_metadata=remove_hdr10plus=1";
-                        break;
-                }
-
-                return filter;
-            }
-
-            if (IsAv1(stream))
-            {
-                switch (ShouldRemoveDynamicHdrMetadata(state))
-                {
-                    default:
-                    case DynamicHdrMetadataRemovalPlan.None:
-                        return null;
-                    case DynamicHdrMetadataRemovalPlan.RemoveDovi:
-                        return _mediaEncoder.SupportsBitStreamFilterWithOption(BitStreamFilterOptionType.Av1MetadataRemoveDovi)
-                            ? "-bsf:v av1_metadata=remove_dovi=1"
-                            : "-bsf:v dovi_rpu=strip=1";
-                    case DynamicHdrMetadataRemovalPlan.RemoveHdr10Plus:
-                        return "-bsf:v av1_metadata=remove_hdr10plus=1";
-                }
-            }
-
-            return null;
+            return BitStreamFilters.For(copied, new ServerPipelineCapabilities(_mediaEncoder, _hardwareCapabilities, GetConfiguredEncodingOptions()));
         }
 
         public string GetAudioBitStreamArguments(EncodingJobInfo state, string segmentContainer, string mediaSourceContainer)
@@ -3566,18 +3520,6 @@ namespace MediaBrowser.Controller.MediaEncoding
                 outHeight.Value);
         }
 
-        private static string GetFixedSwScaleFilter(int requestedWidth, int requestedHeight)
-        {
-            var widthParam = requestedWidth.ToString(CultureInfo.InvariantCulture);
-            var heightParam = requestedHeight.ToString(CultureInfo.InvariantCulture);
-
-            var filter = requestedHeight > 0
-                ? "scale=trunc({0}/2)*2:trunc({1}/2)*2"
-                : "scale={0}:trunc({0}/a/2)*2";
-
-            return string.Format(CultureInfo.InvariantCulture, filter, widthParam, heightParam);
-        }
-
         /// <summary>
         /// Gets the video 3d filter for a source.
         /// </summary>
@@ -3857,22 +3799,6 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             // HDR10
             return "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc";
-        }
-
-        public string GetOutputSdrParam(string tonemappingRange)
-        {
-            // SDR
-            if (string.Equals(tonemappingRange, "tv", StringComparison.OrdinalIgnoreCase))
-            {
-                return "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv";
-            }
-
-            if (string.Equals(tonemappingRange, "pc", StringComparison.OrdinalIgnoreCase))
-            {
-                return "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=pc";
-            }
-
-            return "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709";
         }
 
         public static int GetVideoColorBitDepth(EncodingJobInfo state)
