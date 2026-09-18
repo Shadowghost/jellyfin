@@ -90,7 +90,7 @@ internal static class PipelineFilterChain
             testCase.RequestedMaxHeight);
 
         // Always asked for, the way the legacy chains do: it drops itself when there is nothing to do.
-        requested.Add(new ScaleFilter(scaling));
+        requested.Add(new ScaleFilter(scaling) { AspectRatio = testCase.Mjpeg ? "(a*sar)" : "a" });
 
         if (doToneMap)
         {
@@ -142,9 +142,9 @@ internal static class PipelineFilterChain
         {
             ChainVariant.VideoToolbox => new VideoToolboxAccelerator(),
             ChainVariant.AmdD3d11 => new AmfD3d11Accelerator(),
-            ChainVariant.QsvD3d11 => new QsvD3d11Accelerator(),
-            ChainVariant.VaapiIntelFull => new VaapiIntelFullAccelerator(),
-            ChainVariant.VaapiAmdFull => new VaapiAmdVulkanAccelerator(),
+            ChainVariant.QsvD3d11 => new QsvD3d11Accelerator(testCase.Mjpeg),
+            ChainVariant.VaapiIntelFull => new VaapiIntelFullAccelerator(false, testCase.Mjpeg),
+            ChainVariant.VaapiAmdFull => new VaapiAmdVulkanAccelerator(false, false, false, testCase.Mjpeg),
             _ => SelectByAcceleration(testCase)
         };
     }
@@ -152,11 +152,12 @@ internal static class PipelineFilterChain
     private static IHardwareAccelerator SelectByAcceleration(TranscodeCase testCase) => testCase.Acceleration switch
     {
         HardwareAccelerationType.nvenc => new CudaAccelerator(),
-        HardwareAccelerationType.vaapi => new VaapiAccelerator(),
+        HardwareAccelerationType.vaapi => new VaapiAccelerator(false, false, testCase.Mjpeg),
         // Frames only stay compressed while they never leave the device.
         HardwareAccelerationType.rkmpp => new RkrgaAccelerator(
-            testCase.EnableHardwareEncoding && !(testCase.IsHdr10 && testCase.EnableTonemapping)),
-        HardwareAccelerationType.qsv => new QsvVaapiAccelerator(),
+            testCase.EnableHardwareEncoding && !testCase.Mjpeg && !(testCase.IsHdr10 && testCase.EnableTonemapping),
+            testCase.Mjpeg),
+        HardwareAccelerationType.qsv => new QsvVaapiAccelerator(false, testCase.Mjpeg),
         _ => SoftwareAccelerator.Instance
     };
 }

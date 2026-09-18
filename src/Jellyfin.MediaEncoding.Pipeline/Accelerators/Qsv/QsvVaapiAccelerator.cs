@@ -20,8 +20,9 @@ namespace Jellyfin.MediaEncoding.Pipeline.Accelerators.Qsv;
 /// copying, so the chain runs on one surface and ends on another.
 /// </remarks>
 /// <param name="DoubleRateDeinterlace">Whether the deinterlacer emits one frame per field.</param>
-public sealed record QsvVaapiAccelerator(bool DoubleRateDeinterlace = false)
-    : VaapiAccelerator(DoubleRateDeinterlace, false)
+/// <param name="FullRangeOutput">Whether the encoder wants full range frames, which MJPEG does.</param>
+public sealed record QsvVaapiAccelerator(bool DoubleRateDeinterlace = false, bool FullRangeOutput = false)
+    : VaapiAccelerator(DoubleRateDeinterlace, false, FullRangeOutput)
 {
     /// <inheritdoc />
     public override FrameSurface EncoderSurface => FrameSurface.Qsv;

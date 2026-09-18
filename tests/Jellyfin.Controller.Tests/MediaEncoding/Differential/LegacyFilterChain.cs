@@ -72,6 +72,18 @@ internal static class LegacyFilterChain
 
     public static string OutputCodecName(TranscodeCase testCase)
     {
+        if (testCase.Mjpeg)
+        {
+            var hasMjpegEncoder = testCase.Acceleration is HardwareAccelerationType.vaapi
+                or HardwareAccelerationType.qsv
+                or HardwareAccelerationType.videotoolbox
+                or HardwareAccelerationType.rkmpp;
+
+            return testCase.EnableHardwareEncoding && hasMjpegEncoder
+                ? "mjpeg_" + testCase.Acceleration
+                : "mjpeg";
+        }
+
         if (!testCase.EnableHardwareEncoding)
         {
             return "libx264";

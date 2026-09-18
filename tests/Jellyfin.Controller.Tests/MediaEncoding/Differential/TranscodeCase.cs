@@ -41,6 +41,8 @@ internal sealed record TranscodeCase
 
     public string OutputCodec { get; init; } = "h264";
 
+    public bool Mjpeg { get; init; }
+
     public bool EnableTonemapping { get; init; }
 
     public bool EnableHardwareEncoding { get; init; } = true;

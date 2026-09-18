@@ -70,8 +70,8 @@ public class WiredPipelineTests
             options,
             LegacyFilterChain.OutputCodecName(testCase));
 
-        // Anything not handed over has to fall back, and anything handed over has to be built here.
-        Assert.Equal(IsCutOver(testCase), built is not null);
+        // Every job is built here now; nothing falls back to a vendor chain.
+        Assert.NotNull(built);
     }
 
     [Fact]

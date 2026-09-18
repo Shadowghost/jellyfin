@@ -48,10 +48,6 @@ public partial class EncodingHelper
 
         var vidDecoder = GetHardwareVideoDecoder(state, options) ?? string.Empty;
         var accelerator = SelectPipelineAccelerator(state, options, vidDecoder, vidEncoder);
-        if (accelerator is null)
-        {
-            return null;
-        }
 
         if (string.IsNullOrEmpty(vidDecoder))
         {
@@ -61,7 +57,7 @@ public partial class EncodingHelper
         var capabilities = new ServerPipelineCapabilities(_mediaEncoder, _hardwareCapabilities, options);
         var graph = new VideoFilterChainBuilder(accelerator, capabilities).BuildGraph(
             DescribeSource(state, accelerator, vidDecoder),
-            DescribeOperations(state, options, accelerator, vidDecoder),
+            DescribeOperations(state, options, accelerator, vidEncoder),
             DescribeEncoderSurface(accelerator, vidEncoder),
             DescribeEncoderFormat(accelerator),
             DescribeSubtitle(state, options));
@@ -108,7 +104,7 @@ public partial class EncodingHelper
         EncodingJobInfo state,
         EncodingOptions options,
         IHardwareAccelerator accelerator,
-        string vidDecoder)
+        string vidEncoder)
     {
         var doToneMap = IsHwTonemapAvailable(state, options) || IsSwTonemapAvailable(state, options);
         var operations = new List<IVideoFilter>();
@@ -144,7 +140,11 @@ public partial class EncodingHelper
             state.BaseRequest.Width,
             state.BaseRequest.Height,
             state.BaseRequest.MaxWidth,
-            state.BaseRequest.MaxHeight)));
+            state.BaseRequest.MaxHeight))
+        {
+            // The MJPEG encoders do not square the pixels themselves.
+            AspectRatio = vidEncoder.Contains("mjpeg", StringComparison.OrdinalIgnoreCase) ? "(a*sar)" : "a"
+        });
 
         if (doToneMap)
         {
@@ -214,17 +214,13 @@ public partial class EncodingHelper
     /// Picks the accelerator for a job, mirroring which vendor chain the legacy dispatchers would
     /// have chosen, and returns <c>null</c> for anything the package has not been handed.
     /// </summary>
-    private IHardwareAccelerator? SelectPipelineAccelerator(
+    private IHardwareAccelerator SelectPipelineAccelerator(
         EncodingJobInfo state,
         EncodingOptions options,
         string vidDecoder,
         string vidEncoder)
     {
-        if (vidEncoder.Contains("mjpeg", StringComparison.OrdinalIgnoreCase) || IsCopyCodec(vidEncoder))
-        {
-            return null;
-        }
-
+        var isMjpeg = vidEncoder.Contains("mjpeg", StringComparison.OrdinalIgnoreCase);
         var doubleRateDeint = options.DeinterlaceDoubleRate && (state.VideoStream?.ReferenceFrameRate ?? 60) <= 30;
         var deinterlaceMethod = options.DeinterlaceMethod.ToString().ToLowerInvariant();
 
@@ -242,41 +238,46 @@ public partial class EncodingHelper
                     && !IsHwTonemapAvailable(state, options)
                     && (vidEncoder.Contains("h264", StringComparison.OrdinalIgnoreCase)
                         || vidEncoder.Contains("hevc", StringComparison.OrdinalIgnoreCase));
-                return OperatingSystem.IsLinux() ? new RkrgaAccelerator(afbc) : null;
+                return OperatingSystem.IsLinux()
+                    ? new RkrgaAccelerator(afbc, isMjpeg && !IsHwTonemapAvailable(state, options))
+                    : SoftwareAccelerator.Instance;
 
             case HardwareAccelerationType.videotoolbox:
                 return OperatingSystem.IsMacOS()
                     ? new VideoToolboxAccelerator(deinterlaceMethod, doubleRateDeint)
-                    : null;
+                    : SoftwareAccelerator.Instance;
 
             case HardwareAccelerationType.amf:
                 return OperatingSystem.IsWindows()
                     ? new AmfD3d11Accelerator(deinterlaceMethod, doubleRateDeint)
-                    : null;
+                    : SoftwareAccelerator.Instance;
 
             case HardwareAccelerationType.qsv:
                 return OperatingSystem.IsLinux() && IsVaapiSupported(state)
-                    ? new QsvVaapiAccelerator(doubleRateDeint)
-                    : null;
+                    ? new QsvVaapiAccelerator(doubleRateDeint, isMjpeg)
+                    : SoftwareAccelerator.Instance;
 
             case HardwareAccelerationType.vaapi:
-                return SelectVaapiPipelineAccelerator(state, doubleRateDeint);
+                return SelectVaapiPipelineAccelerator(state, doubleRateDeint, isMjpeg);
 
             default:
-                return null;
+                return SoftwareAccelerator.Instance;
         }
     }
 
-    private IHardwareAccelerator? SelectVaapiPipelineAccelerator(EncodingJobInfo state, bool doubleRateDeint)
+    private IHardwareAccelerator SelectVaapiPipelineAccelerator(
+        EncodingJobInfo state,
+        bool doubleRateDeint,
+        bool isMjpeg)
     {
         if (!OperatingSystem.IsLinux() || !IsVaapiSupported(state) || !IsVaapiFullSupported())
         {
-            return null;
+            return SoftwareAccelerator.Instance;
         }
 
         if (_mediaEncoder.IsVaapiDeviceInteliHD)
         {
-            return new VaapiIntelFullAccelerator(doubleRateDeint);
+            return new VaapiIntelFullAccelerator(doubleRateDeint, isMjpeg);
         }
 
         if (_mediaEncoder.IsVaapiDeviceAmd)
@@ -287,10 +288,10 @@ public partial class EncodingHelper
                     ? new VaapiAmdVulkanAccelerator(
                         doubleRateDeint,
                         ImportNeedsScaleVulkan: !_mediaEncoder.IsVaapiDeviceSupportVulkanDrmModifier)
-                    : null;
+                    : SoftwareAccelerator.Instance;
         }
 
-        return new VaapiAccelerator(doubleRateDeint);
+        return new VaapiAccelerator(doubleRateDeint, false, isMjpeg);
     }
 
     /// <summary>

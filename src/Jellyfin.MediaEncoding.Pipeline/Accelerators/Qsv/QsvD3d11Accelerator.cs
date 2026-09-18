@@ -19,7 +19,8 @@ namespace Jellyfin.MediaEncoding.Pipeline.Accelerators.Qsv;
 /// The video processor scales and converts, but tone mapping is borrowed from OpenCL, which the
 /// frame is mapped to and back rather than copied.
 /// </remarks>
-public sealed record QsvD3d11Accelerator : IHardwareAccelerator
+/// <param name="FullRangeOutput">Whether the encoder wants full range frames, which MJPEG does.</param>
+public sealed record QsvD3d11Accelerator(bool FullRangeOutput = false) : IHardwareAccelerator
 {
     private const string QsvVideoProcessorName = "vpp_qsv";
 
@@ -106,7 +107,12 @@ public sealed record QsvD3d11Accelerator : IHardwareAccelerator
 
     /// <inheritdoc />
     public IVideoFilter? CreateFormatFilter(PixelFormat format)
-        => format.HasAlpha ? null : QsvVideoProcessorFilter.ToFormat(format);
+        => format.HasAlpha
+            ? null
+            : QsvVideoProcessorFilter.ToFormat(format) with
+            {
+                ExtraOptions = FullRangeOutput ? "out_range=pc:scale_mode=hq" : null
+            };
 
     /// <inheritdoc />
     public IVideoFilter? CreateTransferFilter(FrameSurface target, FrameState state, bool reverse) => target switch

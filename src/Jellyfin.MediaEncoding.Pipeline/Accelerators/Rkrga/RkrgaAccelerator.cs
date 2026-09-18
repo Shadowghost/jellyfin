@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Jellyfin.MediaEncoding.Pipeline;
 using Jellyfin.MediaEncoding.Pipeline.Filters;
 using Jellyfin.MediaEncoding.Pipeline.Filters.Devices;
@@ -16,7 +17,8 @@ namespace Jellyfin.MediaEncoding.Pipeline.Accelerators.Rkrga;
 /// <param name="Afbc">
 /// Whether the frames stay compressed, which the device only allows when they never leave it.
 /// </param>
-public sealed record RkrgaAccelerator(bool Afbc) : IHardwareAccelerator
+/// <param name="MjpegEncoder">Whether the encoder is MJPEG, which the device feeds through RGB.</param>
+public sealed record RkrgaAccelerator(bool Afbc, bool MjpegEncoder = false) : IHardwareAccelerator
 {
     private const string ScaleFilterName = "vpp_rkrga";
 
@@ -67,6 +69,35 @@ public sealed record RkrgaAccelerator(bool Afbc) : IHardwareAccelerator
     /// <inheritdoc />
     public IHardwareAccelerator ForSoftwareDecode()
         => new CopyBackAccelerator(PixelFormat.Nv12, FrameSurface.System, "rkmpp", "fast_bilinear");
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The MJPEG encoder on the newer chips will not take RGB from the same pass that scales, so the
+    /// conversion gets one of its own.
+    /// </remarks>
+    public (IHardwareAccelerator Accelerator, IReadOnlyList<IVideoFilter> Filters) Plan(
+        IReadOnlyList<IVideoFilter> requested,
+        FrameState input,
+        IPipelineCapabilities capabilities)
+    {
+        if (!MjpegEncoder)
+        {
+            return (this, requested);
+        }
+
+        var first = new DeviceScaleFilter(ScaleFilterName, Surface)
+        {
+            Format = PixelFormat.Bgra,
+            ExtraOptions = "afbc=1",
+            Fusable = false
+        };
+
+        // It goes behind the colour declaration, which touches nothing and leads the chain.
+        var planned = requested.ToList();
+        planned.Insert(planned.FindIndex(f => f is not SetParamsFilter) is var at && at < 0 ? planned.Count : at, first);
+
+        return (this, planned);
+    }
 
     /// <inheritdoc />
     public IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities)

@@ -1,0 +1,273 @@
+amf-dx11/deinterlace-1080i => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,yadif_opencl=0:-1:0,scale_opencl=format=nv12,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
+amf-dx11/deinterlace-and-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,yadif_opencl=0:-1:0,scale_opencl=w=1280:h=720:format=nv12,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
+amf-dx11/downscale-720p => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,scale_opencl=w=1280:h=720:format=nv12,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
+amf-dx11/full-side-by-side => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,crop=trunc(iw/4)*2:ih:0:0,scale_opencl=w=1920:h=1080:format=nv12,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
+amf-dx11/graphical-subs => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,scale_opencl=format=nv12
+amf-dx11/graphical-subs-and-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,scale_opencl=w=1280:h=720:format=nv12
+amf-dx11/half-side-by-side-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,crop=trunc(iw/4)*2:ih:0:0,setsar=sar=1,scale_opencl=w=1280:h=720:format=nv12,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
+amf-dx11/hdr10-tonemap => setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,hwmap=derive_device=opencl:mode=read,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
+amf-dx11/hdr10-tonemap-and-downscale => setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,hwmap=derive_device=opencl:mode=read,scale_opencl=w=1280:h=720,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
+amf-dx11/max-dimensions-720p => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,scale_opencl=w=1280:h=720:format=nv12,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
+amf-dx11/max-width-only => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,scale_opencl=w=1280:h=720:format=nv12,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
+amf-dx11/mjpeg => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,scale_opencl=format=nv12,hwmap=mode=read,format=nv12
+amf-dx11/mjpeg-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,scale_opencl=w=320:h=180:format=nv12,hwmap=mode=read,format=nv12
+amf-dx11/mjpeg-max-dimensions => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,scale_opencl=w=320:h=180:format=nv12,hwmap=mode=read,format=nv12
+amf-dx11/passthrough-1080p => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,scale_opencl=format=nv12,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
+amf-dx11/request-matches-source => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,scale_opencl=format=nv12,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
+amf-dx11/rotate-180 => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,transpose_opencl=dir=reversal,scale_opencl=format=nv12,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
+amf-dx11/rotate-90 => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,transpose_opencl=dir=cclock,scale_opencl=format=nv12,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
+amf-dx11/rotate-90-and-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,transpose_opencl=dir=cclock,scale_opencl=w=1280:h=720:format=nv12,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
+amf-dx11/software-encoder-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,scale_opencl=w=1280:h=720:format=nv12,hwmap=mode=read,format=nv12
+amf-dx11/text-subs => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,scale_opencl=format=nv12
+amf/deinterlace-1080i => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,yadif=0:-1:0,format=yuv420p"
+amf/deinterlace-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,yadif=0:-1:0,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+amf/downscale-720p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+amf/full-side-by-side => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,format=yuv420p"
+amf/graphical-subs => -filter_complex "[0:1]scale,scale=1920:1080:fast_bilinear[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p[main];[main][sub]overlay=eof_action=pass:repeatlast=0"
+amf/graphical-subs-and-downscale => -filter_complex "[0:1]scale,scale=1280:720:fast_bilinear[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p[main];[main][sub]overlay=eof_action=pass:repeatlast=0"
+amf/half-side-by-side-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,scale=iw*2:ih,setsar=sar=1,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+amf/hdr10-tonemap => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p"
+amf/hdr10-tonemap-and-downscale => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,scale=trunc(1280/2)*2:trunc(720/2)*2,tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p"
+amf/max-dimensions-720p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(min(max(iw\,ih*a)\,min(1280\,720*a))/2)*2:trunc(min(max(iw/a\,ih)\,min(1280/a\,720))/2)*2,format=yuv420p"
+amf/max-width-only => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(min(max(iw\,ih*a)\,1280)/2)*2:trunc(ow/a/2)*2,format=yuv420p"
+amf/mjpeg => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+amf/mjpeg-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(320/2)*2:trunc(180/2)*2,format=yuv420p"
+amf/mjpeg-max-dimensions => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(min(max(iw\,ih*(a*sar))\,min(320\,180*(a*sar)))/2)*2:trunc(min(max(iw/(a*sar)\,ih)\,min(320/(a*sar)\,180))/2)*2,format=yuv420p"
+amf/passthrough-1080p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+amf/request-matches-source => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1920/2)*2:trunc(1080/2)*2,format=yuv420p"
+amf/rotate-180 => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+amf/rotate-90 => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+amf/rotate-90-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+amf/software-decode => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+amf/software-decode-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+amf/software-decode-deinterlace => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,yadif=0:-1:0,format=yuv420p"
+amf/software-encoder-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+amf/text-subs => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p,subtitles=f='',setpts=PTS -0/TB"
+none/deinterlace-1080i => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,yadif=0:-1:0,format=yuv420p"
+none/deinterlace-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,yadif=0:-1:0,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+none/downscale-720p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+none/full-side-by-side => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,format=yuv420p"
+none/graphical-subs => -filter_complex "[0:1]scale,scale=1920:1080:fast_bilinear[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p[main];[main][sub]overlay=eof_action=pass:repeatlast=0"
+none/graphical-subs-and-downscale => -filter_complex "[0:1]scale,scale=1280:720:fast_bilinear[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p[main];[main][sub]overlay=eof_action=pass:repeatlast=0"
+none/half-side-by-side-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,scale=iw*2:ih,setsar=sar=1,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+none/hdr10-tonemap => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p"
+none/hdr10-tonemap-and-downscale => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,scale=trunc(1280/2)*2:trunc(720/2)*2,tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p"
+none/max-dimensions-720p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(min(max(iw\,ih*a)\,min(1280\,720*a))/2)*2:trunc(min(max(iw/a\,ih)\,min(1280/a\,720))/2)*2,format=yuv420p"
+none/max-width-only => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(min(max(iw\,ih*a)\,1280)/2)*2:trunc(ow/a/2)*2,format=yuv420p"
+none/mjpeg => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+none/mjpeg-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(320/2)*2:trunc(180/2)*2,format=yuv420p"
+none/mjpeg-max-dimensions => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(min(max(iw\,ih*(a*sar))\,min(320\,180*(a*sar)))/2)*2:trunc(min(max(iw/(a*sar)\,ih)\,min(320/(a*sar)\,180))/2)*2,format=yuv420p"
+none/passthrough-1080p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+none/request-matches-source => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1920/2)*2:trunc(1080/2)*2,format=yuv420p"
+none/rotate-180 => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+none/rotate-90 => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+none/rotate-90-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+none/software-decode => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+none/software-decode-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+none/software-decode-deinterlace => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,yadif=0:-1:0,format=yuv420p"
+none/software-encoder-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+none/text-subs => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p,subtitles=f='',setpts=PTS -0/TB"
+nvenc/deinterlace-1080i => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,yadif_cuda=0:-1:0,scale_cuda=format=yuv420p"
+nvenc/deinterlace-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,yadif_cuda=0:-1:0,scale_cuda=w=1280:h=720:format=yuv420p"
+nvenc/downscale-720p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=w=1280:h=720:format=yuv420p"
+nvenc/full-side-by-side => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,scale_cuda=w=1920:h=1080:format=yuv420p"
+nvenc/graphical-subs => -filter_complex "[0:1]scale,scale=1920:1080:fast_bilinear,format=yuva420p,hwupload=derive_device=cuda[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=format=yuv420p[main];[main][sub]overlay_cuda=eof_action=pass:repeatlast=0"
+nvenc/graphical-subs-and-downscale => -filter_complex "[0:1]scale,scale=1280:720:fast_bilinear,format=yuva420p,hwupload=derive_device=cuda[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=w=1280:h=720:format=yuv420p[main];[main][sub]overlay_cuda=eof_action=pass:repeatlast=0"
+nvenc/half-side-by-side-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,setsar=sar=1,scale_cuda=w=1280:h=720:format=yuv420p"
+nvenc/hdr10-tonemap => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,tonemap_cuda=format=yuv420p:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0"
+nvenc/hdr10-tonemap-and-downscale => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,scale_cuda=w=1280:h=720,tonemap_cuda=format=yuv420p:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0"
+nvenc/max-dimensions-720p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=w=1280:h=720:format=yuv420p"
+nvenc/max-width-only => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=w=1280:h=720:format=yuv420p"
+nvenc/mjpeg => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=format=yuv420p,hwdownload,format=yuv420p"
+nvenc/mjpeg-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=w=320:h=180:format=yuv420p,hwdownload,format=yuv420p"
+nvenc/mjpeg-max-dimensions => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=w=320:h=180:format=yuv420p,hwdownload,format=yuv420p"
+nvenc/passthrough-1080p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=format=yuv420p"
+nvenc/request-matches-source => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=format=yuv420p"
+nvenc/rotate-180 => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,transpose_cuda=dir=reversal,scale_cuda=format=yuv420p"
+nvenc/rotate-90 => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,transpose_cuda=dir=cclock,scale_cuda=format=yuv420p"
+nvenc/rotate-90-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,transpose_cuda=dir=cclock,scale_cuda=w=1280:h=720:format=yuv420p"
+nvenc/software-decode => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+nvenc/software-decode-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+nvenc/software-decode-deinterlace => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,yadif=0:-1:0,format=yuv420p"
+nvenc/software-encoder-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=w=1280:h=720:format=yuv420p,hwdownload,format=yuv420p"
+nvenc/text-subs => -filter_complex "alphasrc=s=1920x1080:r=25:start='0',format=yuva420p,subtitles=f='':alpha=1:sub2video=1,setpts=PTS -0/TB,hwupload=derive_device=cuda[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=format=yuv420p[main];[main][sub]overlay_cuda=eof_action=pass:repeatlast=0:alpha_format=premultiplied"
+qsv-dx11/deinterlace-1080i => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,deinterlace_qsv=mode=2,vpp_qsv=format=nv12
+qsv-dx11/deinterlace-and-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,deinterlace_qsv=mode=2,vpp_qsv=w=1280:h=720:format=nv12
+qsv-dx11/downscale-720p => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_qsv=w=1280:h=720:format=nv12
+qsv-dx11/full-side-by-side => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,vpp_qsv=w=1920:h=1080:format=nv12
+qsv-dx11/graphical-subs => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_qsv=format=nv12
+qsv-dx11/graphical-subs-and-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_qsv=w=1280:h=720:format=nv12
+qsv-dx11/half-side-by-side-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,setsar=sar=1,vpp_qsv=w=1280:h=720:format=nv12
+qsv-dx11/hdr10-tonemap => setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,hwmap=derive_device=opencl:mode=read,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=qsv:mode=write:reverse=1,format=qsv
+qsv-dx11/hdr10-tonemap-and-downscale => setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,vpp_qsv=w=1280:h=720,hwmap=derive_device=opencl:mode=read,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=qsv:mode=write:reverse=1,format=qsv
+qsv-dx11/max-dimensions-720p => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_qsv=w=1280:h=720:format=nv12
+qsv-dx11/max-width-only => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_qsv=w=1280:h=720:format=nv12
+qsv-dx11/mjpeg => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_qsv=format=nv12:out_range=pc:scale_mode=hq
+qsv-dx11/mjpeg-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_qsv=w=320:h=180:format=nv12:out_range=pc:scale_mode=hq
+qsv-dx11/mjpeg-max-dimensions => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_qsv=w=320:h=180:format=nv12:out_range=pc:scale_mode=hq
+qsv-dx11/passthrough-1080p => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_qsv=format=nv12
+qsv-dx11/request-matches-source => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_qsv=format=nv12
+qsv-dx11/rotate-180 => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_qsv=format=nv12:transpose=reversal
+qsv-dx11/rotate-90 => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_qsv=format=nv12:transpose=cclock
+qsv-dx11/rotate-90-and-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_qsv=w=720:h=1280:format=nv12:transpose=cclock
+qsv-dx11/software-encoder-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_qsv=w=1280:h=720:format=nv12,hwdownload,format=nv12
+qsv-dx11/text-subs => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_qsv=format=nv12
+qsv/deinterlace-1080i => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,deinterlace_vaapi=rate=frame,scale_vaapi=format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"
+qsv/deinterlace-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,deinterlace_vaapi=rate=frame,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"
+qsv/downscale-720p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"
+qsv/full-side-by-side => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,scale_vaapi=w=1920:h=1080:format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"
+qsv/graphical-subs => -filter_complex "[0:1]scale,scale=1920:1080:fast_bilinear,format=bgra,hwupload=derive_device=qsv:extra_hw_frames=64[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv[main];[main][sub]overlay_qsv=eof_action=pass:repeatlast=0:w=1920:h=1080"
+qsv/graphical-subs-and-downscale => -filter_complex "[0:1]scale,scale=1280:720:fast_bilinear,format=bgra,hwupload=derive_device=qsv:extra_hw_frames=64[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv[main];[main][sub]overlay_qsv=eof_action=pass:repeatlast=0:w=1280:h=720"
+qsv/half-side-by-side-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,setsar=sar=1,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"
+qsv/hdr10-tonemap => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,hwmap=derive_device=opencl:mode=read,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=qsv:mode=write:reverse=1:extra_hw_frames=16,format=qsv"
+qsv/hdr10-tonemap-and-downscale => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,scale_vaapi=w=1280:h=720:extra_hw_frames=24,hwmap=derive_device=opencl:mode=read,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=qsv:mode=write:reverse=1:extra_hw_frames=16,format=qsv"
+qsv/max-dimensions-720p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"
+qsv/max-width-only => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"
+qsv/mjpeg => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:out_range=pc:mode=hq:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"
+qsv/mjpeg-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=320:h=180:format=nv12:out_range=pc:mode=hq:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"
+qsv/mjpeg-max-dimensions => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=320:h=180:format=nv12:out_range=pc:mode=hq:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"
+qsv/passthrough-1080p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"
+qsv/request-matches-source => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"
+qsv/rotate-180 => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,transpose_vaapi=dir=reversal,scale_vaapi=format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"
+qsv/rotate-90 => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,transpose_vaapi=dir=cclock,scale_vaapi=format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"
+qsv/rotate-90-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,transpose_vaapi=dir=cclock,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"
+qsv/software-decode => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=nv12"
+qsv/software-decode-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=nv12"
+qsv/software-decode-deinterlace => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,yadif=0:-1:0,format=nv12"
+qsv/software-encoder-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24,hwmap=mode=read,format=nv12"
+qsv/text-subs => -filter_complex "alphasrc=s=1920x1080:r=25:start='0',format=bgra,subtitles=f='':alpha=1:sub2video=1,setpts=PTS -0/TB,hwupload=derive_device=qsv:extra_hw_frames=64[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv[main];[main][sub]overlay_qsv=eof_action=pass:repeatlast=0:w=1920:h=1080"
+rkmpp/deinterlace-1080i => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=format=nv12:afbc=1"
+rkmpp/deinterlace-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=w=1280:h=720:format=nv12:afbc=1"
+rkmpp/downscale-720p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=w=1280:h=720:format=nv12:afbc=1"
+rkmpp/full-side-by-side => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,vpp_rkrga=w=1920:h=1080:format=nv12:afbc=1"
+rkmpp/graphical-subs => -filter_complex "[0:1]scale,scale=1920:1080:fast_bilinear,format=bgra,hwupload=derive_device=rkmpp[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709[main];[main][sub]overlay_rkrga=eof_action=pass:repeatlast=0:format=nv12:afbc=1"
+rkmpp/graphical-subs-and-downscale => -filter_complex "[0:1]scale,scale=1280:720:fast_bilinear,format=bgra,hwupload=derive_device=rkmpp[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=w=1280:h=720:format=nv12:afbc=1[main];[main][sub]overlay_rkrga=eof_action=pass:repeatlast=0:format=nv12:afbc=1"
+rkmpp/half-side-by-side-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,setsar=sar=1,vpp_rkrga=w=1280:h=720:format=nv12:afbc=1"
+rkmpp/hdr10-tonemap => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,vpp_rkrga=format=p010,hwmap=derive_device=opencl,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=rkmpp:reverse=1,format=drm_prime"
+rkmpp/hdr10-tonemap-and-downscale => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,vpp_rkrga=w=1280:h=720:format=p010,hwmap=derive_device=opencl,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=rkmpp:reverse=1,format=drm_prime"
+rkmpp/max-dimensions-720p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=w=1280:h=720:format=nv12:afbc=1"
+rkmpp/max-width-only => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=w=1280:h=720:format=nv12:afbc=1"
+rkmpp/mjpeg => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=format=bgra:afbc=1,vpp_rkrga=format=nv12"
+rkmpp/mjpeg-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=format=bgra:afbc=1,vpp_rkrga=w=320:h=180:format=nv12"
+rkmpp/mjpeg-max-dimensions => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=format=bgra:afbc=1,vpp_rkrga=w=320:h=180:format=nv12"
+rkmpp/passthrough-1080p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=format=nv12:afbc=1"
+rkmpp/request-matches-source => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=format=nv12:afbc=1"
+rkmpp/rotate-180 => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=format=nv12:transpose=reversal:afbc=1"
+rkmpp/rotate-90 => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=format=nv12:transpose=cclock:afbc=1"
+rkmpp/rotate-90-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=w=720:h=1280:format=nv12:transpose=cclock:afbc=1"
+rkmpp/software-decode => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=nv12"
+rkmpp/software-decode-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2:flags=fast_bilinear,format=nv12"
+rkmpp/software-decode-deinterlace => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,yadif=0:-1:0,format=nv12"
+rkmpp/software-encoder-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=w=1280:h=720:format=nv12,hwdownload,format=nv12"
+rkmpp/text-subs => -filter_complex "alphasrc=s=1920x1080:r=25:start='0',format=bgra,subtitles=f='':alpha=1:sub2video=1,setpts=PTS -0/TB,hwupload=derive_device=rkmpp[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709[main];[main][sub]overlay_rkrga=eof_action=pass:repeatlast=0:format=nv12:afbc=1"
+vaapi-amd/deinterlace-1080i => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,deinterlace_vaapi=rate=frame,scale_vaapi=format=nv12
+vaapi-amd/deinterlace-and-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,deinterlace_vaapi=rate=frame,scale_vaapi=w=1280:h=720:format=nv12
+vaapi-amd/downscale-720p => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12
+vaapi-amd/full-side-by-side => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=drm,format=drm_prime,hwmap=derive_device=vulkan,format=vulkan,scale_vulkan,crop=trunc(iw/4)*2:ih:0:0,libplacebo=upscaler=none:downscaler=none:w=1920:h=1080:format=nv12,format=vulkan,hwmap=derive_device=vaapi,format=vaapi,scale_vaapi=format=nv12
+vaapi-amd/graphical-subs => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=drm,format=drm_prime,hwmap=derive_device=vulkan,format=vulkan,scale_vulkan,libplacebo=upscaler=none:downscaler=none:format=bgra:range=pc,format=vulkan
+vaapi-amd/graphical-subs-and-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=drm,format=drm_prime,hwmap=derive_device=vulkan,format=vulkan,scale_vulkan,libplacebo=upscaler=none:downscaler=none:w=1280:h=720:format=bgra:range=pc,format=vulkan
+vaapi-amd/half-side-by-side-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=drm,format=drm_prime,hwmap=derive_device=vulkan,format=vulkan,scale_vulkan,crop=trunc(iw/4)*2:ih:0:0,setsar=sar=1,libplacebo=upscaler=none:downscaler=none:w=1280:h=720:format=nv12,format=vulkan,hwmap=derive_device=vaapi,format=vaapi,scale_vaapi=format=nv12
+vaapi-amd/hdr10-tonemap => setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,hwmap=derive_device=drm,format=drm_prime,hwmap=derive_device=vulkan,format=vulkan,scale_vulkan,libplacebo=upscaler=none:downscaler=none:format=bgra:tonemapping=bt.2390:peak_detect=0:color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=pc,format=vulkan,hwmap=derive_device=vaapi,format=vaapi,scale_vaapi=format=nv12:out_range=tv
+vaapi-amd/hdr10-tonemap-and-downscale => setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,hwmap=derive_device=drm,format=drm_prime,hwmap=derive_device=vulkan,format=vulkan,scale_vulkan,libplacebo=upscaler=none:downscaler=none:w=1280:h=720:format=bgra:tonemapping=bt.2390:peak_detect=0:color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=pc,format=vulkan,hwmap=derive_device=vaapi,format=vaapi,scale_vaapi=format=nv12:out_range=tv
+vaapi-amd/max-dimensions-720p => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12
+vaapi-amd/max-width-only => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12
+vaapi-amd/mjpeg => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:out_range=pc:mode=hq
+vaapi-amd/mjpeg-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=320:h=180:format=nv12:out_range=pc:mode=hq
+vaapi-amd/mjpeg-max-dimensions => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=320:h=180:format=nv12:out_range=pc:mode=hq
+vaapi-amd/passthrough-1080p => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12
+vaapi-amd/request-matches-source => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12
+vaapi-amd/rotate-180 => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=drm,format=drm_prime,hwmap=derive_device=vulkan,format=vulkan,scale_vulkan,flip_vulkan
+vaapi-amd/rotate-90 => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=drm,format=drm_prime,hwmap=derive_device=vulkan,format=vulkan,scale_vulkan,transpose_vulkan=dir=cclock
+vaapi-amd/rotate-90-and-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=drm,format=drm_prime,hwmap=derive_device=vulkan,format=vulkan,scale_vulkan,transpose_vulkan=dir=cclock
+vaapi-amd/software-encoder-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12,hwdownload,format=nv12
+vaapi-amd/text-subs => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=drm,format=drm_prime,hwmap=derive_device=vulkan,format=vulkan,scale_vulkan,libplacebo=upscaler=none:downscaler=none:format=bgra:range=pc,format=vulkan
+vaapi-ihd/deinterlace-1080i => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,deinterlace_vaapi=rate=frame,scale_vaapi=format=nv12:extra_hw_frames=24
+vaapi-ihd/deinterlace-and-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,deinterlace_vaapi=rate=frame,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24
+vaapi-ihd/downscale-720p => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24
+vaapi-ihd/full-side-by-side => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,scale_vaapi=w=1920:h=1080:format=nv12:extra_hw_frames=24
+vaapi-ihd/graphical-subs => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24
+vaapi-ihd/graphical-subs-and-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24
+vaapi-ihd/half-side-by-side-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,setsar=sar=1,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24
+vaapi-ihd/hdr10-tonemap => setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,hwmap=derive_device=opencl:mode=read,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=vaapi:mode=write:reverse=1,format=vaapi
+vaapi-ihd/hdr10-tonemap-and-downscale => setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,scale_vaapi=w=1280:h=720:extra_hw_frames=24,hwmap=derive_device=opencl:mode=read,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=vaapi:mode=write:reverse=1,format=vaapi
+vaapi-ihd/max-dimensions-720p => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24
+vaapi-ihd/max-width-only => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24
+vaapi-ihd/mjpeg => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:out_range=pc:mode=hq:extra_hw_frames=24
+vaapi-ihd/mjpeg-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=320:h=180:format=nv12:out_range=pc:mode=hq:extra_hw_frames=24
+vaapi-ihd/mjpeg-max-dimensions => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=320:h=180:format=nv12:out_range=pc:mode=hq:extra_hw_frames=24
+vaapi-ihd/passthrough-1080p => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24
+vaapi-ihd/request-matches-source => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24
+vaapi-ihd/rotate-180 => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,transpose_vaapi=dir=reversal,scale_vaapi=format=nv12:extra_hw_frames=24
+vaapi-ihd/rotate-90 => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,transpose_vaapi=dir=cclock,scale_vaapi=format=nv12:extra_hw_frames=24
+vaapi-ihd/rotate-90-and-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,transpose_vaapi=dir=cclock,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24
+vaapi-ihd/software-encoder-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24,hwmap=mode=read,format=nv12
+vaapi-ihd/text-subs => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24
+vaapi/deinterlace-1080i => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,deinterlace_vaapi=rate=frame,scale_vaapi=format=nv12:extra_hw_frames=24"
+vaapi/deinterlace-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,deinterlace_vaapi=rate=frame,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24"
+vaapi/downscale-720p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24"
+vaapi/full-side-by-side => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,scale_vaapi=w=1920:h=1080:format=nv12:extra_hw_frames=24"
+vaapi/graphical-subs => -filter_complex "[0:1]scale,scale=1920:1080:fast_bilinear[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24,hwdownload,format=nv12[main];[main][sub]overlay=eof_action=pass:repeatlast=0,hwupload_vaapi"
+vaapi/graphical-subs-and-downscale => -filter_complex "[0:1]scale,scale=1280:720:fast_bilinear[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24,hwdownload,format=nv12[main];[main][sub]overlay=eof_action=pass:repeatlast=0,hwupload_vaapi"
+vaapi/half-side-by-side-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,setsar=sar=1,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24"
+vaapi/hdr10-tonemap => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,hwdownload,format=p010le,hwupload=derive_device=opencl,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwdownload,format=nv12,hwupload_vaapi"
+vaapi/hdr10-tonemap-and-downscale => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,scale_vaapi=w=1280:h=720:extra_hw_frames=24,hwdownload,format=p010le,hwupload=derive_device=opencl,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwdownload,format=nv12,hwupload_vaapi"
+vaapi/max-dimensions-720p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24"
+vaapi/max-width-only => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24"
+vaapi/mjpeg => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:out_range=pc:mode=hq:extra_hw_frames=24"
+vaapi/mjpeg-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=320:h=180:format=nv12:out_range=pc:mode=hq:extra_hw_frames=24"
+vaapi/mjpeg-max-dimensions => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=320:h=180:format=nv12:out_range=pc:mode=hq:extra_hw_frames=24"
+vaapi/passthrough-1080p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24"
+vaapi/request-matches-source => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24"
+vaapi/rotate-180 => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24"
+vaapi/rotate-90 => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24"
+vaapi/rotate-90-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24"
+vaapi/software-decode => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=nv12,hwupload_vaapi"
+vaapi/software-decode-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=nv12,hwupload_vaapi"
+vaapi/software-decode-deinterlace => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,yadif=0:-1:0,format=nv12,hwupload_vaapi"
+vaapi/software-encoder-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=w=1280:h=720:format=nv12:extra_hw_frames=24,hwmap,format=nv12"
+vaapi/text-subs => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24,hwmap,format=nv12,subtitles=f='',setpts=PTS -0/TB,hwmap,format=vaapi"
+videotoolbox/deinterlace-1080i => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,yadif=0:-1:0,format=yuv420p"
+videotoolbox/deinterlace-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,yadif=0:-1:0,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+videotoolbox/downscale-720p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+videotoolbox/full-side-by-side => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,format=yuv420p"
+videotoolbox/graphical-subs => -filter_complex "[0:1]scale,scale=1920:1080:fast_bilinear[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p[main];[main][sub]overlay=eof_action=pass:repeatlast=0"
+videotoolbox/graphical-subs-and-downscale => -filter_complex "[0:1]scale,scale=1280:720:fast_bilinear[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p[main];[main][sub]overlay=eof_action=pass:repeatlast=0"
+videotoolbox/half-side-by-side-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,scale=iw*2:ih,setsar=sar=1,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+videotoolbox/hdr10-tonemap => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p"
+videotoolbox/hdr10-tonemap-and-downscale => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,scale=trunc(1280/2)*2:trunc(720/2)*2,tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p"
+videotoolbox/max-dimensions-720p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(min(max(iw\,ih*a)\,min(1280\,720*a))/2)*2:trunc(min(max(iw/a\,ih)\,min(1280/a\,720))/2)*2,format=yuv420p"
+videotoolbox/max-width-only => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(min(max(iw\,ih*a)\,1280)/2)*2:trunc(ow/a/2)*2,format=yuv420p"
+videotoolbox/mjpeg => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+videotoolbox/mjpeg-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(320/2)*2:trunc(180/2)*2,format=yuv420p"
+videotoolbox/mjpeg-max-dimensions => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(min(max(iw\,ih*(a*sar))\,min(320\,180*(a*sar)))/2)*2:trunc(min(max(iw/(a*sar)\,ih)\,min(320/(a*sar)\,180))/2)*2,format=yuv420p"
+videotoolbox/passthrough-1080p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+videotoolbox/request-matches-source => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1920/2)*2:trunc(1080/2)*2,format=yuv420p"
+videotoolbox/rotate-180 => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+videotoolbox/rotate-90 => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+videotoolbox/rotate-90-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+videotoolbox/software-decode => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p"
+videotoolbox/software-decode-and-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+videotoolbox/software-decode-deinterlace => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,yadif=0:-1:0,format=yuv420p"
+videotoolbox/software-encoder-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale=trunc(1280/2)*2:trunc(720/2)*2,format=yuv420p"
+videotoolbox/text-subs => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p,subtitles=f='',setpts=PTS -0/TB"
+vt/deinterlace-1080i => yadif_videotoolbox=0:-1:0
+vt/deinterlace-and-downscale => yadif_videotoolbox=0:-1:0,scale_vt=w=1280:h=720
+vt/downscale-720p => scale_vt=w=1280:h=720
+vt/full-side-by-side => scale_vt=w=1920:h=1080
+vt/graphical-subs => 
+vt/graphical-subs-and-downscale => scale_vt=w=1280:h=720
+vt/half-side-by-side-downscale => scale_vt=w=1280:h=720
+vt/hdr10-tonemap => tonemap_videotoolbox=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0
+vt/hdr10-tonemap-and-downscale => scale_vt=w=1280:h=720,tonemap_videotoolbox=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0
+vt/max-dimensions-720p => scale_vt=w=1280:h=720
+vt/max-width-only => scale_vt=w=1280:h=720
+vt/mjpeg => 
+vt/mjpeg-downscale => scale_vt=w=320:h=180
+vt/mjpeg-max-dimensions => scale_vt=w=320:h=180
+vt/passthrough-1080p => 
+vt/request-matches-source => 
+vt/rotate-180 => transpose_vt=dir=reversal
+vt/rotate-90 => transpose_vt=dir=cclock
+vt/rotate-90-and-downscale => transpose_vt=dir=cclock,scale_vt=w=1280:h=720
+vt/software-encoder-downscale => scale_vt=w=1280:h=720,hwdownload,format=nv12
+vt/text-subs => 

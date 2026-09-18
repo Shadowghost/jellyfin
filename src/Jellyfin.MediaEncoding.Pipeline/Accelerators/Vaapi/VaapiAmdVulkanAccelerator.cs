@@ -23,6 +23,7 @@ namespace Jellyfin.MediaEncoding.Pipeline.Accelerators.Vaapi;
 /// <param name="DoubleRateDeinterlace">Whether the deinterlacer emits one frame per field.</param>
 /// <param name="TakesVulkanRoute">Whether this chain goes through Vulkan.</param>
 /// <param name="ToneMapping">Whether the Vulkan pass also tone maps.</param>
+/// <param name="FullRangeOutput">Whether the encoder wants full range frames, which MJPEG does.</param>
 /// <param name="ImportNeedsScaleVulkan">
 /// Whether the imported frame has to pass through <c>scale_vulkan</c> before libplacebo will take
 /// it, which older AMD parts need.
@@ -31,6 +32,7 @@ public sealed record VaapiAmdVulkanAccelerator(
     bool DoubleRateDeinterlace = false,
     bool TakesVulkanRoute = false,
     bool ToneMapping = false,
+    bool FullRangeOutput = false,
     bool ImportNeedsScaleVulkan = true) : IHardwareAccelerator
 {
     private const string ScaleFilterName = "scale_vaapi";
@@ -144,7 +146,11 @@ public sealed record VaapiAmdVulkanAccelerator(
     {
         if (!TakesVulkanRoute)
         {
-            return new DeviceScaleFilter(ScaleFilterName, FrameSurface.Vaapi) { Format = format };
+            return new DeviceScaleFilter(ScaleFilterName, FrameSurface.Vaapi)
+            {
+                Format = format,
+                ExtraOptions = FullRangeOutput ? "out_range=pc:mode=hq" : null
+            };
         }
 
         // Coming back from Vulkan the scaler also clears the surface metadata offset.

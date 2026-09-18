@@ -15,8 +15,9 @@ namespace Jellyfin.MediaEncoding.Pipeline.Accelerators.Vaapi;
 /// frame rather than copying it home and back.
 /// </remarks>
 /// <param name="DoubleRateDeinterlace">Whether the deinterlacer emits one frame per field.</param>
-public sealed record VaapiIntelFullAccelerator(bool DoubleRateDeinterlace = false)
-    : VaapiAccelerator(DoubleRateDeinterlace, false)
+/// <param name="FullRangeOutput">Whether the encoder wants full range frames, which MJPEG does.</param>
+public sealed record VaapiIntelFullAccelerator(bool DoubleRateDeinterlace = false, bool FullRangeOutput = false)
+    : VaapiAccelerator(DoubleRateDeinterlace, false, FullRangeOutput)
 {
     /// <inheritdoc />
     public override IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities)

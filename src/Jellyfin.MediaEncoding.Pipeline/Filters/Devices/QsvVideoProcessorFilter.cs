@@ -39,6 +39,11 @@ public sealed record QsvVideoProcessorFilter : IVideoFilter
     /// </summary>
     public string? Transpose { get; init; }
 
+    /// <summary>
+    /// Gets the options appended after the rest, such as the range the encoder wants.
+    /// </summary>
+    public string? ExtraOptions { get; init; }
+
     /// <inheritdoc />
     public FrameSurface? RequiredSurface => FrameSurface.Qsv;
 
@@ -94,7 +99,8 @@ public sealed record QsvVideoProcessorFilter : IVideoFilter
             TonesMap = TonesMap || next.TonesMap,
             Size = Size ?? next.Size,
             Format = next.Format ?? Format,
-            Transpose = Transpose ?? next.Transpose
+            Transpose = Transpose ?? next.Transpose,
+            ExtraOptions = ExtraOptions ?? next.ExtraOptions
         };
     }
 
@@ -166,6 +172,11 @@ public sealed record QsvVideoProcessorFilter : IVideoFilter
         if (Transpose is not null)
         {
             options.Add($"transpose={Transpose}");
+        }
+
+        if (!string.IsNullOrEmpty(ExtraOptions))
+        {
+            options.Add(ExtraOptions);
         }
 
         if (options.Count == 0)

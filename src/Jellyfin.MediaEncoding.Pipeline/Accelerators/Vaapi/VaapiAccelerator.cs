@@ -17,15 +17,23 @@ namespace Jellyfin.MediaEncoding.Pipeline.Accelerators.Vaapi;
 /// </summary>
 /// <param name="DoubleRateDeinterlace">Whether the deinterlacer emits one frame per field.</param>
 /// <param name="GraphicalOverlay">Whether a bitmap subtitle is drawn over the picture in system memory.</param>
-public record VaapiAccelerator(bool DoubleRateDeinterlace = false, bool GraphicalOverlay = false)
-    : IHardwareAccelerator
+/// <param name="FullRangeOutput">Whether the encoder wants full range frames, which MJPEG does.</param>
+public record VaapiAccelerator(
+    bool DoubleRateDeinterlace = false,
+    bool GraphicalOverlay = false,
+    bool FullRangeOutput = false) : IHardwareAccelerator
 {
     /// <summary>
     /// The pool the VA-API video processor needs on top of the frames the chain holds.
     /// </summary>
-    protected const string ExtraFrames = "extra_hw_frames=24";
+    private const string ExtraFrames = "extra_hw_frames=24";
 
     private const string ScaleFilterName = "scale_vaapi";
+
+    /// <summary>
+    /// Gets the options every pass of the video processor carries.
+    /// </summary>
+    protected string ScaleOptions => FullRangeOutput ? "out_range=pc:mode=hq:" + ExtraFrames : ExtraFrames;
 
     /// <inheritdoc />
     public virtual FrameSurface Surface => FrameSurface.Vaapi;
@@ -89,7 +97,7 @@ public record VaapiAccelerator(bool DoubleRateDeinterlace = false, bool Graphica
                 return new DeviceScaleFilter(ScaleFilterName, FrameSurface.Vaapi)
                 {
                     Size = scale.Request.Resolve(state.Size),
-                    ExtraOptions = ExtraFrames
+                    ExtraOptions = ScaleOptions
                 };
 
             case DeinterlaceFilter when capabilities.SupportsFilter("deinterlace_vaapi")
@@ -116,7 +124,7 @@ public record VaapiAccelerator(bool DoubleRateDeinterlace = false, bool Graphica
     public IVideoFilter CreateFormatFilter(PixelFormat format) => new DeviceScaleFilter(ScaleFilterName, FrameSurface.Vaapi)
     {
         Format = format,
-        ExtraOptions = ExtraFrames
+        ExtraOptions = ScaleOptions
     };
 
     /// <summary>

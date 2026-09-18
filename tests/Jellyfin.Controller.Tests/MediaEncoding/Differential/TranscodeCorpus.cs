@@ -163,6 +163,24 @@ internal static class TranscodeCorpus
             });
         }
 
+        Add("mjpeg", new TranscodeCase { Name = string.Empty, Mjpeg = true });
+
+        Add("mjpeg-downscale", new TranscodeCase
+        {
+            Name = string.Empty,
+            Mjpeg = true,
+            RequestedWidth = 320,
+            RequestedHeight = 180
+        });
+
+        Add("mjpeg-max-dimensions", new TranscodeCase
+        {
+            Name = string.Empty,
+            Mjpeg = true,
+            RequestedMaxWidth = 320,
+            RequestedMaxHeight = 180
+        });
+
         Add("software-encoder-downscale", new TranscodeCase
         {
             Name = string.Empty,

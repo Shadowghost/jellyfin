@@ -23,6 +23,12 @@ public sealed record ScaleFilter(ScalingRequest Request) : IVideoFilter
     /// </summary>
     public string? Flags { get; init; }
 
+    /// <summary>
+    /// Gets the expression the filter reads the display aspect ratio from, which an encoder that
+    /// does not square the pixels itself has to work out by hand.
+    /// </summary>
+    public string AspectRatio { get; init; } = "a";
+
     /// <inheritdoc />
     public FrameSurface? RequiredSurface => FrameSurface.System;
 
@@ -43,7 +49,7 @@ public sealed record ScaleFilter(ScalingRequest Request) : IVideoFilter
     /// <inheritdoc />
     public string? ToFilterArgument()
     {
-        var argument = Request.ToSoftwareFilterArgument();
+        var argument = Request.ToSoftwareFilterArgument(AspectRatio);
 
         return argument is null || string.IsNullOrEmpty(Flags) ? argument : argument + ":flags=" + Flags;
     }

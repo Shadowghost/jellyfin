@@ -35,6 +35,11 @@ public sealed record DeviceScaleFilter(string Name, FrameSurface Surface) : IVid
     public string? ExtraOptions { get; init; }
 
     /// <summary>
+    /// Gets a value indicating whether the filter may be merged with the one next to it.
+    /// </summary>
+    public bool Fusable { get; init; } = true;
+
+    /// <summary>
     /// Gets a value indicating whether the filter also turns the picture onto its side.
     /// </summary>
     /// <remarks>
@@ -57,7 +62,9 @@ public sealed record DeviceScaleFilter(string Name, FrameSurface Surface) : IVid
     /// <returns>The merged filter, or <c>null</c> when they cannot be merged.</returns>
     public static DeviceScaleFilter? Fuse(DeviceScaleFilter first, DeviceScaleFilter second)
     {
-        if (!string.Equals(first.Name, second.Name, StringComparison.Ordinal)
+        if (!first.Fusable
+            || !second.Fusable
+            || !string.Equals(first.Name, second.Name, StringComparison.Ordinal)
             || first.Surface != second.Surface
             || (first.Size.HasValue && second.Size.HasValue))
         {
