@@ -53,6 +53,11 @@ public partial class EncodingHelper
             return null;
         }
 
+        if (string.IsNullOrEmpty(vidDecoder))
+        {
+            accelerator = accelerator.ForSoftwareDecode();
+        }
+
         var capabilities = new ServerPipelineCapabilities(_mediaEncoder, _hardwareCapabilities, options);
         var graph = new VideoFilterChainBuilder(accelerator, capabilities).BuildGraph(
             DescribeSource(state, accelerator, vidDecoder),
@@ -71,25 +76,13 @@ public partial class EncodingHelper
         => chain.Filters.Select(f => f.ToFilterArgument()).Where(a => !string.IsNullOrEmpty(a)).ToList()!;
 
     private static FrameSurface DescribeEncoderSurface(IHardwareAccelerator accelerator, string vidEncoder)
-    {
-        if (accelerator.EncoderSuffix is null
-            || !vidEncoder.Contains(accelerator.EncoderSuffix, StringComparison.OrdinalIgnoreCase))
-        {
-            return FrameSurface.System;
-        }
-
-        return accelerator switch
-        {
-            QsvVaapiAccelerator => FrameSurface.Qsv,
-            AmfD3d11Accelerator => FrameSurface.D3d11,
-            _ => accelerator.Surface
-        };
-    }
+        => accelerator.EncoderSuffix is { } suffix
+            && vidEncoder.Contains(suffix, StringComparison.OrdinalIgnoreCase)
+                ? accelerator.EncoderSurface
+                : FrameSurface.System;
 
     private static PipelinePixelFormat DescribeEncoderFormat(IHardwareAccelerator accelerator)
-        => accelerator.Surface == FrameSurface.System
-            ? PipelinePixelFormat.Yuv420p
-            : accelerator.GetDeviceFormat(new FrameState { PixelFormat = PipelinePixelFormat.Yuv420p });
+        => accelerator.GetDeviceFormat(new FrameState { PixelFormat = PipelinePixelFormat.Yuv420p });
 
     private static FrameState DescribeSource(
         EncodingJobInfo state,
@@ -103,16 +96,13 @@ public partial class EncodingHelper
 
         return new FrameState
         {
-            Surface = onDevice ? DescribeDecodeSurface(accelerator) : FrameSurface.System,
+            Surface = onDevice ? accelerator.DecodeSurface : FrameSurface.System,
             PixelFormat = onDevice && deviceFormat.IsKnown ? deviceFormat : decoded.PixelFormat,
             Size = new FrameSize(videoStream.Width!.Value, videoStream.Height!.Value),
             IsInterlaced = videoStream.IsInterlaced,
             HdrFormat = videoStream.VideoRange == VideoRange.HDR ? HdrFormat.Hdr10 : HdrFormat.None
         };
     }
-
-    private static FrameSurface DescribeDecodeSurface(IHardwareAccelerator accelerator)
-        => accelerator is AmfD3d11Accelerator ? FrameSurface.D3d11 : accelerator.Surface;
 
     private List<IVideoFilter> DescribeOperations(
         EncodingJobInfo state,
@@ -145,7 +135,9 @@ public partial class EncodingHelper
         var threeDFormat = state.MediaSource?.Video3DFormat;
         if (threeDFormat.HasValue)
         {
-            operations.Add(new Flatten3DFilter(threeDFormat, CanFlatten3DInVram(state, options)));
+            operations.Add(new Flatten3DFilter(
+                threeDFormat,
+                accelerator.Surface != FrameSurface.System && CanFlatten3DInVram(state, options)));
         }
 
         operations.Add(new ScaleFilter(new ScalingRequest(
@@ -234,7 +226,6 @@ public partial class EncodingHelper
         }
 
         var doubleRateDeint = options.DeinterlaceDoubleRate && (state.VideoStream?.ReferenceFrameRate ?? 60) <= 30;
-        var isSwDecoder = string.IsNullOrEmpty(vidDecoder);
         var deinterlaceMethod = options.DeinterlaceMethod.ToString().ToLowerInvariant();
 
         switch (options.HardwareAccelerationType)
@@ -243,7 +234,7 @@ public partial class EncodingHelper
                 return SoftwareAccelerator.Instance;
 
             case HardwareAccelerationType.nvenc:
-                return isSwDecoder ? null : new CudaAccelerator(deinterlaceMethod, doubleRateDeint);
+                return new CudaAccelerator(deinterlaceMethod, doubleRateDeint);
 
             case HardwareAccelerationType.rkmpp:
                 var isRkmppEncoder = vidEncoder.Contains("rkmpp", StringComparison.OrdinalIgnoreCase);
@@ -251,30 +242,34 @@ public partial class EncodingHelper
                     && !IsHwTonemapAvailable(state, options)
                     && (vidEncoder.Contains("h264", StringComparison.OrdinalIgnoreCase)
                         || vidEncoder.Contains("hevc", StringComparison.OrdinalIgnoreCase));
-                return isSwDecoder ? null : new RkrgaAccelerator(afbc);
+                return OperatingSystem.IsLinux() ? new RkrgaAccelerator(afbc) : null;
 
             case HardwareAccelerationType.videotoolbox:
-                return isSwDecoder ? null : new VideoToolboxAccelerator(deinterlaceMethod, doubleRateDeint);
+                return OperatingSystem.IsMacOS()
+                    ? new VideoToolboxAccelerator(deinterlaceMethod, doubleRateDeint)
+                    : null;
+
+            case HardwareAccelerationType.amf:
+                return OperatingSystem.IsWindows()
+                    ? new AmfD3d11Accelerator(deinterlaceMethod, doubleRateDeint)
+                    : null;
 
             case HardwareAccelerationType.qsv:
-                return isSwDecoder || !OperatingSystem.IsLinux() || !IsVaapiSupported(state)
-                    ? null
-                    : new QsvVaapiAccelerator(doubleRateDeint);
+                return OperatingSystem.IsLinux() && IsVaapiSupported(state)
+                    ? new QsvVaapiAccelerator(doubleRateDeint)
+                    : null;
 
             case HardwareAccelerationType.vaapi:
-                return SelectVaapiPipelineAccelerator(state, isSwDecoder, doubleRateDeint);
+                return SelectVaapiPipelineAccelerator(state, doubleRateDeint);
 
             default:
                 return null;
         }
     }
 
-    private IHardwareAccelerator? SelectVaapiPipelineAccelerator(
-        EncodingJobInfo state,
-        bool isSwDecoder,
-        bool doubleRateDeint)
+    private IHardwareAccelerator? SelectVaapiPipelineAccelerator(EncodingJobInfo state, bool doubleRateDeint)
     {
-        if (isSwDecoder || !OperatingSystem.IsLinux() || !IsVaapiSupported(state) || !IsVaapiFullSupported())
+        if (!OperatingSystem.IsLinux() || !IsVaapiSupported(state) || !IsVaapiFullSupported())
         {
             return null;
         }
