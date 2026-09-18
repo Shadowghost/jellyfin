@@ -844,37 +844,6 @@ namespace MediaBrowser.Controller.MediaEncoding
         }
 
         /// <summary>
-        /// Gets decoder from a codec.
-        /// </summary>
-        /// <param name="codec">Codec to use.</param>
-        /// <returns>Decoder string.</returns>
-        public string GetDecoderFromCodec(string codec)
-        {
-            // For these need to find out the ffmpeg names
-            if (string.Equals(codec, "mp2", StringComparison.OrdinalIgnoreCase))
-            {
-                return null;
-            }
-
-            if (string.Equals(codec, "aac_latm", StringComparison.OrdinalIgnoreCase))
-            {
-                return null;
-            }
-
-            if (string.Equals(codec, "eac3", StringComparison.OrdinalIgnoreCase))
-            {
-                return null;
-            }
-
-            if (_mediaEncoder.SupportsDecoder(codec))
-            {
-                return codec;
-            }
-
-            return null;
-        }
-
-        /// <summary>
         /// Infers the audio codec based on the url.
         /// </summary>
         /// <param name="container">Container to use.</param>
