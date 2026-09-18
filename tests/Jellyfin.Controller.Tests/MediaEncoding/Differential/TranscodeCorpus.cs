@@ -141,6 +141,28 @@ internal static class TranscodeCorpus
 
         Add("text-subs", new TranscodeCase { Name = string.Empty, Subtitle = SubtitleKind.Text });
 
+        // Only the dispatcher decides to decode in software; a chain measured directly is always
+        // handed a decoder, so these shapes would be measuring a different branch of it.
+        if (variant == ChainVariant.Auto)
+        {
+            Add("software-decode", new TranscodeCase { Name = string.Empty, EnableHardwareDecoding = false });
+
+            Add("software-decode-and-downscale", new TranscodeCase
+            {
+                Name = string.Empty,
+                EnableHardwareDecoding = false,
+                RequestedWidth = 1280,
+                RequestedHeight = 720
+            });
+
+            Add("software-decode-deinterlace", new TranscodeCase
+            {
+                Name = string.Empty,
+                EnableHardwareDecoding = false,
+                IsInterlaced = true
+            });
+        }
+
         Add("software-encoder-downscale", new TranscodeCase
         {
             Name = string.Empty,

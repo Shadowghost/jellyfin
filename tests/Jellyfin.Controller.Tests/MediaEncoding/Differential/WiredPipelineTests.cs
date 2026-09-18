@@ -15,13 +15,19 @@ namespace Jellyfin.Controller.Tests.MediaEncoding.Differential;
 /// </summary>
 public class WiredPipelineTests
 {
-    private static readonly HashSet<HardwareAccelerationType> _cutOver =
+    /// <summary>
+    /// The acceleration types the package builds wherever the server runs.
+    /// </summary>
+    private static readonly HashSet<HardwareAccelerationType> _everywhere =
     [
         HardwareAccelerationType.none,
         HardwareAccelerationType.nvenc
     ];
 
-    private static readonly HashSet<HardwareAccelerationType> _cutOverOnLinux =
+    /// <summary>
+    /// The types whose devices only exist on one operating system, which the package follows.
+    /// </summary>
+    private static readonly HashSet<HardwareAccelerationType> _onLinux =
     [
         HardwareAccelerationType.vaapi,
         HardwareAccelerationType.qsv,
@@ -44,26 +50,11 @@ public class WiredPipelineTests
     public void EncodingHelper_BuildsTheSameChainThroughThePipeline(string name)
     {
         var testCase = TranscodeCorpus.All.Single(c => string.Equals(c.Name, name, StringComparison.Ordinal));
-        Assert.SkipUnless(IsCutOver(testCase), "acceleration not cut over yet");
-
         var helper = LegacyEncodingHelper.Create();
 
         Assert.Equal(
             LegacyFilterChain.BuildFullParam(testCase, helper),
             BuildThroughPipeline(testCase, helper));
-    }
-
-    [Fact]
-    public void EncodingHelper_FallsBackWhereThePackageHasNotBeenHandedTheDevice()
-    {
-        var helper = LegacyEncodingHelper.Create();
-
-        foreach (var testCase in TranscodeCorpus.All.Where(c => c.Variant == ChainVariant.Auto && !IsCutOver(c)))
-        {
-            Assert.Equal(
-                LegacyFilterChain.BuildFullParam(testCase, helper),
-                BuildThroughPipeline(testCase, helper));
-        }
     }
 
     [Theory]
@@ -127,6 +118,8 @@ public class WiredPipelineTests
     }
 
     private static bool IsCutOver(TranscodeCase testCase)
-        => _cutOver.Contains(testCase.Acceleration)
-            || (OperatingSystem.IsLinux() && _cutOverOnLinux.Contains(testCase.Acceleration));
+        => _everywhere.Contains(testCase.Acceleration)
+            || (OperatingSystem.IsLinux() && _onLinux.Contains(testCase.Acceleration))
+            || (OperatingSystem.IsWindows() && testCase.Acceleration == HardwareAccelerationType.amf)
+            || (OperatingSystem.IsMacOS() && testCase.Acceleration == HardwareAccelerationType.videotoolbox);
 }

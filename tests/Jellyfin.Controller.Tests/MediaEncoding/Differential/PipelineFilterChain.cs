@@ -34,7 +34,7 @@ internal static class PipelineFilterChain
         Describe(TranscodeCase testCase, IHardwareAccelerator accelerator)
     {
         var onDevice = accelerator.Surface != FrameSurface.System && testCase.EnableHardwareDecoding;
-        var decodeSurface = testCase.Variant == ChainVariant.AmdD3d11 ? FrameSurface.D3d11 : accelerator.Surface;
+        var decodeSurface = accelerator.DecodeSurface;
         var doToneMap = testCase.IsHdr10 && testCase.EnableTonemapping;
 
         var decoded = new FrameState { PixelFormat = PixelFormat.Parse(testCase.InputPixelFormat) };
@@ -52,18 +52,11 @@ internal static class PipelineFilterChain
             HdrFormat = testCase.IsHdr10 ? HdrFormat.Hdr10 : HdrFormat.None
         };
 
-        var encoderSurface = testCase.Variant switch
-        {
-            ChainVariant.AmdD3d11 => FrameSurface.D3d11,
-            _ => testCase.Acceleration == HardwareAccelerationType.qsv ? FrameSurface.Qsv : accelerator.Surface
-        };
-        var outputSurface = testCase.EnableHardwareEncoding && accelerator.Surface != FrameSurface.System
-            ? encoderSurface
-            : FrameSurface.System;
-        var sdr8Bit = new FrameState { PixelFormat = PixelFormat.Yuv420p };
-        var outputFormat = accelerator.Surface == FrameSurface.System
-            ? PixelFormat.Yuv420p
-            : accelerator.GetDeviceFormat(sdr8Bit);
+        var encodesHere = testCase.EnableHardwareEncoding
+            && accelerator.EncoderSuffix is { } suffix
+            && LegacyFilterChain.OutputCodecName(testCase).Contains(suffix, System.StringComparison.OrdinalIgnoreCase);
+        var outputSurface = encodesHere ? accelerator.EncoderSurface : FrameSurface.System;
+        var outputFormat = accelerator.GetDeviceFormat(new FrameState { PixelFormat = PixelFormat.Yuv420p });
 
         var requested = new List<IVideoFilter>();
 
@@ -85,7 +78,9 @@ internal static class PipelineFilterChain
 
         if (testCase.Video3DFormat is not null)
         {
-            requested.Add(new Flatten3DFilter(testCase.Video3DFormat, onDevice));
+            requested.Add(new Flatten3DFilter(
+                testCase.Video3DFormat,
+                accelerator.Surface != FrameSurface.System));
         }
 
         var scaling = new ScalingRequest(
@@ -125,7 +120,8 @@ internal static class PipelineFilterChain
 
     public static string BuildInputArgs(TranscodeCase testCase)
     {
-        var accelerator = SelectAccelerator(testCase);
+        // The devices exist whether or not the filtering happens on them.
+        var accelerator = SelectByVariant(testCase);
         var doToneMap = testCase.IsHdr10 && testCase.EnableTonemapping;
 
         return accelerator
@@ -134,6 +130,13 @@ internal static class PipelineFilterChain
     }
 
     internal static IHardwareAccelerator SelectAccelerator(TranscodeCase testCase)
+    {
+        var accelerator = SelectByVariant(testCase);
+
+        return testCase.EnableHardwareDecoding ? accelerator : accelerator.ForSoftwareDecode();
+    }
+
+    private static IHardwareAccelerator SelectByVariant(TranscodeCase testCase)
     {
         return testCase.Variant switch
         {

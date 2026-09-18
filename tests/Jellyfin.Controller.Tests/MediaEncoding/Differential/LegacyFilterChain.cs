@@ -25,7 +25,7 @@ internal static class LegacyFilterChain
 
         if (testCase.Variant != ChainVariant.Auto)
         {
-            var decoder = DecoderArgsFor(testCase.Variant);
+            var decoder = testCase.EnableHardwareDecoding ? DecoderArgsFor(testCase.Variant) : string.Empty;
             var (variantFilters, _, _) = testCase.Variant switch
             {
                 ChainVariant.VideoToolbox => helper.GetAppleVidFiltersPreferred(state, options, decoder, outputCodec),
@@ -94,7 +94,7 @@ internal static class LegacyFilterChain
         HardwareAccelerationType = testCase.Acceleration,
         EnableHardwareEncoding = testCase.EnableHardwareEncoding,
         EnableTonemapping = testCase.EnableTonemapping,
-        HardwareDecodingCodecs = ["h264", "hevc"]
+        HardwareDecodingCodecs = testCase.EnableHardwareDecoding ? ["h264", "hevc"] : []
     };
 
     public static EncodingJobInfo BuildState(TranscodeCase testCase)
