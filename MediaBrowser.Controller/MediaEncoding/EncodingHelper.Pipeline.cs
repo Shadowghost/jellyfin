@@ -34,8 +34,8 @@ public partial class EncodingHelper
     /// <param name="state">Encoding state.</param>
     /// <param name="options">Encoding options.</param>
     /// <param name="vidEncoder">Video encoder to use.</param>
-    /// <returns>The three filter lists, or <c>null</c> when the job is not one the package builds.</returns>
-    internal (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters)? GetPipelineVidFilterChain(
+    /// <returns>The filter graph, or <c>null</c> when the job is not one the package builds.</returns>
+    internal VideoFilterChains? GetPipelineVidFilterChain(
         EncodingJobInfo state,
         EncodingOptions options,
         string vidEncoder)
@@ -66,13 +66,13 @@ public partial class EncodingHelper
             DescribeEncoderFormat(accelerator),
             DescribeSubtitle(state, options));
 
-        return (
+        return new VideoFilterChains(
             Render(graph.Main),
             graph.Subtitle is null ? [] : Render(graph.Subtitle),
             graph.Overlay is null ? [] : Render(graph.Overlay));
     }
 
-    private static List<string> Render(VideoFilterChain chain)
+    private static IReadOnlyList<string> Render(VideoFilterChain chain)
         => chain.Filters.Select(f => f.ToFilterArgument()).Where(a => !string.IsNullOrEmpty(a)).ToList()!;
 
     private static FrameSurface DescribeEncoderSurface(IHardwareAccelerator accelerator, string vidEncoder)

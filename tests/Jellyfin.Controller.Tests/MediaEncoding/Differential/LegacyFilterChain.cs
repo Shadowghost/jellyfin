@@ -26,7 +26,7 @@ internal static class LegacyFilterChain
         if (testCase.Variant != ChainVariant.Auto)
         {
             var decoder = testCase.EnableHardwareDecoding ? DecoderArgsFor(testCase.Variant) : string.Empty;
-            var (variantFilters, _, _) = testCase.Variant switch
+            var variantChains = testCase.Variant switch
             {
                 ChainVariant.VideoToolbox => helper.GetAppleVidFiltersPreferred(state, options, decoder, outputCodec),
                 ChainVariant.AmdD3d11 => helper.GetAmdDx11VidFiltersPrefered(state, options, decoder, outputCodec),
@@ -35,10 +35,10 @@ internal static class LegacyFilterChain
                 _ => helper.GetAmdVaapiFullVidFiltersPrefered(state, options, decoder, outputCodec)
             };
 
-            return string.Join(',', variantFilters.Where(f => !string.IsNullOrEmpty(f)));
+            return string.Join(',', variantChains.Main.Where(f => !string.IsNullOrEmpty(f)));
         }
 
-        var (mainFilters, _, _) = options.HardwareAccelerationType switch
+        var chains = options.HardwareAccelerationType switch
         {
             HardwareAccelerationType.vaapi => helper.GetVaapiVidFilterChain(state, options, outputCodec),
             HardwareAccelerationType.amf => helper.GetAmdVidFilterChain(state, options, outputCodec),
@@ -49,7 +49,7 @@ internal static class LegacyFilterChain
             _ => helper.GetSwVidFilterChain(state, options, outputCodec)
         };
 
-        return string.Join(',', mainFilters.Where(f => !string.IsNullOrEmpty(f)));
+        return string.Join(',', chains.Main.Where(f => !string.IsNullOrEmpty(f)));
     }
 
     public static string BuildFullParam(TranscodeCase testCase, EncodingHelper helper)

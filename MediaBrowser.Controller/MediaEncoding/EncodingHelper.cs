@@ -4460,8 +4460,8 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <param name="state">Encoding state.</param>
         /// <param name="options">Encoding options.</param>
         /// <param name="vidEncoder">Video encoder to use.</param>
-        /// <returns>The tuple contains three lists: main, sub and overlay filters.</returns>
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetSwVidFilterChain(
+        /// <returns>The three branches of the filter graph.</returns>
+        public VideoFilterChains GetSwVidFilterChain(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidEncoder)
@@ -4563,7 +4563,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
             }
 
-            return (mainFilters, subFilters, overlayFilters);
+            return new VideoFilterChains(mainFilters, subFilters, overlayFilters);
         }
 
         /// <summary>
@@ -4572,15 +4572,15 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <param name="state">Encoding state.</param>
         /// <param name="options">Encoding options.</param>
         /// <param name="vidEncoder">Video encoder to use.</param>
-        /// <returns>The tuple contains three lists: main, sub and overlay filters.</returns>
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetNvidiaVidFilterChain(
+        /// <returns>The three branches of the filter graph.</returns>
+        public VideoFilterChains GetNvidiaVidFilterChain(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidEncoder)
         {
             if (options.HardwareAccelerationType != HardwareAccelerationType.nvenc)
             {
-                return (null, null, null);
+                return null;
             }
 
             var vidDecoder = GetHardwareVideoDecoder(state, options) ?? string.Empty;
@@ -4597,7 +4597,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return GetNvidiaVidFiltersPrefered(state, options, vidDecoder, vidEncoder);
         }
 
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetNvidiaVidFiltersPrefered(
+        public VideoFilterChains GetNvidiaVidFiltersPrefered(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidDecoder,
@@ -4722,7 +4722,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
             }
 
-            return (mainFilters, subFilters, overlayFilters);
+            return new VideoFilterChains(mainFilters, subFilters, overlayFilters);
         }
 
         /// <summary>
@@ -4731,15 +4731,15 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <param name="state">Encoding state.</param>
         /// <param name="options">Encoding options.</param>
         /// <param name="vidEncoder">Video encoder to use.</param>
-        /// <returns>The tuple contains three lists: main, sub and overlay filters.</returns>
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetAmdVidFilterChain(
+        /// <returns>The three branches of the filter graph.</returns>
+        public VideoFilterChains GetAmdVidFilterChain(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidEncoder)
         {
             if (options.HardwareAccelerationType != HardwareAccelerationType.amf)
             {
-                return (null, null, null);
+                return null;
             }
 
             var isWindows = OperatingSystem.IsWindows();
@@ -4758,7 +4758,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return GetAmdDx11VidFiltersPrefered(state, options, vidDecoder, vidEncoder);
         }
 
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetAmdDx11VidFiltersPrefered(
+        public VideoFilterChains GetAmdDx11VidFiltersPrefered(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidDecoder,
@@ -4896,7 +4896,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
             }
 
-            return (mainFilters, subFilters, overlayFilters);
+            return new VideoFilterChains(mainFilters, subFilters, overlayFilters);
         }
 
         /// <summary>
@@ -4905,15 +4905,15 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <param name="state">Encoding state.</param>
         /// <param name="options">Encoding options.</param>
         /// <param name="vidEncoder">Video encoder to use.</param>
-        /// <returns>The tuple contains three lists: main, sub and overlay filters.</returns>
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetIntelVidFilterChain(
+        /// <returns>The three branches of the filter graph.</returns>
+        public VideoFilterChains GetIntelVidFilterChain(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidEncoder)
         {
             if (options.HardwareAccelerationType != HardwareAccelerationType.qsv)
             {
-                return (null, null, null);
+                return null;
             }
 
             var isWindows = OperatingSystem.IsWindows();
@@ -4947,10 +4947,10 @@ namespace MediaBrowser.Controller.MediaEncoding
                 return GetIntelQsvDx11VidFiltersPrefered(state, options, vidDecoder, vidEncoder);
             }
 
-            return (null, null, null);
+            return null;
         }
 
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetIntelQsvDx11VidFiltersPrefered(
+        public VideoFilterChains GetIntelQsvDx11VidFiltersPrefered(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidDecoder,
@@ -5178,10 +5178,10 @@ namespace MediaBrowser.Controller.MediaEncoding
                 AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
             }
 
-            return (mainFilters, subFilters, overlayFilters);
+            return new VideoFilterChains(mainFilters, subFilters, overlayFilters);
         }
 
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetIntelQsvVaapiVidFiltersPrefered(
+        public VideoFilterChains GetIntelQsvVaapiVidFiltersPrefered(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidDecoder,
@@ -5380,7 +5380,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
             }
 
-            return (mainFilters, subFilters, overlayFilters);
+            return new VideoFilterChains(mainFilters, subFilters, overlayFilters);
         }
 
         /// <summary>
@@ -5389,15 +5389,15 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <param name="state">Encoding state.</param>
         /// <param name="options">Encoding options.</param>
         /// <param name="vidEncoder">Video encoder to use.</param>
-        /// <returns>The tuple contains three lists: main, sub and overlay filters.</returns>
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetVaapiVidFilterChain(
+        /// <returns>The three branches of the filter graph.</returns>
+        public VideoFilterChains GetVaapiVidFilterChain(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidEncoder)
         {
             if (options.HardwareAccelerationType != HardwareAccelerationType.vaapi)
             {
-                return (null, null, null);
+                return null;
             }
 
             var isLinux = OperatingSystem.IsLinux();
@@ -5415,14 +5415,17 @@ namespace MediaBrowser.Controller.MediaEncoding
 
                 if (!isSwEncoder)
                 {
-                    var newfilters = new List<string>();
-                    var noOverlay = swFilterChain.OverlayFilters.Count == 0;
-                    newfilters.AddRange(noOverlay ? swFilterChain.MainFilters : swFilterChain.OverlayFilters);
-                    newfilters.Add("hwupload=derive_device=vaapi");
+                    // The upload goes on the end of whichever branch produces the finished picture.
+                    var noOverlay = swFilterChain.Overlay.Count == 0;
+                    var uploaded = new List<string>(noOverlay ? swFilterChain.Main : swFilterChain.Overlay)
+                    {
+                        "hwupload=derive_device=vaapi"
+                    };
 
-                    var mainFilters = noOverlay ? newfilters : swFilterChain.MainFilters;
-                    var overlayFilters = noOverlay ? swFilterChain.OverlayFilters : newfilters;
-                    return (mainFilters, swFilterChain.SubFilters, overlayFilters);
+                    return new VideoFilterChains(
+                        noOverlay ? uploaded : swFilterChain.Main,
+                        swFilterChain.Subtitle,
+                        noOverlay ? swFilterChain.Overlay : uploaded);
                 }
 
                 return swFilterChain;
@@ -5449,7 +5452,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return GetVaapiLimitedVidFiltersPrefered(state, options, vidDecoder, vidEncoder);
         }
 
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetIntelVaapiFullVidFiltersPrefered(
+        public VideoFilterChains GetIntelVaapiFullVidFiltersPrefered(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidDecoder,
@@ -5622,10 +5625,10 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
             }
 
-            return (mainFilters, subFilters, overlayFilters);
+            return new VideoFilterChains(mainFilters, subFilters, overlayFilters);
         }
 
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetAmdVaapiFullVidFiltersPrefered(
+        public VideoFilterChains GetAmdVaapiFullVidFiltersPrefered(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidDecoder,
@@ -5852,10 +5855,10 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
             }
 
-            return (mainFilters, subFilters, overlayFilters);
+            return new VideoFilterChains(mainFilters, subFilters, overlayFilters);
         }
 
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetVaapiLimitedVidFiltersPrefered(
+        public VideoFilterChains GetVaapiLimitedVidFiltersPrefered(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidDecoder,
@@ -6022,7 +6025,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
             }
 
-            return (mainFilters, subFilters, overlayFilters);
+            return new VideoFilterChains(mainFilters, subFilters, overlayFilters);
         }
 
         /// <summary>
@@ -6031,15 +6034,15 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <param name="state">Encoding state.</param>
         /// <param name="options">Encoding options.</param>
         /// <param name="vidEncoder">Video encoder to use.</param>
-        /// <returns>The tuple contains three lists: main, sub and overlay filters.</returns>
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetAppleVidFilterChain(
+        /// <returns>The three branches of the filter graph.</returns>
+        public VideoFilterChains GetAppleVidFilterChain(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidEncoder)
         {
             if (options.HardwareAccelerationType != HardwareAccelerationType.videotoolbox)
             {
-                return (null, null, null);
+                return null;
             }
 
             // ReSharper disable once InconsistentNaming
@@ -6059,7 +6062,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return GetAppleVidFiltersPreferred(state, options, vidDecoder, vidEncoder);
         }
 
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetAppleVidFiltersPreferred(
+        public VideoFilterChains GetAppleVidFiltersPreferred(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidDecoder,
@@ -6163,7 +6166,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                     mainFilters.Add("format=nv12");
                 }
 
-                return (mainFilters, subFilters, overlayFilters);
+                return new VideoFilterChains(mainFilters, subFilters, overlayFilters);
             }
 
             // For old jellyfin-ffmpeg that has broken hwsurface, add a hwupload
@@ -6184,7 +6187,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
             }
 
-            return (mainFilters, subFilters, overlayFilters);
+            return new VideoFilterChains(mainFilters, subFilters, overlayFilters);
         }
 
         /// <summary>
@@ -6193,15 +6196,15 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <param name="state">Encoding state.</param>
         /// <param name="options">Encoding options.</param>
         /// <param name="vidEncoder">Video encoder to use.</param>
-        /// <returns>The tuple contains three lists: main, sub and overlay filters.</returns>
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetRkmppVidFilterChain(
+        /// <returns>The three branches of the filter graph.</returns>
+        public VideoFilterChains GetRkmppVidFilterChain(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidEncoder)
         {
             if (options.HardwareAccelerationType != HardwareAccelerationType.rkmpp)
             {
-                return (null, null, null);
+                return null;
             }
 
             var isLinux = OperatingSystem.IsLinux();
@@ -6221,10 +6224,10 @@ namespace MediaBrowser.Controller.MediaEncoding
                 return GetRkmppVidFiltersPrefered(state, options, vidDecoder, vidEncoder);
             }
 
-            return (null, null, null);
+            return null;
         }
 
-        public (List<string> MainFilters, List<string> SubFilters, List<string> OverlayFilters) GetRkmppVidFiltersPrefered(
+        public VideoFilterChains GetRkmppVidFiltersPrefered(
             EncodingJobInfo state,
             EncodingOptions options,
             string vidDecoder,
@@ -6421,8 +6424,16 @@ namespace MediaBrowser.Controller.MediaEncoding
                 AppendSwOverlayFilters(subFilters, overlayFilters, state, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
             }
 
-            return (mainFilters, subFilters, overlayFilters);
+            return new VideoFilterChains(mainFilters, subFilters, overlayFilters);
         }
+
+        /// <summary>
+        /// Drops the filters a chain decided it did not need.
+        /// </summary>
+        /// <param name="filters">The branch of the graph, which may not exist at all.</param>
+        /// <returns>The filters that emit something.</returns>
+        private static List<string> Used(IReadOnlyList<string> filters)
+            => filters is null ? [] : filters.Where(f => !string.IsNullOrEmpty(f)).ToList();
 
         /// <summary>
         /// Gets the parameter of video processing filters.
@@ -6444,15 +6455,11 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             var (hasSubs, hasTextSubs, hasGraphicalSubs, _) = GetChainSubtitles(state);
 
-            List<string> mainFilters;
-            List<string> subFilters;
-            List<string> overlayFilters;
-
             var pipelineChain = options.EnableFilterChainBuilder
                 ? GetPipelineVidFilterChain(state, options, outputVideoCodec)
                 : null;
 
-            (mainFilters, subFilters, overlayFilters) = pipelineChain ?? options.HardwareAccelerationType switch
+            VideoFilterChains chains = pipelineChain ?? options.HardwareAccelerationType switch
             {
                 HardwareAccelerationType.vaapi => GetVaapiVidFilterChain(state, options, outputVideoCodec),
                 HardwareAccelerationType.amf => GetAmdVidFilterChain(state, options, outputVideoCodec),
@@ -6463,12 +6470,12 @@ namespace MediaBrowser.Controller.MediaEncoding
                 _ => GetSwVidFilterChain(state, options, outputVideoCodec),
             };
 
-            mainFilters?.RemoveAll(string.IsNullOrEmpty);
-            subFilters?.RemoveAll(string.IsNullOrEmpty);
-            overlayFilters?.RemoveAll(string.IsNullOrEmpty);
+            var mainFilters = Used(chains?.Main);
+            var subFilters = Used(chains?.Subtitle);
+            var overlayFilters = Used(chains?.Overlay);
 
             var framerate = GetFramerateParam(state);
-            if (mainFilters is not null && framerate.HasValue)
+            if (framerate.HasValue)
             {
                 var doDeintH2645 = IsDeinterlaceAvailable(state);
                 var fpsFilter = string.Format(CultureInfo.InvariantCulture, "fps={0}", framerate.Value);
@@ -6486,7 +6493,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             }
 
             var mainStr = string.Empty;
-            if (mainFilters?.Count > 0)
+            if (mainFilters.Count > 0)
             {
                 mainStr = string.Format(
                     CultureInfo.InvariantCulture,
@@ -6494,14 +6501,14 @@ namespace MediaBrowser.Controller.MediaEncoding
                     string.Join(',', mainFilters));
             }
 
-            if (overlayFilters?.Count == 0)
+            if (overlayFilters.Count == 0)
             {
                 // -vf "scale..."
                 return string.IsNullOrEmpty(mainStr) ? string.Empty : " -vf \"" + mainStr + "\"";
             }
 
-            if (overlayFilters?.Count > 0
-                && subFilters?.Count > 0
+            if (overlayFilters.Count > 0
+                && subFilters.Count > 0
                 && state.SubtitleStream is not null)
             {
                 // overlay graphical/text subtitles
