@@ -6448,7 +6448,11 @@ namespace MediaBrowser.Controller.MediaEncoding
             List<string> subFilters;
             List<string> overlayFilters;
 
-            (mainFilters, subFilters, overlayFilters) = options.HardwareAccelerationType switch
+            var pipelineChain = options.EnableFilterChainBuilder
+                ? GetPipelineVidFilterChain(state, options, outputVideoCodec)
+                : null;
+
+            (mainFilters, subFilters, overlayFilters) = pipelineChain ?? options.HardwareAccelerationType switch
             {
                 HardwareAccelerationType.vaapi => GetVaapiVidFilterChain(state, options, outputVideoCodec),
                 HardwareAccelerationType.amf => GetAmdVidFilterChain(state, options, outputVideoCodec),

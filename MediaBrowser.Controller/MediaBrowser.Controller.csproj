@@ -22,10 +22,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Jellyfin.Controller.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../Emby.Naming/Emby.Naming.csproj" />
     <ProjectReference Include="../MediaBrowser.Model/MediaBrowser.Model.csproj" />
     <ProjectReference Include="../MediaBrowser.Common/MediaBrowser.Common.csproj" />
     <ProjectReference Include="../src/Jellyfin.MediaEncoding.Keyframes/Jellyfin.MediaEncoding.Keyframes.csproj" />
+    <ProjectReference Include="../src/Jellyfin.MediaEncoding.Pipeline/Jellyfin.MediaEncoding.Pipeline.csproj" />
   </ItemGroup>
 
   <ItemGroup>
