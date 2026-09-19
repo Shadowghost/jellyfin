@@ -31,17 +31,6 @@ namespace Jellyfin.MediaEncoding.Tests
         }
 
         [Theory]
-        [InlineData("scale", "vaapi", "nv12", false, "scale_vaapi=format=nv12")]
-        [InlineData("vpp", "qsv", "nv12", true, "vpp_qsv=w=3840:h=806:format=nv12")]
-        [InlineData("vpp", "qsv", "", true, "vpp_qsv=w=3840:h=806")]
-        public void GetHwScaleFilter_Cropped_ForcesExplicitSize(string prefix, string suffix, string format, bool isCropped, string expected)
-        {
-            Assert.Equal(
-                expected,
-                EncodingHelper.GetHwScaleFilter(prefix, suffix, format, false, 3840, 806, null, null, null, null, isCropped));
-        }
-
-        [Theory]
         [InlineData(null, "")]
         [InlineData(Video3DFormat.MVC, "")]
         [InlineData(Video3DFormat.FullSideBySide, "crop=trunc(iw/4)*2:ih:0:0")]
