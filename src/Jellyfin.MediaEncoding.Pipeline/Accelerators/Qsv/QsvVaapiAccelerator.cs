@@ -1,6 +1,4 @@
 using System.Collections.Generic;
-using Jellyfin.MediaEncoding.Pipeline;
-using Jellyfin.MediaEncoding.Pipeline.Accelerators;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.Vaapi;
 using Jellyfin.MediaEncoding.Pipeline.Filters;
 using Jellyfin.MediaEncoding.Pipeline.Filters.Devices;

@@ -1,5 +1,3 @@
-using Jellyfin.MediaEncoding.Pipeline;
-
 namespace Jellyfin.MediaEncoding.Pipeline.BitStreams;
 
 /// <summary>

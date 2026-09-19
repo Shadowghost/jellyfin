@@ -1,4 +1,3 @@
-using Jellyfin.MediaEncoding.Pipeline;
 using Jellyfin.MediaEncoding.Pipeline.Frames;
 using MediaBrowser.Model.Entities;
 

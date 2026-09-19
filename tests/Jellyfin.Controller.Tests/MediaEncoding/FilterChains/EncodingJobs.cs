@@ -1,13 +1,10 @@
 using System.Collections.Generic;
-using System.Linq;
-using Jellyfin.MediaEncoding.Pipeline.Frames;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.Streaming;
 using MediaBrowser.Model.Configuration;
 using MediaBrowser.Model.Dlna;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
-using MediaBrowser.Model.MediaInfo;
 
 namespace Jellyfin.Controller.Tests.MediaEncoding.FilterChains;
 

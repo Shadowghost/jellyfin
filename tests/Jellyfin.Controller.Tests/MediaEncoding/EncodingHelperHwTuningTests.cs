@@ -5,11 +5,9 @@ using MediaBrowser.Controller.IO;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.Streaming;
 using MediaBrowser.Model.Configuration;
-using MediaBrowser.Model.Dlna;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.MediaEncoding.Hardware;
-using MediaBrowser.Model.MediaInfo;
 using Moq;
 using Xunit;
 

@@ -1,7 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using Jellyfin.MediaEncoding.Pipeline;
-using Jellyfin.MediaEncoding.Pipeline.Filters;
 using Jellyfin.MediaEncoding.Pipeline.Frames;
 
 namespace Jellyfin.MediaEncoding.Pipeline.Filters.Transfers;

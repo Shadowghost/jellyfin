@@ -9,7 +9,6 @@ using MediaBrowser.Model.Dlna;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.MediaEncoding.Hardware;
-using MediaBrowser.Model.MediaInfo;
 using Moq;
 using Xunit;
 

@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Jellyfin.MediaEncoding.Pipeline;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.Cuda;

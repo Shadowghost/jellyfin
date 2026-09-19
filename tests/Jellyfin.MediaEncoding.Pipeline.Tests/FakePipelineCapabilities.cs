@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Jellyfin.MediaEncoding.Pipeline;
 using Jellyfin.MediaEncoding.Pipeline.BitStreams;
 using Jellyfin.MediaEncoding.Pipeline.Frames;
 using MediaBrowser.Model.MediaEncoding.Hardware;

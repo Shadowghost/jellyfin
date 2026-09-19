@@ -1,8 +1,5 @@
-using System;
 using System.Globalization;
 using System.Text;
-using Jellyfin.MediaEncoding.Pipeline;
-using Jellyfin.MediaEncoding.Pipeline.Filters;
 using Jellyfin.MediaEncoding.Pipeline.Frames;
 
 namespace Jellyfin.MediaEncoding.Pipeline.Filters.Devices;
