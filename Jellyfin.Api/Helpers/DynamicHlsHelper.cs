@@ -752,7 +752,7 @@ public class DynamicHlsHelper
     /// <returns>H.26X level of the output video stream.</returns>
     private int? GetOutputVideoCodecLevel(StreamState state)
     {
-        string levelString = string.Empty;
+        string? levelString = string.Empty;
         if (EncodingHelper.IsCopyCodec(state.OutputVideoCodec)
             && state.VideoStream is not null
             && state.VideoStream.Level.HasValue)

@@ -1,35 +1,16 @@
-#nullable disable
+#nullable enable
 
 #pragma warning disable CS1591
 // We need lowercase normalized string for ffmpeg
 #pragma warning disable CA1308
 
 using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading;
 using Jellyfin.Data;
-using Jellyfin.Data.Enums;
-using Jellyfin.Database.Implementations.Enums;
 using Jellyfin.Extensions;
-using Jellyfin.MediaEncoding.Pipeline.BitStreams;
-using MediaBrowser.Common.Configuration;
-using MediaBrowser.Controller.Extensions;
-using MediaBrowser.Controller.IO;
 using MediaBrowser.Model.Configuration;
-using MediaBrowser.Model.Dlna;
-using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
-using MediaBrowser.Model.MediaEncoding.Hardware;
-using MediaBrowser.Model.MediaInfo;
-using MediaBrowser.Model.Session;
-using Microsoft.Extensions.Configuration;
-using IConfigurationManager = MediaBrowser.Common.Configuration.IConfigurationManager;
 
 namespace MediaBrowser.Controller.MediaEncoding
 {
@@ -279,7 +260,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return param;
         }
 
-        public static string NormalizeTranscodingLevel(EncodingJobInfo state, string level)
+        public static string? NormalizeTranscodingLevel(EncodingJobInfo state, string level)
         {
             if (!double.TryParse(level, CultureInfo.InvariantCulture, out double requestLevel))
             {
@@ -716,7 +697,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return param;
         }
 
-        public int GetVideoBitrateParamValue(BaseEncodingJobOptions request, MediaStream videoStream, string outputVideoCodec)
+        public int GetVideoBitrateParamValue(BaseEncodingJobOptions request, MediaStream videoStream, string? outputVideoCodec)
         {
             var bitrate = request.VideoBitRate;
 
@@ -777,7 +758,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return bitrate;
         }
 
-        private static double GetVideoBitrateScaleFactor(string codec)
+        private static double GetVideoBitrateScaleFactor(string? codec)
         {
             // hevc & vp9 - 40% more efficient than h.264
             if (string.Equals(codec, "h265", StringComparison.OrdinalIgnoreCase)
@@ -796,7 +777,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return 1;
         }
 
-        public static int ScaleBitrate(int bitrate, string inputVideoCodec, string outputVideoCodec)
+        public static int ScaleBitrate(int bitrate, string? inputVideoCodec, string? outputVideoCodec)
         {
             var inputScaleFactor = GetVideoBitrateScaleFactor(inputVideoCodec);
             var outputScaleFactor = GetVideoBitrateScaleFactor(outputVideoCodec);
@@ -853,7 +834,6 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <param name="encodingOptions">Encoding options.</param>
         /// <param name="outputVideoCodec">Video codec to use.</param>
         /// <returns>Number of threads.</returns>
-#nullable enable
         public static int GetNumberOfThreads(EncodingJobInfo? state, EncodingOptions encodingOptions, string? outputVideoCodec)
         {
             var threads = state?.BaseRequest.CpuCoreLimit ?? encodingOptions.EncodingThreadCount;
@@ -866,7 +846,6 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             return Math.Min(threads, Environment.ProcessorCount);
         }
-#nullable disable
 
         public static string GetVideoSyncOption(string videoSync, Version encoderVersion)
         {

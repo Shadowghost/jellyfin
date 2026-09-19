@@ -162,6 +162,8 @@ public static class StreamingHelpers
 
         var encodingOptions = serverConfigurationManager.GetEncodingOptions();
 
+        ArgumentNullException.ThrowIfNull(mediaSource);
+
         encodingHelper.AttachMediaSourceInfo(state, encodingOptions, mediaSource, url);
 
         string? containerInternal = Path.GetExtension(state.RequestedUrl);

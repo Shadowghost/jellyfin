@@ -1,4 +1,4 @@
-#nullable disable
+#nullable enable
 
 #pragma warning disable CS1591
 // We need lowercase normalized string for ffmpeg
@@ -134,7 +134,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return codec.ToLowerInvariant();
         }
 
-        public string GetAudioBitStreamArguments(EncodingJobInfo state, string segmentContainer, string mediaSourceContainer)
+        public string GetAudioBitStreamArguments(EncodingJobInfo state, string? segmentContainer, string mediaSourceContainer)
         {
             var filters = new List<string>();
 
@@ -161,7 +161,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 : " -bsf:a " + string.Join(',', filters);
         }
 
-        private string GetCopiedAudioTrimBsf(EncodingJobInfo state)
+        private string? GetCopiedAudioTrimBsf(EncodingJobInfo state)
         {
             if (state.TranscodingType is not TranscodingJobType.Hls
                 || !state.IsVideoRequest
@@ -291,7 +291,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return 128000 * (outputAudioChannels ?? audioStream.Channels ?? 2);
         }
 
-        public string GetAudioVbrModeParam(string encoder, int bitrate, int channels)
+        public string? GetAudioVbrModeParam(string encoder, int bitrate, int channels)
         {
             var bitratePerChannel = bitrate / Math.Max(channels, 1);
             if (string.Equals(encoder, "libfdk_aac", StringComparison.OrdinalIgnoreCase))
@@ -353,8 +353,8 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             if (channels is 2 && state.AudioStream?.Channels is > 2)
             {
-                var hasDownMixFilter = DownMixAlgorithmsHelper.AlgorithmFilterStrings.TryGetValue((encodingOptions.DownMixStereoAlgorithm, DownMixAlgorithmsHelper.InferChannelLayout(state.AudioStream)), out var downMixFilterString);
-                if (hasDownMixFilter)
+                if (DownMixAlgorithmsHelper.AlgorithmFilterStrings.TryGetValue((encodingOptions.DownMixStereoAlgorithm, DownMixAlgorithmsHelper.InferChannelLayout(state.AudioStream)), out var downMixFilterString)
+                    && downMixFilterString is not null)
                 {
                     filters.Add(downMixFilterString);
                 }

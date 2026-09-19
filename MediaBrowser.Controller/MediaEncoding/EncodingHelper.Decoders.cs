@@ -1,35 +1,16 @@
-#nullable disable
+#nullable enable
 
 #pragma warning disable CS1591
 // We need lowercase normalized string for ffmpeg
 #pragma warning disable CA1308
 
 using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading;
 using Jellyfin.Data;
-using Jellyfin.Data.Enums;
-using Jellyfin.Database.Implementations.Enums;
 using Jellyfin.Extensions;
-using Jellyfin.MediaEncoding.Pipeline.BitStreams;
-using MediaBrowser.Common.Configuration;
-using MediaBrowser.Controller.Extensions;
-using MediaBrowser.Controller.IO;
 using MediaBrowser.Model.Configuration;
-using MediaBrowser.Model.Dlna;
-using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
-using MediaBrowser.Model.MediaEncoding.Hardware;
-using MediaBrowser.Model.MediaInfo;
-using MediaBrowser.Model.Session;
-using Microsoft.Extensions.Configuration;
-using IConfigurationManager = MediaBrowser.Common.Configuration.IConfigurationManager;
 
 namespace MediaBrowser.Controller.MediaEncoding
 {
@@ -100,7 +81,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <param name="state">The encoding job info.</param>
         /// <param name="options">The encoding options.</param>
         /// <returns>The option string or null if none available.</returns>
-        protected string GetHardwareVideoDecoder(EncodingJobInfo state, EncodingOptions options)
+        protected string? GetHardwareVideoDecoder(EncodingJobInfo state, EncodingOptions options)
         {
             var videoStream = state.VideoStream;
             var mediaSource = state.MediaSource;
@@ -201,7 +182,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <param name="videoCodec">Video codec to use.</param>
         /// <param name="bitDepth">Video color bit depth.</param>
         /// <returns>Hardware decoder name.</returns>
-        public string GetHwDecoderName(EncodingOptions options, string decoderPrefix, string decoderSuffix, string videoCodec, int bitDepth)
+        public string? GetHwDecoderName(EncodingOptions options, string decoderPrefix, string decoderSuffix, string videoCodec, int bitDepth)
         {
             if (string.IsNullOrEmpty(decoderPrefix) || string.IsNullOrEmpty(decoderSuffix))
             {
@@ -248,7 +229,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <param name="bitDepth">Video color bit depth.</param>
         /// <param name="outputHwSurface">Specifies if output hw surface.</param>
         /// <returns>Hardware accelerator type.</returns>
-        public string GetHwaccelType(EncodingJobInfo state, EncodingOptions options, string videoCodec, int bitDepth, bool outputHwSurface)
+        public string? GetHwaccelType(EncodingJobInfo state, EncodingOptions options, string videoCodec, int bitDepth, bool outputHwSurface)
         {
             if (state.HardwareAccelerationDisabled)
             {
@@ -394,7 +375,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return null;
         }
 
-        public string GetQsvHwVidDecoder(EncodingJobInfo state, EncodingOptions options, MediaStream videoStream, int bitDepth)
+        public string? GetQsvHwVidDecoder(EncodingJobInfo state, EncodingOptions options, MediaStream videoStream, int bitDepth)
         {
             var isWindows = OperatingSystem.IsWindows();
             var isLinux = OperatingSystem.IsLinux();
@@ -470,7 +451,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return null;
         }
 
-        public string GetNvdecVidDecoder(EncodingJobInfo state, EncodingOptions options, MediaStream videoStream, int bitDepth)
+        public string? GetNvdecVidDecoder(EncodingJobInfo state, EncodingOptions options, MediaStream videoStream, int bitDepth)
         {
             if ((!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
                 || options.HardwareAccelerationType != HardwareAccelerationType.nvenc)
@@ -544,7 +525,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return null;
         }
 
-        public string GetAmfVidDecoder(EncodingJobInfo state, EncodingOptions options, MediaStream videoStream, int bitDepth)
+        public string? GetAmfVidDecoder(EncodingJobInfo state, EncodingOptions options, MediaStream videoStream, int bitDepth)
         {
             if (!OperatingSystem.IsWindows()
                 || options.HardwareAccelerationType != HardwareAccelerationType.amf)
@@ -600,7 +581,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return null;
         }
 
-        public string GetVaapiVidDecoder(EncodingJobInfo state, EncodingOptions options, MediaStream videoStream, int bitDepth)
+        public string? GetVaapiVidDecoder(EncodingJobInfo state, EncodingOptions options, MediaStream videoStream, int bitDepth)
         {
             if (!OperatingSystem.IsLinux()
                 || options.HardwareAccelerationType != HardwareAccelerationType.vaapi)
@@ -666,7 +647,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return null;
         }
 
-        public string GetVideotoolboxVidDecoder(EncodingJobInfo state, EncodingOptions options, MediaStream videoStream, int bitDepth)
+        public string? GetVideotoolboxVidDecoder(EncodingJobInfo state, EncodingOptions options, MediaStream videoStream, int bitDepth)
         {
             if (!OperatingSystem.IsMacOS()
                 || options.HardwareAccelerationType != HardwareAccelerationType.videotoolbox)
@@ -725,7 +706,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return null;
         }
 
-        public string GetRkmppVidDecoder(EncodingJobInfo state, EncodingOptions options, MediaStream videoStream, int bitDepth)
+        public string? GetRkmppVidDecoder(EncodingJobInfo state, EncodingOptions options, MediaStream videoStream, int bitDepth)
         {
             var isLinux = OperatingSystem.IsLinux();
 

@@ -1,4 +1,4 @@
-#nullable disable
+#nullable enable
 
 #pragma warning disable CS1591
 // We need lowercase normalized string for ffmpeg
@@ -313,7 +313,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// </summary>
         /// <param name="bitDepth">The video bit depth.</param>
         /// <returns>The surface format name.</returns>
-        private static string GetHwSurfaceFormat(int bitDepth) => bitDepth switch
+        private static string? GetHwSurfaceFormat(int bitDepth) => bitDepth switch
         {
             <= 8 => "nv12",
             10 => "p010le",
@@ -664,7 +664,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <returns>System.String.</returns>
         public string GetUserAgentParam(EncodingJobInfo state)
         {
-            if (state.RemoteHttpHeaders.TryGetValue("User-Agent", out string useragent))
+            if (state.RemoteHttpHeaders.TryGetValue("User-Agent", out var useragent))
             {
                 return "-user_agent \"" + useragent + "\"";
             }
@@ -679,7 +679,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <returns>System.String.</returns>
         public string GetRefererParam(EncodingJobInfo state)
         {
-            if (state.RemoteHttpHeaders.TryGetValue("Referer", out string referer))
+            if (state.RemoteHttpHeaders.TryGetValue("Referer", out var referer))
             {
                 return "-referer \"" + referer + "\"";
             }
@@ -813,7 +813,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return codec.Contains("aac", StringComparison.OrdinalIgnoreCase);
         }
 
-        public static bool IsDoviWithHdr10Bl(MediaStream stream)
+        public static bool IsDoviWithHdr10Bl(MediaStream? stream)
         {
             var rangeType = stream?.VideoRangeType;
 
@@ -822,10 +822,10 @@ namespace MediaBrowser.Controller.MediaEncoding
                 or VideoRangeType.DOVIWithHDR10Plus
                 or VideoRangeType.DOVIWithELHDR10Plus
                 || (rangeType == VideoRangeType.DOVIInvalid
-                    && string.Equals(stream.ColorTransfer, "smpte2084", StringComparison.OrdinalIgnoreCase)); // invalid may be hlg now
+                    && string.Equals(stream?.ColorTransfer, "smpte2084", StringComparison.OrdinalIgnoreCase)); // invalid may be hlg now
         }
 
-        public static bool IsDovi(MediaStream stream)
+        public static bool IsDovi(MediaStream? stream)
         {
             var rangeType = stream?.VideoRangeType;
 
@@ -928,9 +928,9 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <param name="state">Encoding state.</param>
         /// <param name="streamType">The stream being copied.</param>
         /// <returns>The argument, or <c>null</c> when the stream needs no filter.</returns>
-        public string GetBitStreamArgs(EncodingJobInfo state, MediaStreamType streamType)
+        public string? GetBitStreamArgs(EncodingJobInfo state, MediaStreamType streamType)
         {
-            var stream = streamType == MediaStreamType.Audio ? state?.AudioStream : state?.VideoStream;
+            var stream = streamType == MediaStreamType.Audio ? state.AudioStream : state.VideoStream;
             if (stream is null)
             {
                 return null;
@@ -985,7 +985,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <param name="type">The type.</param>
         /// <param name="returnFirstIfNoIndex">if set to <c>true</c> [return first if no index].</param>
         /// <returns>MediaStream.</returns>
-        public MediaStream GetMediaStream(IEnumerable<MediaStream> allStream, int? desiredIndex, MediaStreamType type, bool returnFirstIfNoIndex = true)
+        public MediaStream? GetMediaStream(IEnumerable<MediaStream> allStream, int? desiredIndex, MediaStreamType type, bool returnFirstIfNoIndex = true)
         {
             var streams = allStream.Where(s => s.Type == type).OrderBy(i => i.Index).ToList();
 
@@ -1224,15 +1224,19 @@ namespace MediaBrowser.Controller.MediaEncoding
         private static (bool HasSubs, bool HasTextSubs, bool HasGraphicalSubs, bool HasAssSubs)
             GetChainSubtitles(EncodingJobInfo state)
         {
-            var hasSubs = state.SubtitleStream is not null && ShouldEncodeSubtitle(state);
-            var hasTextSubs = hasSubs && state.SubtitleStream.IsTextSubtitleStream;
+            var subtitleStream = state.SubtitleStream;
+            if (subtitleStream is null || !ShouldEncodeSubtitle(state))
+            {
+                return (false, false, false, false);
+            }
 
-            return (hasSubs,
+            var hasTextSubs = subtitleStream.IsTextSubtitleStream;
+
+            return (true,
                 hasTextSubs,
-                hasSubs && !state.SubtitleStream.IsTextSubtitleStream,
-                hasSubs
-                    && (string.Equals(state.SubtitleStream.Codec, "ass", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(state.SubtitleStream.Codec, "ssa", StringComparison.OrdinalIgnoreCase)));
+                !hasTextSubs,
+                string.Equals(subtitleStream.Codec, "ass", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(subtitleStream.Codec, "ssa", StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>
@@ -1252,7 +1256,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// </summary>
         /// <param name="filters">The branch of the graph, which may not exist at all.</param>
         /// <returns>The filters that emit something.</returns>
-        private static List<string> Used(IReadOnlyList<string> filters)
+        private static List<string> Used(IReadOnlyList<string>? filters)
             => filters is null ? [] : filters.Where(f => !string.IsNullOrEmpty(f)).ToList();
 
         /// <summary>
@@ -1362,7 +1366,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return string.Empty;
         }
 
-        public string GetInputHdrParam(string colorTransfer)
+        public string GetInputHdrParam(string? colorTransfer)
         {
             if (string.Equals(colorTransfer, "arib-std-b67", StringComparison.OrdinalIgnoreCase))
             {
@@ -1425,7 +1429,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             EncodingJobInfo state,
             EncodingOptions encodingOptions,
             MediaSourceInfo mediaSource,
-            string requestedUrl)
+            string? requestedUrl)
         {
             ArgumentNullException.ThrowIfNull(state);
 
@@ -1536,7 +1540,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             }
         }
 
-        private void ShiftAudioCodecsIfNeeded(List<string> audioCodecs, MediaStream audioStream)
+        private void ShiftAudioCodecsIfNeeded(List<string> audioCodecs, MediaStream? audioStream)
         {
             // No need to shift if there is only one supported audio codec.
             if (audioCodecs.Count < 2)
@@ -1648,7 +1652,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return index + hiddenStreamsBefore;
         }
 
-        public static bool IsCopyCodec(string codec)
+        public static bool IsCopyCodec(string? codec)
         {
             return string.Equals(codec, "copy", StringComparison.OrdinalIgnoreCase);
         }

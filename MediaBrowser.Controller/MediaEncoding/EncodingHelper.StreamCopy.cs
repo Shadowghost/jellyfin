@@ -1,4 +1,4 @@
-#nullable disable
+#nullable enable
 
 #pragma warning disable CS1591
 // We need lowercase normalized string for ffmpeg

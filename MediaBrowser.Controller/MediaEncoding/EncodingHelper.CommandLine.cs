@@ -1,4 +1,4 @@
-#nullable disable
+#nullable enable
 
 #pragma warning disable CS1591
 // We need lowercase normalized string for ffmpeg
@@ -38,7 +38,7 @@ namespace MediaBrowser.Controller.MediaEncoding
     /// </summary>
     public partial class EncodingHelper
     {
-        public static string GetInputFormat(string container)
+        public static string? GetInputFormat(string container)
         {
             if (string.IsNullOrEmpty(container) || !ContainerValidationRegex().IsMatch(container))
             {
@@ -146,7 +146,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <param name="options">Encoding options.</param>
         /// <param name="segmentContainer">Segment Container.</param>
         /// <returns>Input arguments.</returns>
-        public string GetInputArgument(EncodingJobInfo state, EncodingOptions options, string segmentContainer)
+        public string GetInputArgument(EncodingJobInfo state, EncodingOptions options, string? segmentContainer)
         {
             var arg = new StringBuilder();
             var inputVidHwaccelArgs = GetInputVideoHwaccelArgs(state, options);
@@ -247,7 +247,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return arg.ToString();
         }
 
-        public static string GetSegmentFileExtension(string segmentContainer)
+        public static string GetSegmentFileExtension(string? segmentContainer)
         {
             if (!string.IsNullOrWhiteSpace(segmentContainer))
             {
@@ -265,7 +265,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <param name="segmentContainer">Segment Container.</param>
         /// <returns>System.String.</returns>
         /// <value>The fast seek command line parameter.</value>
-        public string GetFastSeekCommandLineParameter(EncodingJobInfo state, EncodingOptions options, string segmentContainer)
+        public string GetFastSeekCommandLineParameter(EncodingJobInfo state, EncodingOptions options, string? segmentContainer)
         {
             var time = state.BaseRequest.StartTimeTicks ?? 0;
             var maxTime = state.RunTimeTicks ?? 0;
@@ -466,7 +466,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             return string.Empty;
         }
 
-        public string GetInputModifier(EncodingJobInfo state, EncodingOptions encodingOptions, string segmentContainer)
+        public string GetInputModifier(EncodingJobInfo state, EncodingOptions encodingOptions, string? segmentContainer)
         {
             var inputModifier = string.Empty;
             var analyzeDurationArgument = GetFfmpegAnalyzeDurationArg(state);
@@ -702,7 +702,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                     && string.Equals(state.OutputContainer, "ts", StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(state.VideoStream.NalLengthSize, "0", StringComparison.OrdinalIgnoreCase))
                 {
-                    string bitStreamArgs = GetBitStreamArgs(state, MediaStreamType.Video);
+                    var bitStreamArgs = GetBitStreamArgs(state, MediaStreamType.Video);
                     if (!string.IsNullOrEmpty(bitStreamArgs))
                     {
                         args += " " + bitStreamArgs;
@@ -849,7 +849,7 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             if (channels.HasValue)
             {
-                audioTranscodeParams.Add("-ac " + state.OutputAudioChannels.Value.ToString(CultureInfo.InvariantCulture));
+                audioTranscodeParams.Add("-ac " + channels.Value.ToString(CultureInfo.InvariantCulture));
             }
 
             if (!string.IsNullOrEmpty(outputCodec))
