@@ -1,7 +1,7 @@
 # Recorded from the vendor chains in EncodingHelper before they were replaced.
-# Five entries deliberately differ from what those chains produced, because
-# they were wrong: the VideoToolbox chain dropped the 3D crop it had computed,
-# and the AMD Vulkan chain left a rotated frame on a Vulkan surface.
+# Five entries deliberately differ from what those chains produced, because they were
+# wrong: the VideoToolbox chain dropped the 3D crop it had computed, and the AMD Vulkan
+# chain left a rotated frame on a Vulkan surface.
 amf-dx11/deinterlace-1080i => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,yadif_opencl=0:-1:0,scale_opencl=format=nv12,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
 amf-dx11/deinterlace-and-downscale => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,yadif_opencl=0:-1:0,scale_opencl=w=1280:h=720:format=nv12,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
 amf-dx11/downscale-720p => setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,hwmap=derive_device=opencl:mode=read,scale_opencl=w=1280:h=720:format=nv12,hwmap=derive_device=d3d11va:mode=write:reverse=1,format=d3d11
@@ -141,8 +141,8 @@ rkmpp/full-side-by-side => -vf "setparams=color_primaries=bt709:color_trc=bt709:
 rkmpp/graphical-subs => -filter_complex "[0:1]scale,scale=1920:1080:fast_bilinear,format=bgra,hwupload=derive_device=rkmpp[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709[main];[main][sub]overlay_rkrga=eof_action=pass:repeatlast=0:format=nv12:afbc=1"
 rkmpp/graphical-subs-and-downscale => -filter_complex "[0:1]scale,scale=1280:720:fast_bilinear,format=bgra,hwupload=derive_device=rkmpp[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=w=1280:h=720:format=nv12:afbc=1[main];[main][sub]overlay_rkrga=eof_action=pass:repeatlast=0:format=nv12:afbc=1"
 rkmpp/half-side-by-side-downscale => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,crop=trunc(iw/4)*2:ih:0:0,setsar=sar=1,vpp_rkrga=w=1280:h=720:format=nv12:afbc=1"
-rkmpp/hdr10-tonemap => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,vpp_rkrga=format=p010,hwmap=derive_device=opencl,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=rkmpp:reverse=1,format=drm_prime"
-rkmpp/hdr10-tonemap-and-downscale => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,vpp_rkrga=w=1280:h=720:format=p010,hwmap=derive_device=opencl,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=rkmpp:reverse=1,format=drm_prime"
+rkmpp/hdr10-tonemap => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,vpp_rkrga=format=p010le,hwmap=derive_device=opencl,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=rkmpp:reverse=1,format=drm_prime"
+rkmpp/hdr10-tonemap-and-downscale => -vf "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,vpp_rkrga=w=1280:h=720:format=p010le,hwmap=derive_device=opencl,tonemap_opencl=format=nv12:p=bt709:t=bt709:m=bt709:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=rkmpp:reverse=1,format=drm_prime"
 rkmpp/max-dimensions-720p => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=w=1280:h=720:format=nv12:afbc=1"
 rkmpp/max-width-only => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=w=1280:h=720:format=nv12:afbc=1"
 rkmpp/mjpeg => -vf "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,vpp_rkrga=format=bgra:afbc=1,vpp_rkrga=format=nv12"

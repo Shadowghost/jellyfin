@@ -1,3 +1,4 @@
+using System;
 using Jellyfin.MediaEncoding.Pipeline.Frames;
 
 namespace Jellyfin.MediaEncoding.Pipeline.Filters.Transfers;
@@ -18,6 +19,11 @@ public sealed record UploadFilter(
     bool IncludeFormat = true,
     bool DeriveDevice = false) : IVideoFilter
 {
+    /// <summary>
+    /// Gets the options the device needs on the upload, already in ffmpeg's order.
+    /// </summary>
+    public string? ExtraOptions { get; init; }
+
     /// <inheritdoc />
     public FrameSurface? RequiredSurface => FrameSurface.System;
 
@@ -47,6 +53,11 @@ public sealed record UploadFilter(
         if (upload is null)
         {
             return null;
+        }
+
+        if (!string.IsNullOrEmpty(ExtraOptions))
+        {
+            upload += (upload.Contains('=', StringComparison.Ordinal) ? ":" : "=") + ExtraOptions;
         }
 
         return IncludeFormat ? $"format={UploadFormat.Name},{upload}" : upload;

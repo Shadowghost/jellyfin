@@ -17,7 +17,7 @@ public sealed record FrameState
     /// <summary>
     /// Gets the pixel format of the frame.
     /// </summary>
-    public PixelFormat PixelFormat { get; init; } = PixelFormat.Unknown;
+    public PixelFormat PixelFormat { get; init; } = PixelFormat.NONE;
 
     /// <summary>
     /// Gets the dimensions of the frame.

@@ -22,6 +22,7 @@ internal static class HardwareCapabilitiesMock
                 It.IsAny<string>(),
                 It.IsAny<int>(),
                 It.IsAny<int>(),
+                It.IsAny<string>(),
                 It.IsAny<string>()))
             .Returns(true);
         provider
@@ -30,7 +31,9 @@ internal static class HardwareCapabilitiesMock
                 It.IsAny<EncodingOptions>(),
                 It.IsAny<string>(),
                 It.IsAny<int>(),
-                It.IsAny<int>()))
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<string>()))
             .Returns(true);
         provider
             .Setup(p => p.CanFilter(
@@ -38,7 +41,8 @@ internal static class HardwareCapabilitiesMock
                 It.IsAny<EncodingOptions>(),
                 It.IsAny<HwVppKind>(),
                 It.IsAny<int>(),
-                It.IsAny<int>()))
+                It.IsAny<int>(),
+                It.IsAny<string>()))
             .Returns(true);
 
         return provider.Object;

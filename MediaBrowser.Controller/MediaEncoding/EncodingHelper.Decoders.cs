@@ -73,7 +73,8 @@ namespace MediaBrowser.Controller.MediaEncoding
                 videoCodec,
                 state.VideoStream?.Width ?? 0,
                 state.VideoStream?.Height ?? 0,
-                GetHwSurfaceFormat(bitDepth));
+                GetHwSurfaceFormat(bitDepth),
+                state.VideoStream?.Profile);
 
         /// <summary>
         /// Gets the ffmpeg option string for the hardware accelerated video decoder.

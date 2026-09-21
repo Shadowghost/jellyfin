@@ -40,11 +40,11 @@ public sealed record VideoToolboxAccelerator(string DeinterlaceMethod = "yadif",
     /// <remarks>
     /// The device takes whatever the decoder produced, so nothing has to be pinned on it.
     /// </remarks>
-    public PixelFormat GetDeviceFormat(FrameState state) => PixelFormat.Unknown;
+    public PixelFormat GetDeviceFormat(FrameState state) => PixelFormat.NONE;
 
     /// <inheritdoc />
     public PixelFormat GetEncoderFormat(int bitDepth)
-        => bitDepth >= 10 ? PixelFormat.P010le : PixelFormat.Nv12;
+        => bitDepth >= 10 ? PixelFormat.P010LE : PixelFormat.NV12;
 
     /// <inheritdoc />
     public InputPlan CreateInputPlan(InputPlanRequest request) => new()
@@ -57,7 +57,7 @@ public sealed record VideoToolboxAccelerator(string DeinterlaceMethod = "yadif",
 
     /// <inheritdoc />
     public IHardwareAccelerator ForSoftwareDecode()
-        => new CopyBackAccelerator(PixelFormat.Nv12, FrameSurface.System, "videotoolbox");
+        => new CopyBackAccelerator(PixelFormat.NV12, FrameSurface.System, "videotoolbox");
 
     /// <inheritdoc />
     public IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities)
@@ -68,7 +68,7 @@ public sealed record VideoToolboxAccelerator(string DeinterlaceMethod = "yadif",
                 return null;
 
             case ScaleFilter scale when capabilities.SupportsFilter(ScaleFilterName)
-                && capabilities.CanPerform(HwVppKind.Scale, scale.Request.Resolve(state.Size)):
+                && capabilities.CanPerform(HwVppKind.Scale, scale.Request.Resolve(state.Size), state.PixelFormat):
                 return new DeviceScaleFilter(ScaleFilterName, Surface) { Size = scale.Request.Resolve(state.Size) };
 
             case TransposeFilter transpose when capabilities.SupportsFilter("transpose_vt"):
@@ -77,15 +77,15 @@ public sealed record VideoToolboxAccelerator(string DeinterlaceMethod = "yadif",
                     Surface,
                     transpose.SwapsDimensions);
 
-            case DeinterlaceFilter when capabilities.CanPerform(HwVppKind.Deinterlace, state.Size):
+            case DeinterlaceFilter when capabilities.CanPerform(HwVppKind.Deinterlace, state.Size, state.PixelFormat):
                 return SelectDeinterlacer(capabilities) ?? filter;
 
             case ToneMapFilter tonemap when capabilities.SupportsFilter("tonemap_videotoolbox")
-                && capabilities.CanPerform(HwVppKind.Tonemap, state.Size):
+                && capabilities.CanPerform(HwVppKind.Tonemap, state.Size, state.PixelFormat):
                 return new DeviceToneMapFilter(
                     "videotoolbox",
                     Surface,
-                    PixelFormat.Nv12,
+                    GetEncoderFormat(tonemap.OutputFormat.BitDepth),
                     tonemap.Algorithm,
                     tonemap.Peak,
                     tonemap.Desaturation);
@@ -101,11 +101,12 @@ public sealed record VideoToolboxAccelerator(string DeinterlaceMethod = "yadif",
 
     /// <inheritdoc />
     /// <remarks>
-    /// Frames always come home as 8 bit, whatever the device held them as.
+    /// The device holds 8 bit frames as nv12 and 10 bit ones as p010, whatever it was fed, so the
+    /// trip home follows the depth the frame carries rather than a format fixed in advance.
     /// </remarks>
     public IVideoFilter? CreateTransferFilter(FrameSurface target, FrameState state, bool reverse)
         => target == FrameSurface.System && state.Surface == Surface
-            ? new DownloadFilter(PixelFormat.Nv12)
+            ? new DownloadFilter(GetEncoderFormat(state.PixelFormat.BitDepth))
             : null;
 
     /// <inheritdoc />

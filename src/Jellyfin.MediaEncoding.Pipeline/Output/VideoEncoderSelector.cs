@@ -69,8 +69,8 @@ public static class VideoEncoderSelector
     /// Gets the encoder that copies the stream through untouched.
     /// </summary>
     /// <returns>The encoder.</returns>
-    public static VideoEncoder Copy() => new("copy", FrameSurface.System, PixelFormat.Unknown);
+    public static VideoEncoder Copy() => new("copy", FrameSurface.System, PixelFormat.NONE);
 
     private static PixelFormat SoftwareFormat(int bitDepth)
-        => bitDepth >= 10 ? PixelFormat.Yuv420p10le : PixelFormat.Yuv420p;
+        => bitDepth >= 10 ? PixelFormat.YUV420P10LE : PixelFormat.YUV420P;
 }

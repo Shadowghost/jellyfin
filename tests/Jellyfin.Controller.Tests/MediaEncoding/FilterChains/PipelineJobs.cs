@@ -4,7 +4,7 @@ using Jellyfin.MediaEncoding.Pipeline.Accelerators;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.Amf;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.Cuda;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.Qsv;
-using Jellyfin.MediaEncoding.Pipeline.Accelerators.Rkrga;
+using Jellyfin.MediaEncoding.Pipeline.Accelerators.Rkmpp;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.Vaapi;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.VideoToolbox;
 using Jellyfin.MediaEncoding.Pipeline.Filters;
@@ -56,7 +56,7 @@ internal static class PipelineJobs
             && accelerator.EncoderSuffix is { } suffix
             && EncodingJobs.OutputCodecName(testCase).Contains(suffix, System.StringComparison.OrdinalIgnoreCase);
         var outputSurface = encodesHere ? accelerator.EncoderSurface : FrameSurface.System;
-        var outputFormat = accelerator.GetDeviceFormat(new FrameState { PixelFormat = PixelFormat.Yuv420p });
+        var outputFormat = accelerator.GetDeviceFormat(new FrameState { PixelFormat = PixelFormat.YUV420P });
 
         var requested = new List<IVideoFilter>();
 
@@ -94,7 +94,7 @@ internal static class PipelineJobs
 
         if (doToneMap)
         {
-            requested.Add(new ToneMapFilter("bt2390", 0, 100, PixelFormat.Yuv420p));
+            requested.Add(new ToneMapFilter("bt2390", 0, 100, PixelFormat.YUV420P));
         }
 
         return (input, requested, outputSurface, outputFormat);
@@ -154,10 +154,10 @@ internal static class PipelineJobs
         HardwareAccelerationType.nvenc => new CudaAccelerator(),
         HardwareAccelerationType.vaapi => new VaapiAccelerator(false, false, testCase.Mjpeg),
         // Frames only stay compressed while they never leave the device.
-        HardwareAccelerationType.rkmpp => new RkrgaAccelerator(
+        HardwareAccelerationType.rkmpp => new RkmppAccelerator(
             testCase.EnableHardwareEncoding && !testCase.Mjpeg && !(testCase.IsHdr10 && testCase.EnableTonemapping),
             testCase.Mjpeg),
         HardwareAccelerationType.qsv => new QsvVaapiAccelerator(false, testCase.Mjpeg),
-        _ => SoftwareAccelerator.Instance
+        _ => NoneAccelerator.Instance
     };
 }

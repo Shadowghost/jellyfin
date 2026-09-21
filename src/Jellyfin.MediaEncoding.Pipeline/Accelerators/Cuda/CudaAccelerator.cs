@@ -26,18 +26,24 @@ public sealed record CudaAccelerator(string DeinterlaceMethod = "yadif", bool Do
     public string? EncoderSuffix => "nvenc";
 
     /// <inheritdoc />
-    public PixelFormat? SubtitleFormat => PixelFormat.Yuva420p;
+    public PixelFormat? SubtitleFormat => PixelFormat.YUVA420P;
 
     /// <inheritdoc />
     public FrameSurface DecodeSurface => FrameSurface.Cuda;
 
     /// <inheritdoc />
-    public PixelFormat GetDeviceFormat(FrameState state) => PixelFormat.Yuv420p;
+    public PixelFormat GetDeviceFormat(FrameState state) => PixelFormat.YUV420P;
 
     /// <inheritdoc />
     public InputPlan CreateInputPlan(InputPlanRequest request) => new()
     {
-        Devices = [new HardwareDevice("cuda", HardwareDeviceAliases.Cuda) { Spec = "0" }],
+        Devices =
+        [
+            new HardwareDevice("cuda", HardwareDeviceAliases.Cuda)
+            {
+                Spec = (request.DeviceIndex ?? 0).ToString(CultureInfo.InvariantCulture)
+            }
+        ],
         FilterDeviceAlias = HardwareDeviceAliases.Cuda,
         Decoder = request.HardwareDecode
             ? new VideoDecoder("cuda", FrameSurface.Cuda, "cuda")
@@ -52,7 +58,7 @@ public sealed record CudaAccelerator(string DeinterlaceMethod = "yadif", bool Do
 
     /// <inheritdoc />
     public IVideoFilter CreateSubtitleUpload()
-        => new UploadFilter(Surface, PixelFormat.Yuva420p, false, true);
+        => new UploadFilter(Surface, PixelFormat.YUVA420P, false, true);
 
     /// <inheritdoc />
     public IVideoFilter CreateOverlay(FrameSize size, bool subtitleIsRendered) => new OverlayFilter("overlay_cuda", Surface)
@@ -63,7 +69,7 @@ public sealed record CudaAccelerator(string DeinterlaceMethod = "yadif", bool Do
 
     /// <inheritdoc />
     public IHardwareAccelerator ForSoftwareDecode()
-        => new CopyBackAccelerator(PixelFormat.Yuv420p, FrameSurface.System, "nvenc");
+        => new CopyBackAccelerator(PixelFormat.YUV420P, FrameSurface.System, "nvenc");
 
     /// <inheritdoc />
     public IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities)
@@ -74,7 +80,7 @@ public sealed record CudaAccelerator(string DeinterlaceMethod = "yadif", bool Do
                 return null;
 
             case ScaleFilter scale when capabilities.SupportsFilter(ScaleFilterName)
-                && capabilities.CanPerform(HwVppKind.Scale, scale.Request.Resolve(state.Size)):
+                && capabilities.CanPerform(HwVppKind.Scale, scale.Request.Resolve(state.Size), state.PixelFormat):
                 return new DeviceScaleFilter(ScaleFilterName, Surface) { Size = scale.Request.Resolve(state.Size) };
 
             case TransposeFilter transpose when capabilities.SupportsFilter("transpose_cuda"):
@@ -83,11 +89,11 @@ public sealed record CudaAccelerator(string DeinterlaceMethod = "yadif", bool Do
                     Surface,
                     transpose.SwapsDimensions);
 
-            case DeinterlaceFilter deinterlace when capabilities.CanPerform(HwVppKind.Deinterlace, state.Size):
+            case DeinterlaceFilter deinterlace when capabilities.CanPerform(HwVppKind.Deinterlace, state.Size, state.PixelFormat):
                 return SelectDeinterlacer(deinterlace, capabilities);
 
             case ToneMapFilter tonemap when capabilities.SupportsFilter("tonemap_cuda")
-                && capabilities.CanPerform(HwVppKind.Tonemap, state.Size):
+                && capabilities.CanPerform(HwVppKind.Tonemap, state.Size, state.PixelFormat):
                 return new DeviceToneMapFilter(
                     "cuda",
                     Surface,

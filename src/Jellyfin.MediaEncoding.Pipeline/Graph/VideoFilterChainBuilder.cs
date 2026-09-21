@@ -95,7 +95,7 @@ public sealed class VideoFilterChainBuilder
         var pictureSurface = overlayAtHome ? FrameSurface.System : outputSurface;
 
         // An overlay that settles the format itself spares the picture a pass that would only convert.
-        var pictureFormat = accelerator.OverlayPinsPixelFormat ? PixelFormat.Unknown : outputFormat;
+        var pictureFormat = accelerator.OverlayPinsPixelFormat ? PixelFormat.NONE : outputFormat;
 
         // With no device to draw on, a rendered subtitle is drawn last, over the finished picture.
         if (subtitle.IsText && accelerator.SubtitleFormat is null)
@@ -311,7 +311,10 @@ public sealed class VideoFilterChainBuilder
             Append(new DownloadFilter(state.PixelFormat), resolved, ref state);
         }
 
-        var uploadFormat = state.PixelFormat.IsKnown ? state.PixelFormat.ToHardwareFormat() : PixelFormat.Nv12;
+        // The filtering device settles which format its own surfaces hold; the capability report
+        // has the last word on whether it will take them.
+        var deviceFormat = _accelerator.GetDeviceFormat(state);
+        var uploadFormat = deviceFormat.IsKnown ? deviceFormat : PixelFormat.NV12;
         if (!_capabilities.SupportsSurfaceFormat(uploadFormat))
         {
             return false;

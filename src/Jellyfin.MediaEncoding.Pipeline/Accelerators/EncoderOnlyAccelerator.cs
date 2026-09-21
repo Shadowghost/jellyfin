@@ -14,11 +14,11 @@ public sealed record EncoderOnlyAccelerator(string? EncoderSuffix) : IHardwareAc
     public FrameSurface Surface => FrameSurface.System;
 
     /// <inheritdoc />
-    public PixelFormat GetDeviceFormat(FrameState state) => PixelFormat.Unknown;
+    public PixelFormat GetDeviceFormat(FrameState state) => PixelFormat.NONE;
 
     /// <inheritdoc />
     public PixelFormat GetEncoderFormat(int bitDepth)
-        => bitDepth >= 10 ? PixelFormat.Yuv420p10le : PixelFormat.Yuv420p;
+        => bitDepth >= 10 ? PixelFormat.YUV420P10LE : PixelFormat.YUV420P;
 
     /// <inheritdoc />
     public IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities) => filter;

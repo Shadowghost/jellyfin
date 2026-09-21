@@ -8,9 +8,16 @@ namespace Jellyfin.MediaEncoding.Pipeline.Input;
 public readonly record struct InputPlanRequest(bool HardwareDecode, bool NeedsOpenCl)
 {
     /// <summary>
-    /// Gets the render node or device index the user pinned the job to.
+    /// Gets the render node the job runs on, as the capability report names it, or <c>null</c>
+    /// when nothing was reported and the device has to be matched by vendor instead.
     /// </summary>
     public string? DevicePath { get; init; }
+
+    /// <summary>
+    /// Gets the index the capability report gives the device, or <c>null</c> when nothing was
+    /// reported and the device has to be matched by vendor instead.
+    /// </summary>
+    public int? DeviceIndex { get; init; }
 
     /// <summary>
     /// Gets the rotation the source carries, in degrees.

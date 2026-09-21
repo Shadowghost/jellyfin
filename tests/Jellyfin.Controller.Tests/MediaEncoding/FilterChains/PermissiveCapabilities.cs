@@ -31,7 +31,7 @@ internal sealed class PermissiveCapabilities : IPipelineCapabilities
 
     public bool SupportsBitStreamFilterOption(BitStreamFilterOption option) => _bitStreamFilterOptions;
 
-    public bool CanPerform(HwVppKind kind, FrameSize size) => true;
+    public bool CanPerform(HwVppKind kind, FrameSize size, PixelFormat format) => true;
 
-    public bool SupportsSurfaceFormat(PixelFormat format) => !format.HasAlpha;
+    public bool SupportsSurfaceFormat(PixelFormat format) => true;
 }

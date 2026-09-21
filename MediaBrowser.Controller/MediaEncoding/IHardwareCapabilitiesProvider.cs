@@ -57,8 +57,16 @@ public interface IHardwareCapabilitiesProvider
     /// <param name="width">The frame width.</param>
     /// <param name="height">The frame height.</param>
     /// <param name="pixelFormat">The pixel format, if known.</param>
+    /// <param name="profile">The codec profile, if known.</param>
     /// <returns><c>true</c> if the stream can be decoded in hardware, <c>false</c> otherwise.</returns>
-    bool CanDecode(HardwareAccelerationType type, EncodingOptions options, string? codec, int width, int height, string? pixelFormat);
+    bool CanDecode(
+        HardwareAccelerationType type,
+        EncodingOptions options,
+        string? codec,
+        int width,
+        int height,
+        string? pixelFormat,
+        string? profile);
 
     /// <summary>
     /// Whether the hardware can encode the given stream.
@@ -68,8 +76,17 @@ public interface IHardwareCapabilitiesProvider
     /// <param name="codec">The codec name.</param>
     /// <param name="width">The frame width.</param>
     /// <param name="height">The frame height.</param>
+    /// <param name="pixelFormat">The pixel format the encoder is fed, if known.</param>
+    /// <param name="profile">The codec profile, if known.</param>
     /// <returns><c>true</c> if the stream can be encoded in hardware, <c>false</c> otherwise.</returns>
-    bool CanEncode(HardwareAccelerationType type, EncodingOptions options, string? codec, int width, int height);
+    bool CanEncode(
+        HardwareAccelerationType type,
+        EncodingOptions options,
+        string? codec,
+        int width,
+        int height,
+        string? pixelFormat,
+        string? profile);
 
     /// <summary>
     /// Whether the hardware can run the given video processing operation.
@@ -79,8 +96,15 @@ public interface IHardwareCapabilitiesProvider
     /// <param name="kind">The operation.</param>
     /// <param name="width">The frame width.</param>
     /// <param name="height">The frame height.</param>
+    /// <param name="pixelFormat">The pixel format of the frames entering the operation, if known.</param>
     /// <returns><c>true</c> if the operation can run in hardware, <c>false</c> otherwise.</returns>
-    bool CanFilter(HardwareAccelerationType type, EncodingOptions options, HwVppKind kind, int width, int height);
+    bool CanFilter(
+        HardwareAccelerationType type,
+        EncodingOptions options,
+        HwVppKind kind,
+        int width,
+        int height,
+        string? pixelFormat);
 
     /// <summary>
     /// Records a hardware transcoding failure so similar requests skip hardware.

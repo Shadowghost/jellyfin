@@ -41,7 +41,7 @@ public enum HwFilterDevice
     VideoToolbox = 6,
 
     /// <summary>
-    /// Rockchip RGA, filtering with vpp_rkrga.
+    /// Rockchip MPP, filtering with vpp_rkrga.
     /// </summary>
-    Rkrga = 7
+    Rkmpp = 7
 }

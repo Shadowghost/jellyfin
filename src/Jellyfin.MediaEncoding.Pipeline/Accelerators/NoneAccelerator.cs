@@ -6,14 +6,14 @@ namespace Jellyfin.MediaEncoding.Pipeline.Accelerators;
 /// <summary>
 /// The accelerator used when everything runs in system memory.
 /// </summary>
-public sealed class SoftwareAccelerator : IHardwareAccelerator
+public sealed class NoneAccelerator : IHardwareAccelerator
 {
     /// <summary>
     /// The single instance.
     /// </summary>
-    public static readonly SoftwareAccelerator Instance = new();
+    public static readonly NoneAccelerator Instance = new();
 
-    private SoftwareAccelerator()
+    private NoneAccelerator()
     {
     }
 
@@ -21,7 +21,7 @@ public sealed class SoftwareAccelerator : IHardwareAccelerator
     public FrameSurface Surface => FrameSurface.System;
 
     /// <inheritdoc />
-    public PixelFormat GetDeviceFormat(FrameState state) => PixelFormat.Yuv420p;
+    public PixelFormat GetDeviceFormat(FrameState state) => PixelFormat.YUV420P;
 
     /// <inheritdoc />
     public IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities) => filter;

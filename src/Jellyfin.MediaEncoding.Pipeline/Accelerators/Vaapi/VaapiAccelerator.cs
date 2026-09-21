@@ -56,7 +56,7 @@ public record VaapiAccelerator(
 
     /// <inheritdoc />
     public PixelFormat GetDeviceFormat(FrameState state)
-        => state.PixelFormat.BitDepth >= 10 ? PixelFormat.P010le : PixelFormat.Nv12;
+        => state.PixelFormat.BitDepth >= 10 ? PixelFormat.P010LE : PixelFormat.NV12;
 
     /// <inheritdoc />
     public virtual InputPlan CreateInputPlan(InputPlanRequest request)
@@ -80,7 +80,7 @@ public record VaapiAccelerator(
 
     /// <inheritdoc />
     public virtual IHardwareAccelerator ForSoftwareDecode()
-        => new CopyBackAccelerator(PixelFormat.Nv12, FrameSurface.Vaapi, "vaapi");
+        => new CopyBackAccelerator(PixelFormat.NV12, FrameSurface.Vaapi, "vaapi");
 
     /// <inheritdoc />
     public virtual IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities)
@@ -91,7 +91,7 @@ public record VaapiAccelerator(
                 return null;
 
             case ScaleFilter scale when capabilities.SupportsFilter(ScaleFilterName)
-                && capabilities.CanPerform(HwVppKind.Scale, scale.Request.Resolve(state.Size)):
+                && capabilities.CanPerform(HwVppKind.Scale, scale.Request.Resolve(state.Size), state.PixelFormat):
                 return new DeviceScaleFilter(ScaleFilterName, FrameSurface.Vaapi)
                 {
                     Size = scale.Request.Resolve(state.Size),
@@ -99,7 +99,7 @@ public record VaapiAccelerator(
                 };
 
             case DeinterlaceFilter when capabilities.SupportsFilter("deinterlace_vaapi")
-                && capabilities.CanPerform(HwVppKind.Deinterlace, state.Size):
+                && capabilities.CanPerform(HwVppKind.Deinterlace, state.Size, state.PixelFormat):
                 return new DeviceDeinterlaceFilter(
                     DoubleRateDeinterlace ? "deinterlace_vaapi=rate=field" : "deinterlace_vaapi=rate=frame",
                     FrameSurface.Vaapi);
@@ -108,7 +108,7 @@ public record VaapiAccelerator(
                 return new DeviceToneMapFilter(
                     "opencl",
                     FrameSurface.OpenCl,
-                    PixelFormat.Nv12,
+                    GetDeviceFormat(state with { PixelFormat = tonemap.OutputFormat }),
                     tonemap.Algorithm,
                     tonemap.Peak,
                     tonemap.Desaturation);

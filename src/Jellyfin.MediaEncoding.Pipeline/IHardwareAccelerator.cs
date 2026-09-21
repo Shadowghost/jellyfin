@@ -63,7 +63,7 @@ public interface IHardwareAccelerator
     /// <param name="bitDepth">The bits per colour component the output carries.</param>
     /// <returns>The format.</returns>
     PixelFormat GetEncoderFormat(int bitDepth)
-        => GetDeviceFormat(new FrameState { PixelFormat = bitDepth >= 10 ? PixelFormat.Yuv420p10le : PixelFormat.Yuv420p });
+        => GetDeviceFormat(new FrameState { PixelFormat = bitDepth >= 10 ? PixelFormat.YUV420P10LE : PixelFormat.YUV420P });
 
     /// <summary>
     /// Builds the devices the job runs on and the decoder that feeds it.
@@ -76,7 +76,7 @@ public interface IHardwareAccelerator
     /// Gets the chain to build when the source is decoded in system memory instead of on the device.
     /// </summary>
     /// <returns>The accelerator to build with.</returns>
-    IHardwareAccelerator ForSoftwareDecode() => Accelerators.SoftwareAccelerator.Instance;
+    IHardwareAccelerator ForSoftwareDecode() => Accelerators.NoneAccelerator.Instance;
 
     /// <summary>
     /// Settles anything the device has to decide for the chain as a whole before any one filter is

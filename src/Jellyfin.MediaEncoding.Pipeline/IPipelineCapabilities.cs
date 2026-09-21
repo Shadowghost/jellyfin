@@ -35,12 +35,14 @@ public interface IPipelineCapabilities
     bool SupportsBitStreamFilterOption(BitStreamFilterOption option);
 
     /// <summary>
-    /// Whether the device can run the given video processing operation on a frame of this size.
+    /// Whether the device can run the given video processing operation on a frame of this size and
+    /// format.
     /// </summary>
     /// <param name="kind">The operation.</param>
     /// <param name="size">The frame size.</param>
+    /// <param name="format">The format of the frames entering the operation.</param>
     /// <returns><c>true</c> if the device reports the operation, <c>false</c> otherwise.</returns>
-    bool CanPerform(HwVppKind kind, FrameSize size);
+    bool CanPerform(HwVppKind kind, FrameSize size, PixelFormat format);
 
     /// <summary>
     /// Whether the device accepts frames of the given format, either uploaded or produced by its own filters.

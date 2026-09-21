@@ -98,6 +98,17 @@ public class EncodingHelperHwTuningTests
         }
     }
 
+    [Theory]
+    [InlineData(true, "h264_vaapi")]
+    [InlineData(false, "libx264")]
+    public void GetVideoEncoder_FallsBackToSoftwareWhenTheDeviceCannotEncodeTheOutput(bool canEncode, string expected)
+    {
+        var options = BuildOptions(HardwareTuningMode.Auto);
+        var helper = CreateHelper(isPopulated: true, canEncode: canEncode);
+
+        Assert.Equal(expected, helper.GetVideoEncoder(BuildState("h264"), options));
+    }
+
     private static EncodingOptions BuildOptions(HardwareTuningMode tuning) => new()
     {
         HardwareAccelerationType = HardwareAccelerationType.vaapi,
@@ -130,10 +141,20 @@ public class EncodingHelperHwTuningTests
         };
     }
 
-    private static EncodingHelper CreateHelper(bool isPopulated, bool canDecode = true)
+    private static EncodingHelper CreateHelper(bool isPopulated, bool canDecode = true, bool canEncode = true)
     {
         var capabilities = new Mock<IHardwareCapabilitiesProvider>();
         capabilities.SetupGet(p => p.IsPopulated).Returns(isPopulated);
+        capabilities
+            .Setup(p => p.CanEncode(
+                It.IsAny<HardwareAccelerationType>(),
+                It.IsAny<EncodingOptions>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<string>()))
+            .Returns(canEncode);
         capabilities
             .Setup(p => p.CanDecode(
                 It.IsAny<HardwareAccelerationType>(),
@@ -141,6 +162,7 @@ public class EncodingHelperHwTuningTests
                 It.IsAny<string>(),
                 It.IsAny<int>(),
                 It.IsAny<int>(),
+                It.IsAny<string>(),
                 It.IsAny<string>()))
             .Returns(canDecode);
         capabilities
@@ -149,7 +171,8 @@ public class EncodingHelperHwTuningTests
                 It.IsAny<EncodingOptions>(),
                 It.IsAny<HwVppKind>(),
                 It.IsAny<int>(),
-                It.IsAny<int>()))
+                It.IsAny<int>(),
+                It.IsAny<string>()))
             .Returns(true);
 
         var mediaEncoder = new Mock<IMediaEncoder>();
@@ -157,6 +180,7 @@ public class EncodingHelperHwTuningTests
         mediaEncoder.Setup(e => e.SupportsHwaccel(It.IsAny<string>())).Returns(true);
         mediaEncoder.Setup(e => e.SupportsFilter(It.IsAny<string>())).Returns(true);
         mediaEncoder.Setup(e => e.SupportsFilterWithOption(It.IsAny<FilterOptionType>())).Returns(true);
+        mediaEncoder.Setup(e => e.SupportsEncoder(It.IsAny<string>())).Returns(true);
 
         return new EncodingHelper(
             Mock.Of<IApplicationPaths>(),

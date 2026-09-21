@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using Jellyfin.MediaEncoding.Pipeline.Filters;
 using Jellyfin.MediaEncoding.Pipeline.Filters.Devices;
 using Jellyfin.MediaEncoding.Pipeline.Filters.Transfers;
@@ -32,18 +33,23 @@ public sealed record QsvD3d11Accelerator(bool FullRangeOutput = false) : IHardwa
     public string? EncoderSuffix => "qsv";
 
     /// <inheritdoc />
-    public PixelFormat? SubtitleFormat => PixelFormat.Bgra;
+    public PixelFormat? SubtitleFormat => PixelFormat.BGRA;
 
     /// <inheritdoc />
     public PixelFormat GetDeviceFormat(FrameState state)
-        => state.PixelFormat.BitDepth >= 10 ? PixelFormat.P010le : PixelFormat.Nv12;
+        => state.PixelFormat.BitDepth >= 10 ? PixelFormat.P010LE : PixelFormat.NV12;
 
     /// <inheritdoc />
     public InputPlan CreateInputPlan(InputPlanRequest request)
     {
         var devices = new List<HardwareDevice>
         {
-            new("d3d11va", HardwareDeviceAliases.D3d11va) { Spec = "0,vendor=0x8086" },
+            new("d3d11va", HardwareDeviceAliases.D3d11va)
+            {
+                Spec = request.DeviceIndex is { } index
+                    ? index.ToString(CultureInfo.InvariantCulture)
+                    : "0,vendor=0x8086"
+            },
             new("qsv", HardwareDeviceAliases.Qsv) { SourceAlias = HardwareDeviceAliases.D3d11va }
         };
 
@@ -62,7 +68,7 @@ public sealed record QsvD3d11Accelerator(bool FullRangeOutput = false) : IHardwa
 
     /// <inheritdoc />
     public IHardwareAccelerator ForSoftwareDecode()
-        => new CopyBackAccelerator(PixelFormat.Nv12, FrameSurface.System, "qsv");
+        => new CopyBackAccelerator(PixelFormat.NV12, FrameSurface.System, "qsv");
 
     /// <inheritdoc />
     public IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities)
@@ -77,8 +83,7 @@ public sealed record QsvD3d11Accelerator(bool FullRangeOutput = false) : IHardwa
             case ScaleFilter scale when scale.Request.Resolve(state.Size) == state.Size && !state.RequiresResize:
                 return null;
 
-            case ScaleFilter scale when !state.PixelFormat.HasAlpha
-                && capabilities.CanPerform(HwVppKind.Scale, scale.Request.Resolve(state.Size)):
+            case ScaleFilter scale when capabilities.CanPerform(HwVppKind.Scale, scale.Request.Resolve(state.Size), state.PixelFormat):
                 return QsvVideoProcessorFilter.Scale(scale.Request.Resolve(state.Size));
 
             // The video processor turns the picture as part of its own pass.
@@ -86,14 +91,14 @@ public sealed record QsvD3d11Accelerator(bool FullRangeOutput = false) : IHardwa
                 return QsvVideoProcessorFilter.ToTranspose(transpose.Direction);
 
             case DeinterlaceFilter when capabilities.SupportsFilter("deinterlace_qsv")
-                && capabilities.CanPerform(HwVppKind.Deinterlace, state.Size):
+                && capabilities.CanPerform(HwVppKind.Deinterlace, state.Size, state.PixelFormat):
                 return new DeviceDeinterlaceFilter("deinterlace_qsv=mode=2", Surface);
 
             case ToneMapFilter tonemap when capabilities.SupportsFilter("tonemap_opencl"):
                 return new DeviceToneMapFilter(
                     "opencl",
                     FrameSurface.OpenCl,
-                    PixelFormat.Nv12,
+                    GetDeviceFormat(state with { PixelFormat = tonemap.OutputFormat }),
                     tonemap.Algorithm,
                     tonemap.Peak,
                     tonemap.Desaturation);
@@ -104,18 +109,17 @@ public sealed record QsvD3d11Accelerator(bool FullRangeOutput = false) : IHardwa
     }
 
     /// <inheritdoc />
-    public IVideoFilter? CreateFormatFilter(PixelFormat format)
-        => format.HasAlpha
-            ? null
-            : QsvVideoProcessorFilter.ToFormat(format) with
-            {
-                ExtraOptions = FullRangeOutput ? "out_range=pc:scale_mode=hq" : null
-            };
+    public IVideoFilter CreateFormatFilter(PixelFormat format)
+        => QsvVideoProcessorFilter.ToFormat(format) with
+        {
+            ExtraOptions = FullRangeOutput ? "out_range=pc:scale_mode=hq" : null
+        };
 
     /// <inheritdoc />
     public IVideoFilter? CreateTransferFilter(FrameSurface target, FrameState state, bool reverse) => target switch
     {
-        FrameSurface.OpenCl => new MapFilter(target, false, "mode=read"),
+        FrameSurface.OpenCl when state.Surface == FrameSurface.Qsv
+            => new MapFilter(target, false, "mode=read"),
         FrameSurface.Qsv when state.Surface == FrameSurface.OpenCl
             => new MapFilter(target, false, "mode=write:reverse=1"),
         _ => null
@@ -123,7 +127,7 @@ public sealed record QsvD3d11Accelerator(bool FullRangeOutput = false) : IHardwa
 
     /// <inheritdoc />
     public IVideoFilter CreateSubtitleUpload()
-        => new CompositeFilter(["hwupload=derive_device=qsv:extra_hw_frames=64"], FrameSurface.Qsv, PixelFormat.Bgra);
+        => new UploadFilter(FrameSurface.Qsv, PixelFormat.BGRA, false, true) { ExtraOptions = "extra_hw_frames=64" };
 
     /// <inheritdoc />
     public IVideoFilter CreateOverlay(FrameSize size, bool subtitleIsRendered)

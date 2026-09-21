@@ -29,14 +29,14 @@ public sealed record QsvVaapiAccelerator(bool DoubleRateDeinterlace = false, boo
     public override string? EncoderSuffix => "qsv";
 
     /// <inheritdoc />
-    public override PixelFormat? SubtitleFormat => PixelFormat.Bgra;
+    public override PixelFormat? SubtitleFormat => PixelFormat.BGRA;
 
     /// <inheritdoc />
     public override InputPlan CreateInputPlan(InputPlanRequest request)
     {
         var devices = new List<HardwareDevice>
         {
-            new("vaapi", HardwareDeviceAliases.Vaapi) { Spec = ",vendor_id=0x8086,driver=iHD" },
+            new("vaapi", HardwareDeviceAliases.Vaapi) { Spec = SelectVaapiDevice(request) },
             new("qsv", HardwareDeviceAliases.Qsv) { SourceAlias = HardwareDeviceAliases.Vaapi }
         };
 
@@ -55,7 +55,7 @@ public sealed record QsvVaapiAccelerator(bool DoubleRateDeinterlace = false, boo
 
     /// <inheritdoc />
     public override IHardwareAccelerator ForSoftwareDecode()
-        => new CopyBackAccelerator(PixelFormat.Nv12, FrameSurface.System, "qsv");
+        => new CopyBackAccelerator(PixelFormat.NV12, FrameSurface.System, "qsv");
 
     /// <inheritdoc />
     public override IVideoFilter? SelectFilter(IVideoFilter filter, FrameState state, IPipelineCapabilities capabilities)
@@ -68,7 +68,7 @@ public sealed record QsvVaapiAccelerator(bool DoubleRateDeinterlace = false, boo
 
     /// <inheritdoc />
     public override IVideoFilter CreateSubtitleUpload()
-        => new CompositeFilter(["hwupload=derive_device=qsv:extra_hw_frames=64"], FrameSurface.Qsv, PixelFormat.Bgra);
+        => new UploadFilter(FrameSurface.Qsv, PixelFormat.BGRA, false, true) { ExtraOptions = "extra_hw_frames=64" };
 
     /// <inheritdoc />
     public override IVideoFilter CreateOverlay(FrameSize size, bool subtitleIsRendered)
@@ -79,10 +79,13 @@ public sealed record QsvVaapiAccelerator(bool DoubleRateDeinterlace = false, boo
     {
         if (target == FrameSurface.System)
         {
-            return new DownloadFilter(state.PixelFormat, "hwmap=mode=read");
+            return state.Surface == FrameSurface.Vaapi
+                ? new DownloadFilter(state.PixelFormat, "hwmap=mode=read")
+                : null;
         }
 
-        if (target == FrameSurface.OpenCl)
+        // The OpenCL device is derived from the VA-API one, so only a VA-API frame maps onto it.
+        if (target == FrameSurface.OpenCl && state.Surface == FrameSurface.Vaapi)
         {
             return new MapFilter(target, false, "mode=read");
         }
@@ -94,4 +97,13 @@ public sealed record QsvVaapiAccelerator(bool DoubleRateDeinterlace = false, boo
 
         return null;
     }
+
+    /// <summary>
+    /// Names the render node to open the VA-API device on, as the capability report gave it, or
+    /// leaves the driver to pick the first Intel one when nothing was reported.
+    /// </summary>
+    private static string SelectVaapiDevice(InputPlanRequest request)
+        => string.IsNullOrEmpty(request.DevicePath)
+            ? ",vendor_id=0x8086,driver=iHD"
+            : request.DevicePath + ",driver=iHD";
 }

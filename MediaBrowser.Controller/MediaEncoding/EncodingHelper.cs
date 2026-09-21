@@ -245,7 +245,8 @@ namespace MediaBrowser.Controller.MediaEncoding
                 if (hwType != HardwareAccelerationType.none
                     && encodingOptions.EnableHardwareEncoding
                     && codecMap.TryGetValue(hwType, out var preferredEncoder)
-                    && _mediaEncoder.SupportsEncoder(preferredEncoder))
+                    && _mediaEncoder.SupportsEncoder(preferredEncoder)
+                    && CanDeviceEncode(state, encodingOptions, hwEncoder))
                 {
                     return preferredEncoder;
                 }
@@ -271,7 +272,8 @@ namespace MediaBrowser.Controller.MediaEncoding
                 if (hwType != HardwareAccelerationType.none
                     && encodingOptions.EnableHardwareEncoding
                     && _mjpegCodecMap.TryGetValue(hwType, out var preferredEncoder)
-                    && _mediaEncoder.SupportsEncoder(preferredEncoder))
+                    && _mediaEncoder.SupportsEncoder(preferredEncoder)
+                    && CanDeviceEncode(state, encodingOptions, "mjpeg"))
                 {
                     return preferredEncoder;
                 }
@@ -279,6 +281,28 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             return _defaultMjpegEncoder;
         }
+
+        /// <summary>
+        /// Whether the configured device reports an encoder that can take the output of this job.
+        /// </summary>
+        /// <remarks>
+        /// The filter chain hands the encoder an 8 bit device surface, so that is the format the
+        /// reported limits are read against. A device that reported no encoders at all says nothing,
+        /// and the hand maintained rules keep their say.
+        /// </remarks>
+        /// <param name="state">The encoding job info.</param>
+        /// <param name="options">The encoding options.</param>
+        /// <param name="codec">The codec the job encodes to.</param>
+        /// <returns><c>true</c> if the device can encode the output, <c>false</c> otherwise.</returns>
+        private bool CanDeviceEncode(EncodingJobInfo state, EncodingOptions options, string codec)
+            => _hardwareCapabilities.CanEncode(
+                options.HardwareAccelerationType,
+                options,
+                codec,
+                state.OutputWidth ?? 0,
+                state.OutputHeight ?? 0,
+                GetHwSurfaceFormat(8),
+                state.TargetVideoProfile);
 
         private EncodingOptions GetConfiguredEncodingOptions() => _configurationManager.GetEncodingOptions();
 
@@ -289,8 +313,13 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// Devices that report no video processing at all, such as cuda and videotoolbox, always answer yes;
         /// only the filter availability of the ffmpeg build can rule those out.
         /// </remarks>
-        private bool CanDeviceFilter(HardwareAccelerationType type, HwVppKind kind, int width = 0, int height = 0)
-            => _hardwareCapabilities.CanFilter(type, GetConfiguredEncodingOptions(), kind, width, height);
+        private bool CanDeviceFilter(
+            HardwareAccelerationType type,
+            HwVppKind kind,
+            int width = 0,
+            int height = 0,
+            string? pixelFormat = null)
+            => _hardwareCapabilities.CanFilter(type, GetConfiguredEncodingOptions(), kind, width, height, pixelFormat);
 
         /// <summary>
         /// Whether the capability settings are answered from the detected hardware rather than the configuration.
@@ -412,7 +441,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 case HardwareAccelerationType.videotoolbox:
                     return HwFilterDevice.VideoToolbox;
                 case HardwareAccelerationType.rkmpp:
-                    return HwFilterDevice.Rkrga;
+                    return HwFilterDevice.Rkmpp;
                 default:
                     return HwFilterDevice.None;
             }
@@ -438,7 +467,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// <returns><c>true</c> if the device can crop, <c>false</c> otherwise.</returns>
         private bool CanCropOnDevice(HwFilterDevice device) => device switch
         {
-            HwFilterDevice.Qsv or HwFilterDevice.Vaapi or HwFilterDevice.Rkrga => true,
+            HwFilterDevice.Qsv or HwFilterDevice.Vaapi or HwFilterDevice.Rkmpp => true,
             HwFilterDevice.Cuda or HwFilterDevice.OpenCl or HwFilterDevice.Vulkan or HwFilterDevice.VideoToolbox
                 => _mediaEncoder.EncoderVersion >= _minFFmpegHwCrop,
             _ => false
@@ -487,7 +516,12 @@ namespace MediaBrowser.Controller.MediaEncoding
             var width = state.VideoStream?.Width ?? 0;
             var height = state.VideoStream?.Height ?? 0;
             var canCrop = CanCropOnDevice(device)
-                && CanDeviceFilter(options.HardwareAccelerationType, HwVppKind.Scale, width, height);
+                && CanDeviceFilter(
+                    options.HardwareAccelerationType,
+                    HwVppKind.Scale,
+                    width,
+                    height,
+                    GetHwSurfaceFormat(GetVideoColorBitDepth(state)));
 
             return new HwPipelinePlan(options.HardwareAccelerationType, device, ops, canCrop);
         }

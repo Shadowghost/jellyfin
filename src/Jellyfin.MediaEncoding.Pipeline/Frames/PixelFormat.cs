@@ -8,61 +8,62 @@ namespace Jellyfin.MediaEncoding.Pipeline.Frames;
 /// </summary>
 /// <param name="Name">The name ffmpeg knows the format by.</param>
 /// <param name="BitDepth">The bits per colour component.</param>
-/// <param name="HasAlpha">Whether the format carries an alpha channel.</param>
-public readonly record struct PixelFormat(string Name, int BitDepth, bool HasAlpha)
+public readonly record struct PixelFormat(string Name, int BitDepth)
 {
     /// <summary>
-    /// A format that could not be determined.
+    /// A format that could not be determined, named after <c>AV_PIX_FMT_NONE</c>.
     /// </summary>
-    public static readonly PixelFormat Unknown = new(string.Empty, 0, false);
+    public static readonly PixelFormat NONE = new(string.Empty, 0);
 
     /// <summary>
     /// Planar 8 bit YUV 4:2:0.
     /// </summary>
-    public static readonly PixelFormat Yuv420p = new("yuv420p", 8, false);
+    public static readonly PixelFormat YUV420P = new("yuv420p", 8);
 
     /// <summary>
     /// Planar 10 bit YUV 4:2:0.
     /// </summary>
-    public static readonly PixelFormat Yuv420p10le = new("yuv420p10le", 10, false);
+    public static readonly PixelFormat YUV420P10LE = new("yuv420p10le", 10);
 
     /// <summary>
     /// Planar 8 bit YUV 4:4:4.
     /// </summary>
-    public static readonly PixelFormat Yuv444p = new("yuv444p", 8, false);
+    public static readonly PixelFormat YUV444P = new("yuv444p", 8);
 
     /// <summary>
     /// Planar 8 bit YUV 4:2:0 with an alpha channel.
     /// </summary>
-    public static readonly PixelFormat Yuva420p = new("yuva420p", 8, true);
+    public static readonly PixelFormat YUVA420P = new("yuva420p", 8);
 
     /// <summary>
     /// Semi planar 8 bit YUV 4:2:0.
     /// </summary>
-    public static readonly PixelFormat Nv12 = new("nv12", 8, false);
+    public static readonly PixelFormat NV12 = new("nv12", 8);
 
     /// <summary>
     /// Semi planar 10 bit YUV 4:2:0.
     /// </summary>
-    public static readonly PixelFormat P010le = new("p010le", 10, false);
+    public static readonly PixelFormat P010LE = new("p010le", 10);
 
     /// <summary>
     /// Packed 8 bit BGRA.
     /// </summary>
-    public static readonly PixelFormat Bgra = new("bgra", 8, true);
+    public static readonly PixelFormat BGRA = new("bgra", 8);
 
     private static readonly Dictionary<string, PixelFormat> _known = new(StringComparer.OrdinalIgnoreCase)
     {
-        [Yuv420p.Name] = Yuv420p,
-        [Yuv420p10le.Name] = Yuv420p10le,
-        [Yuv444p.Name] = Yuv444p,
-        [Yuva420p.Name] = Yuva420p,
-        [Nv12.Name] = Nv12,
-        [P010le.Name] = P010le,
-        [Bgra.Name] = Bgra,
-        ["yuvj420p"] = Yuv420p,
-        ["yuv420p10"] = Yuv420p10le,
-        ["p010"] = P010le
+        [YUV420P.Name] = YUV420P,
+        [YUV420P10LE.Name] = YUV420P10LE,
+        [YUV444P.Name] = YUV444P,
+        [YUVA420P.Name] = YUVA420P,
+        [NV12.Name] = NV12,
+        [P010LE.Name] = P010LE,
+        [BGRA.Name] = BGRA,
+        ["yuvj420p"] = YUV420P,
+        ["yuv420p10"] = YUV420P10LE,
+
+        // p010 is ffmpeg's alias for p010le, not a format of its own.
+        ["p010"] = P010LE
     };
 
     /// <summary>
@@ -74,21 +75,7 @@ public readonly record struct PixelFormat(string Name, int BitDepth, bool HasAlp
     /// Resolves a pixel format reported by ffprobe.
     /// </summary>
     /// <param name="name">The format name.</param>
-    /// <returns>The format, or <see cref="Unknown"/> when it is not one the chain knows.</returns>
+    /// <returns>The format, or <see cref="NONE"/> when it is not one the chain knows.</returns>
     public static PixelFormat Parse(string? name)
-        => !string.IsNullOrEmpty(name) && _known.TryGetValue(name, out var format) ? format : Unknown;
-
-    /// <summary>
-    /// Gets the canonical format a hardware surface holds frames of this depth in.
-    /// </summary>
-    /// <returns>The hardware format.</returns>
-    public PixelFormat ToHardwareFormat()
-    {
-        if (HasAlpha)
-        {
-            return Bgra;
-        }
-
-        return BitDepth >= 10 ? P010le : Nv12;
-    }
+        => !string.IsNullOrEmpty(name) && _known.TryGetValue(name, out var format) ? format : NONE;
 }

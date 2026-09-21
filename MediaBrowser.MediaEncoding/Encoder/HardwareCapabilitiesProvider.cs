@@ -209,7 +209,14 @@ public class HardwareCapabilitiesProvider : IHardwareCapabilitiesProvider
     }
 
     /// <inheritdoc />
-    public bool CanDecode(HardwareAccelerationType type, EncodingOptions options, string? codec, int width, int height, string? pixelFormat)
+    public bool CanDecode(
+        HardwareAccelerationType type,
+        EncodingOptions options,
+        string? codec,
+        int width,
+        int height,
+        string? pixelFormat,
+        string? profile)
     {
         if (IsDecodeKnownBad(type, codec, width, height))
         {
@@ -224,21 +231,22 @@ public class HardwareCapabilitiesProvider : IHardwareCapabilitiesProvider
         }
 
         var decoder = device.GetDecoder(codec);
-        if (decoder is null)
-        {
-            return false;
-        }
 
-        if (!decoder.SupportsSize(width, height))
-        {
-            return false;
-        }
-
-        return MatchesPixelFormat(decoder.PixelFormats, pixelFormat);
+        return decoder is not null
+            && decoder.SupportsSize(width, height)
+            && MatchesPixelFormat(decoder.PixelFormats, pixelFormat)
+            && MatchesProfile(decoder.Profiles, profile);
     }
 
     /// <inheritdoc />
-    public bool CanEncode(HardwareAccelerationType type, EncodingOptions options, string? codec, int width, int height)
+    public bool CanEncode(
+        HardwareAccelerationType type,
+        EncodingOptions options,
+        string? codec,
+        int width,
+        int height,
+        string? pixelFormat,
+        string? profile)
     {
         // Only trust a negative answer when the device actually reported encoders.
         var device = GetActiveDevice(type, options);
@@ -248,11 +256,21 @@ public class HardwareCapabilitiesProvider : IHardwareCapabilitiesProvider
         }
 
         var encoder = device.GetEncoder(codec);
-        return encoder is not null && encoder.SupportsSize(width, height);
+
+        return encoder is not null
+            && encoder.SupportsSize(width, height)
+            && MatchesPixelFormat(encoder.PixelFormats, pixelFormat)
+            && MatchesProfile(encoder.Profiles, profile);
     }
 
     /// <inheritdoc />
-    public bool CanFilter(HardwareAccelerationType type, EncodingOptions options, HwVppKind kind, int width, int height)
+    public bool CanFilter(
+        HardwareAccelerationType type,
+        EncodingOptions options,
+        HwVppKind kind,
+        int width,
+        int height,
+        string? pixelFormat)
     {
         var device = GetActiveDevice(type, options);
 
@@ -263,7 +281,10 @@ public class HardwareCapabilitiesProvider : IHardwareCapabilitiesProvider
         }
 
         var filter = device.GetFilter(kind);
-        return filter is not null && filter.SupportsSize(width, height);
+
+        return filter is not null
+            && filter.SupportsSize(width, height)
+            && MatchesPixelFormat(filter.PixelFormats, pixelFormat);
     }
 
     /// <inheritdoc />
@@ -288,6 +309,57 @@ public class HardwareCapabilitiesProvider : IHardwareCapabilitiesProvider
         }
 
         return supported.Contains(pixelFormat, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Whether a stream profile is one the codec reported.
+    /// </summary>
+    /// <remarks>
+    /// Drivers spell the same profile differently, from ffprobe's <c>Main 10</c> to VA-API's
+    /// <c>HEVCMain10</c>, so the comparison ignores case, spacing and any codec name in front of
+    /// it. A profile the report does not mention at all is the one case worth refusing.
+    /// </remarks>
+    /// <param name="supported">The profiles the codec reported.</param>
+    /// <param name="profile">The profile of the stream.</param>
+    /// <returns><c>true</c> if the profile is supported, <c>false</c> otherwise.</returns>
+    private static bool MatchesProfile(IReadOnlyList<string> supported, string? profile)
+    {
+        if (supported.Count == 0 || string.IsNullOrEmpty(profile))
+        {
+            return true;
+        }
+
+        var wanted = NormalizeProfile(profile);
+        if (wanted.Length == 0)
+        {
+            return true;
+        }
+
+        foreach (var candidate in supported)
+        {
+            if (NormalizeProfile(candidate).EndsWith(wanted, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        // H.264 baseline is reported as the constrained variant as often as not.
+        return wanted.Equals("constrainedbaseline", StringComparison.Ordinal)
+            && MatchesProfile(supported, "baseline");
+    }
+
+    private static string NormalizeProfile(string profile)
+    {
+        var normalized = new StringBuilder(profile.Length);
+        foreach (var character in profile)
+        {
+            if (char.IsAsciiLetterOrDigit(character))
+            {
+                normalized.Append(char.ToLowerInvariant(character));
+            }
+        }
+
+        return normalized.ToString();
     }
 
     private static string GetFailureKey(HardwareAccelerationType type, string? codec, int width, int height)

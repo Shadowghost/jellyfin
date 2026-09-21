@@ -93,6 +93,7 @@ public class EncodingHelperHwPipelineTests
                 It.IsAny<string>(),
                 It.IsAny<int>(),
                 It.IsAny<int>(),
+                It.IsAny<string>(),
                 It.IsAny<string>()))
             .Returns(false);
         capabilities
@@ -101,7 +102,8 @@ public class EncodingHelperHwPipelineTests
                 It.IsAny<EncodingOptions>(),
                 It.IsAny<HwVppKind>(),
                 It.IsAny<int>(),
-                It.IsAny<int>()))
+                It.IsAny<int>(),
+                It.IsAny<string>()))
             .Returns(true);
 
         var state = BuildState(Video3DFormat.FullSideBySide);

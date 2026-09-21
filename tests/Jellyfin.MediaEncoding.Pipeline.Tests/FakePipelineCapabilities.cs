@@ -25,7 +25,7 @@ internal sealed class FakePipelineCapabilities : IPipelineCapabilities
 
     public bool SupportsBitStreamFilterOption(BitStreamFilterOption option) => true;
 
-    public bool CanPerform(HwVppKind kind, FrameSize size) => UnsupportedOperation != kind;
+    public bool CanPerform(HwVppKind kind, FrameSize size, PixelFormat format) => UnsupportedOperation != kind;
 
     public bool SupportsSurfaceFormat(PixelFormat format) => SurfaceFormatsAccepted;
 }

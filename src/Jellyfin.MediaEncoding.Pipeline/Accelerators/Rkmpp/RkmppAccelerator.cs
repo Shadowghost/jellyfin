@@ -8,20 +8,18 @@ using Jellyfin.MediaEncoding.Pipeline.Input;
 using Jellyfin.MediaEncoding.Pipeline.Subtitles;
 using MediaBrowser.Model.MediaEncoding.Hardware;
 
-namespace Jellyfin.MediaEncoding.Pipeline.Accelerators.Rkrga;
+namespace Jellyfin.MediaEncoding.Pipeline.Accelerators.Rkmpp;
 
 /// <summary>
-/// Runs the filter chain on a Rockchip RGA device.
+/// Runs the filter chain on a Rockchip MPP device, whose video processor is RGA.
 /// </summary>
 /// <param name="Afbc">
 /// Whether the frames stay compressed, which the device only allows when they never leave it.
 /// </param>
 /// <param name="MjpegEncoder">Whether the encoder is MJPEG, which the device feeds through RGB.</param>
-public sealed record RkrgaAccelerator(bool Afbc, bool MjpegEncoder = false) : IHardwareAccelerator
+public sealed record RkmppAccelerator(bool Afbc, bool MjpegEncoder = false) : IHardwareAccelerator
 {
     private const string ScaleFilterName = "vpp_rkrga";
-
-    private static readonly PixelFormat _p010 = new("p010", 10, false);
 
     /// <inheritdoc />
     public FrameSurface Surface => FrameSurface.Rkmpp;
@@ -30,7 +28,7 @@ public sealed record RkrgaAccelerator(bool Afbc, bool MjpegEncoder = false) : IH
     public string? EncoderSuffix => "rkmpp";
 
     /// <inheritdoc />
-    public PixelFormat? SubtitleFormat => PixelFormat.Bgra;
+    public PixelFormat? SubtitleFormat => PixelFormat.BGRA;
 
     /// <inheritdoc />
     public bool OverlayPinsPixelFormat => true;
@@ -40,7 +38,7 @@ public sealed record RkrgaAccelerator(bool Afbc, bool MjpegEncoder = false) : IH
 
     /// <inheritdoc />
     public PixelFormat GetDeviceFormat(FrameState state)
-        => state.PixelFormat.BitDepth >= 10 ? _p010 : PixelFormat.Nv12;
+        => state.PixelFormat.BitDepth >= 10 ? PixelFormat.P010LE : PixelFormat.NV12;
 
     /// <inheritdoc />
     public InputPlan CreateInputPlan(InputPlanRequest request)
@@ -67,7 +65,7 @@ public sealed record RkrgaAccelerator(bool Afbc, bool MjpegEncoder = false) : IH
 
     /// <inheritdoc />
     public IHardwareAccelerator ForSoftwareDecode()
-        => new CopyBackAccelerator(PixelFormat.Nv12, FrameSurface.System, "rkmpp", "fast_bilinear");
+        => new CopyBackAccelerator(PixelFormat.NV12, FrameSurface.System, "rkmpp", "fast_bilinear");
 
     /// <inheritdoc />
     /// <remarks>
@@ -86,7 +84,7 @@ public sealed record RkrgaAccelerator(bool Afbc, bool MjpegEncoder = false) : IH
 
         var first = new DeviceScaleFilter(ScaleFilterName, Surface)
         {
-            Format = PixelFormat.Bgra,
+            Format = PixelFormat.BGRA,
             ExtraOptions = "afbc=1",
             Fusable = false
         };
@@ -107,7 +105,7 @@ public sealed record RkrgaAccelerator(bool Afbc, bool MjpegEncoder = false) : IH
                 return null;
 
             case ScaleFilter scale when capabilities.SupportsFilter(ScaleFilterName)
-                && capabilities.CanPerform(HwVppKind.Scale, scale.Request.Resolve(state.Size)):
+                && capabilities.CanPerform(HwVppKind.Scale, scale.Request.Resolve(state.Size), state.PixelFormat):
                 return new DeviceScaleFilter(ScaleFilterName, Surface)
                 {
                     Size = scale.Request.Resolve(state.Size),
@@ -115,8 +113,6 @@ public sealed record RkrgaAccelerator(bool Afbc, bool MjpegEncoder = false) : IH
                     ExtraOptions = Afbc ? "afbc=1" : null
                 };
 
-            // The device has no deinterlacer and a round trip home is not worth one, so interlaced
-            // content stays interlaced.
             // The video processor turns the picture as part of its own pass.
             case TransposeFilter transpose:
                 return new DeviceScaleFilter(ScaleFilterName, Surface)
@@ -125,6 +121,8 @@ public sealed record RkrgaAccelerator(bool Afbc, bool MjpegEncoder = false) : IH
                     SwapsOutputDimensions = transpose.SwapsDimensions
                 };
 
+            // The rkmpp decoder deinterlaces on its own, and a round trip home is not worth one
+            // for the software decoded frames it does not see.
             case DeinterlaceFilter:
                 return null;
 
@@ -132,12 +130,12 @@ public sealed record RkrgaAccelerator(bool Afbc, bool MjpegEncoder = false) : IH
                 return new DeviceToneMapFilter(
                     "opencl",
                     FrameSurface.OpenCl,
-                    PixelFormat.Nv12,
+                    GetDeviceFormat(state with { PixelFormat = tonemap.OutputFormat }),
                     tonemap.Algorithm,
                     tonemap.Peak,
                     tonemap.Desaturation)
                 {
-                    RequiredInputFormat = _p010
+                    RequiredInputFormat = PixelFormat.P010LE
                 };
 
             default:
@@ -154,7 +152,7 @@ public sealed record RkrgaAccelerator(bool Afbc, bool MjpegEncoder = false) : IH
 
     /// <inheritdoc />
     public IVideoFilter CreateSubtitleUpload()
-        => new CompositeFilter(["hwupload=derive_device=rkmpp"], Surface, PixelFormat.Bgra);
+        => new UploadFilter(Surface, PixelFormat.BGRA, false, true);
 
     /// <inheritdoc />
     public IVideoFilter CreateOverlay(FrameSize size, bool subtitleIsRendered)

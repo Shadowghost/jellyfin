@@ -7,7 +7,7 @@ using Jellyfin.MediaEncoding.Pipeline.Accelerators;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.Amf;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.Cuda;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.Qsv;
-using Jellyfin.MediaEncoding.Pipeline.Accelerators.Rkrga;
+using Jellyfin.MediaEncoding.Pipeline.Accelerators.Rkmpp;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.Vaapi;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.VideoToolbox;
 using Jellyfin.MediaEncoding.Pipeline.Filters;
@@ -94,9 +94,15 @@ public partial class EncodingHelper
             return string.Empty;
         }
 
+        // The report names the device the capabilities were read from, so the job is pinned to that
+        // one rather than to whichever the driver hands out for a vendor wildcard.
+        var device = _hardwareCapabilities.GetActiveDevice(options.HardwareAccelerationType, options);
+
         var request = new InputPlanRequest(decodesHere, IsHwTonemapAvailable(state, options) && IsOpenclFullSupported())
         {
-            Rotation = state.VideoStream?.Rotation ?? 0
+            Rotation = state.VideoStream?.Rotation ?? 0,
+            DevicePath = device?.DrmPath,
+            DeviceIndex = device?.Index
         };
 
         return accelerator.CreateInputPlan(request).ToArgument();
@@ -112,7 +118,7 @@ public partial class EncodingHelper
                 : FrameSurface.System;
 
     private static PipelinePixelFormat DescribeEncoderFormat(IHardwareAccelerator accelerator)
-        => accelerator.GetDeviceFormat(new FrameState { PixelFormat = PipelinePixelFormat.Yuv420p });
+        => accelerator.GetDeviceFormat(new FrameState { PixelFormat = PipelinePixelFormat.YUV420P });
 
     private static FrameState DescribeSource(
         EncodingJobInfo state,
@@ -186,7 +192,7 @@ public partial class EncodingHelper
                 options.TonemappingAlgorithm.ToString().ToLowerInvariant(),
                 options.TonemappingDesat,
                 options.TonemappingPeak,
-                PipelinePixelFormat.Yuv420p));
+                PipelinePixelFormat.YUV420P));
         }
 
         return operations;
@@ -261,7 +267,7 @@ public partial class EncodingHelper
         switch (options.HardwareAccelerationType)
         {
             case HardwareAccelerationType.none:
-                return SoftwareAccelerator.Instance;
+                return NoneAccelerator.Instance;
 
             case HardwareAccelerationType.nvenc:
                 return new CudaAccelerator(deinterlaceMethod, doubleRateDeint);
@@ -273,29 +279,29 @@ public partial class EncodingHelper
                     && (vidEncoder.Contains("h264", StringComparison.OrdinalIgnoreCase)
                         || vidEncoder.Contains("hevc", StringComparison.OrdinalIgnoreCase));
                 return OperatingSystem.IsLinux()
-                    ? new RkrgaAccelerator(afbc, isMjpeg && !IsHwTonemapAvailable(state, options))
-                    : SoftwareAccelerator.Instance;
+                    ? new RkmppAccelerator(afbc, isMjpeg && !IsHwTonemapAvailable(state, options))
+                    : NoneAccelerator.Instance;
 
             case HardwareAccelerationType.videotoolbox:
                 return OperatingSystem.IsMacOS()
                     ? new VideoToolboxAccelerator(deinterlaceMethod, doubleRateDeint)
-                    : SoftwareAccelerator.Instance;
+                    : NoneAccelerator.Instance;
 
             case HardwareAccelerationType.amf:
                 return OperatingSystem.IsWindows()
                     ? new AmfD3d11Accelerator(deinterlaceMethod, doubleRateDeint)
-                    : SoftwareAccelerator.Instance;
+                    : NoneAccelerator.Instance;
 
             case HardwareAccelerationType.qsv:
                 return OperatingSystem.IsLinux() && IsVaapiSupported(state)
                     ? new QsvVaapiAccelerator(doubleRateDeint, isMjpeg)
-                    : SoftwareAccelerator.Instance;
+                    : NoneAccelerator.Instance;
 
             case HardwareAccelerationType.vaapi:
                 return SelectVaapiPipelineAccelerator(state, doubleRateDeint, isMjpeg);
 
             default:
-                return SoftwareAccelerator.Instance;
+                return NoneAccelerator.Instance;
         }
     }
 
@@ -306,7 +312,7 @@ public partial class EncodingHelper
     {
         if (!OperatingSystem.IsLinux() || !IsVaapiSupported(state) || !IsVaapiFullSupported())
         {
-            return SoftwareAccelerator.Instance;
+            return NoneAccelerator.Instance;
         }
 
         if (_mediaEncoder.IsVaapiDeviceInteliHD)
@@ -322,7 +328,7 @@ public partial class EncodingHelper
                     ? new VaapiAmdVulkanAccelerator(
                         doubleRateDeint,
                         ImportNeedsScaleVulkan: !_mediaEncoder.IsVaapiDeviceSupportVulkanDrmModifier)
-                    : SoftwareAccelerator.Instance;
+                    : NoneAccelerator.Instance;
         }
 
         return new VaapiAccelerator(doubleRateDeint, false, isMjpeg);
@@ -365,13 +371,17 @@ public partial class EncodingHelper
                 _ => BitStreamFilterOptionType.DoviRpuStrip
             });
 
-        public bool CanPerform(MediaBrowser.Model.MediaEncoding.Hardware.HwVppKind kind, FrameSize size)
+        public bool CanPerform(
+            MediaBrowser.Model.MediaEncoding.Hardware.HwVppKind kind,
+            FrameSize size,
+            PipelinePixelFormat format)
             => _hardwareCapabilities.CanFilter(
                 _options.HardwareAccelerationType,
                 _options,
                 kind,
                 size.Width,
-                size.Height);
+                size.Height,
+                format.IsKnown ? format.Name : null);
 
         public bool SupportsSurfaceFormat(PipelinePixelFormat format)
         {

@@ -46,11 +46,11 @@ public sealed record VaapiAmdVulkanAccelerator(
 
     /// <inheritdoc />
     public PixelFormat GetDeviceFormat(FrameState state)
-        => state.PixelFormat.BitDepth >= 10 && !TakesVulkanRoute ? PixelFormat.P010le : PixelFormat.Nv12;
+        => state.PixelFormat.BitDepth >= 10 && !TakesVulkanRoute ? PixelFormat.P010LE : PixelFormat.NV12;
 
     /// <inheritdoc />
     public IHardwareAccelerator ForSoftwareDecode()
-        => new CopyBackAccelerator(PixelFormat.Nv12, FrameSurface.Vaapi, "vaapi");
+        => new CopyBackAccelerator(PixelFormat.NV12, FrameSurface.Vaapi, "vaapi");
 
     /// <inheritdoc />
     public (IHardwareAccelerator Accelerator, IReadOnlyList<IVideoFilter> Filters) Plan(
@@ -95,7 +95,7 @@ public sealed record VaapiAmdVulkanAccelerator(
         switch (filter)
         {
             case DeinterlaceFilter when capabilities.SupportsFilter("deinterlace_vaapi")
-                && capabilities.CanPerform(HwVppKind.Deinterlace, state.Size):
+                && capabilities.CanPerform(HwVppKind.Deinterlace, state.Size, state.PixelFormat):
                 return new DeviceDeinterlaceFilter(
                     DoubleRateDeinterlace ? "deinterlace_vaapi=rate=field" : "deinterlace_vaapi=rate=frame",
                     FrameSurface.Vaapi);
@@ -116,17 +116,17 @@ public sealed record VaapiAmdVulkanAccelerator(
                 return new LibplaceboFilter
                 {
                     Size = scale.Request.Resolve(state.Size),
-                    Format = ToneMapping ? PixelFormat.Bgra : PixelFormat.Nv12
+                    Format = ToneMapping ? PixelFormat.BGRA : PixelFormat.NV12
                 };
 
             case ScaleFilter scale when capabilities.SupportsFilter(ScaleFilterName)
-                && capabilities.CanPerform(HwVppKind.Scale, scale.Request.Resolve(state.Size)):
+                && capabilities.CanPerform(HwVppKind.Scale, scale.Request.Resolve(state.Size), state.PixelFormat):
                 return new DeviceScaleFilter(ScaleFilterName, FrameSurface.Vaapi) { Size = scale.Request.Resolve(state.Size) };
 
             case ToneMapFilter tonemap when TakesVulkanRoute:
                 return new LibplaceboFilter
                 {
-                    Format = PixelFormat.Bgra,
+                    Format = PixelFormat.BGRA,
                     ToneMap = true,
                     Algorithm = ToLibplaceboAlgorithm(tonemap.Algorithm),
 

@@ -2,7 +2,7 @@ using Jellyfin.MediaEncoding.Pipeline;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.Cuda;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.Qsv;
-using Jellyfin.MediaEncoding.Pipeline.Accelerators.Rkrga;
+using Jellyfin.MediaEncoding.Pipeline.Accelerators.Rkmpp;
 using Jellyfin.MediaEncoding.Pipeline.Accelerators.Vaapi;
 using MediaBrowser.Model.Entities;
 
@@ -30,10 +30,10 @@ internal sealed record EncoderCase
         HardwareAccelerationType.nvenc => new CudaAccelerator(),
         HardwareAccelerationType.qsv => new QsvVaapiAccelerator(),
         HardwareAccelerationType.vaapi => new VaapiAccelerator(),
-        HardwareAccelerationType.rkmpp => new RkrgaAccelerator(true),
+        HardwareAccelerationType.rkmpp => new RkmppAccelerator(true),
         HardwareAccelerationType.amf => new EncoderOnlyAccelerator("amf"),
         HardwareAccelerationType.videotoolbox => new EncoderOnlyAccelerator("videotoolbox"),
         HardwareAccelerationType.v4l2m2m => new EncoderOnlyAccelerator("v4l2m2m"),
-        _ => SoftwareAccelerator.Instance
+        _ => NoneAccelerator.Instance
     };
 }
