@@ -34,6 +34,9 @@
     <None Update="FfProbe/Test Data/keyframes_streamduration_result.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Mp4/Test Data/keyframes_sparse.mp4">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

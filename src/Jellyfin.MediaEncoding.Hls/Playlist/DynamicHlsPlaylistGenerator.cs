@@ -10,6 +10,7 @@ using Jellyfin.MediaEncoding.Keyframes;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.MediaEncoding;
+using MediaBrowser.Controller.Persistence;
 
 namespace Jellyfin.MediaEncoding.Hls.Playlist;
 
@@ -17,16 +18,19 @@ namespace Jellyfin.MediaEncoding.Hls.Playlist;
 public class DynamicHlsPlaylistGenerator : IDynamicHlsPlaylistGenerator
 {
     private readonly IServerConfigurationManager _serverConfigurationManager;
+    private readonly IKeyframeRepository _keyframeRepository;
     private readonly IKeyframeExtractor[] _extractors;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DynamicHlsPlaylistGenerator"/> class.
     /// </summary>
     /// <param name="serverConfigurationManager">An instance of the see <see cref="IServerConfigurationManager"/> interface.</param>
+    /// <param name="keyframeRepository">An instance of the <see cref="IKeyframeRepository"/> interface.</param>
     /// <param name="extractors">An instance of <see cref="IEnumerable{IKeyframeExtractor}"/>.</param>
-    public DynamicHlsPlaylistGenerator(IServerConfigurationManager serverConfigurationManager, IEnumerable<IKeyframeExtractor> extractors)
+    public DynamicHlsPlaylistGenerator(IServerConfigurationManager serverConfigurationManager, IKeyframeRepository keyframeRepository, IEnumerable<IKeyframeExtractor> extractors)
     {
         _serverConfigurationManager = serverConfigurationManager;
+        _keyframeRepository = keyframeRepository;
         _extractors = extractors.Where(e => e.IsMetadataBased).ToArray();
     }
 
@@ -108,7 +112,12 @@ public class DynamicHlsPlaylistGenerator : IDynamicHlsPlaylistGenerator
 
     private bool TryExtractKeyframes(Guid itemId, string filePath, [NotNullWhen(true)] out KeyframeData? keyframeData)
     {
-        keyframeData = null;
+        keyframeData = _keyframeRepository.GetKeyframeData(itemId).FirstOrDefault(data => data.KeyframeTicks.Count > 0);
+        if (keyframeData is not null)
+        {
+            return true;
+        }
+
         if (!IsExtractionAllowedForFile(filePath, _serverConfigurationManager.GetEncodingOptions().AllowOnDemandMetadataBasedKeyframeExtractionForExtensions))
         {
             return false;

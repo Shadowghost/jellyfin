@@ -3068,9 +3068,12 @@ namespace MediaBrowser.Controller.MediaEncoding
 
                 // Seeking beyond EOF makes no sense in transcoding. Clamp the seekTick value to
                 // [0, RuntimeTicks - 5.0s], so that the muxer gets packets and avoid error codes.
+                // The clamp must never move the seek in front of the requested position though, as
+                // that makes ffmpeg re-deliver media the client already received.
                 if (maxTime > 0)
                 {
-                    seekTick = Math.Clamp(seekTick, 0, Math.Max(maxTime - 50000000L, 0));
+                    var maxSeekTick = Math.Max(Math.Max(maxTime - 50000000L, 0), Math.Min(time, maxTime));
+                    seekTick = Math.Clamp(seekTick, 0, maxSeekTick);
                 }
 
                 seekParam += string.Format(CultureInfo.InvariantCulture, "-ss {0}", _mediaEncoder.GetTimeParameter(seekTick));

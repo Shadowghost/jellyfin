@@ -17,15 +17,15 @@ namespace Jellyfin.MediaEncoding.Hls.Tests.Playlist
         [Fact]
         public void ComputeSegments_ZeroDurationOvershoot_ClampsToDuration()
         {
-            var keyframeData = new KeyframeData(0, new[] { MsToTicks(10000) });
-            Assert.Equal(new[] { 10.0 }, DynamicHlsPlaylistGenerator.ComputeSegments(keyframeData, 6000));
+            var keyframeData = new KeyframeData(0, [MsToTicks(10000)]);
+            Assert.Equal([10.0], DynamicHlsPlaylistGenerator.ComputeSegments(keyframeData, 6000));
         }
 
         [Fact]
         public void ComputeSegments_MinorDurationOvershoot_ClampsToDuration()
         {
-            var keyframeData = new KeyframeData(MsToTicks(9900), new[] { 0L, MsToTicks(5000), MsToTicks(10000) });
-            Assert.Equal(new[] { 10.0 }, DynamicHlsPlaylistGenerator.ComputeSegments(keyframeData, 6000));
+            var keyframeData = new KeyframeData(MsToTicks(9900), [0L, MsToTicks(5000), MsToTicks(10000)]);
+            Assert.Equal([10.0], DynamicHlsPlaylistGenerator.ComputeSegments(keyframeData, 6000));
         }
 
         [Theory]
@@ -79,17 +79,17 @@ namespace Jellyfin.MediaEncoding.Hls.Tests.Playlist
             var data = new TheoryData<KeyframeData, int, double[]>
             {
                 {
-                    new KeyframeData(MsToTicks(35000), new[] { 0, MsToTicks(10427), MsToTicks(20854), MsToTicks(31240) }),
+                    new KeyframeData(MsToTicks(35000), [0, MsToTicks(10427), MsToTicks(20854), MsToTicks(31240)]),
                     6000,
                     new[] { 10.427, 10.427, 10.386, 3.760 }
                 },
                 {
-                    new KeyframeData(MsToTicks(10000), new[] { 0, MsToTicks(1000), MsToTicks(2000), MsToTicks(3000), MsToTicks(4000), MsToTicks(5000) }),
+                    new KeyframeData(MsToTicks(10000), [0, MsToTicks(1000), MsToTicks(2000), MsToTicks(3000), MsToTicks(4000), MsToTicks(5000)]),
                     2000,
                     new[] { 2.0, 2.0, 6.0 }
                 },
                 {
-                    new KeyframeData(MsToTicks(10000), new[] { 0L }),
+                    new KeyframeData(MsToTicks(10000), [0L]),
                     6000,
                     new[] { 10.0 }
                 },
@@ -97,6 +97,16 @@ namespace Jellyfin.MediaEncoding.Hls.Tests.Playlist
                     new KeyframeData(MsToTicks(10000), Array.Empty<long>()),
                     6000,
                     new[] { 10.0 }
+                },
+                {
+                    // Keyframes further apart than the segment length: a stream copy cannot be cut on
+                    // the 6s grid, so a 60s source yields 7 segments and not the 10 an equally sized
+                    // playlist would advertise.
+                    new KeyframeData(
+                        MsToTicks(60000),
+                        [0, MsToTicks(9009), MsToTicks(18018), MsToTicks(27027), MsToTicks(36036), MsToTicks(45045), MsToTicks(54054)]),
+                    6000,
+                    new[] { 9.009, 9.009, 9.009, 9.009, 9.009, 9.009, 5.946 }
                 }
             };
 

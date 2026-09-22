@@ -1471,6 +1471,18 @@ public class DynamicHlsController : BaseJellyfinApiController
             var currentTranscodingIndex = GetCurrentTranscodingIndex(playlistPath, segmentExtension);
             var segmentGapRequiringTranscodingChange = 24 / state.SegmentLength;
 
+            // A stream copy can only be cut at the source's own keyframes, so ffmpeg produces fewer
+            // segments than an equal length playlist advertises whenever the keyframes are further
+            // apart than the segment length. Restarting ffmpeg for one of those surplus indexes only
+            // seeks back to the last keyframe and hands the client the final GOP a second time.
+            if (segmentId > 0
+                && EncodingHelper.IsCopyCodec(state.OutputVideoCodec)
+                && IsSegmentPastEndOfMedia(playlistPath, segmentExtension, segmentId))
+            {
+                _logger.LogDebug("Not transcoding segment {SegmentId}, the source has no media past the last written segment", segmentId);
+                return NotFound();
+            }
+
             if (segmentId == -1)
             {
                 _logger.LogDebug("Starting transcoding because fmp4 init file is being requested");
@@ -2004,6 +2016,66 @@ public class DynamicHlsController : BaseJellyfinApiController
         });
 
         return FileStreamResponseHelpers.GetStaticFileResult(segmentPath, MimeTypes.GetMimeType(segmentPath));
+    }
+
+    /// <summary>
+    /// Determines whether a segment index lies past the last segment a finished ffmpeg run wrote for
+    /// this playlist. ffmpeg writes its own playlist next to the segments and only terminates it with
+    /// #EXT-X-ENDLIST once it reached the end of the input, so the highest index listed there is the
+    /// last segment the source can produce.
+    /// </summary>
+    /// <param name="playlist">The playlist path.</param>
+    /// <param name="segmentExtension">The segment file extension.</param>
+    /// <param name="segmentId">The requested segment index.</param>
+    /// <returns>Whether the requested segment is past the end of the media.</returns>
+    private bool IsSegmentPastEndOfMedia(string playlist, string segmentExtension, int segmentId)
+    {
+        var job = _transcodeManager.GetTranscodingJob(playlist, TranscodingJobType);
+        if (job is not null && !job.HasExited)
+        {
+            // Still writing, the playlist on disk is not final yet.
+            return false;
+        }
+
+        var playlistFilename = Path.GetFileNameWithoutExtension(playlist);
+        var lastWrittenIndex = -1;
+        var sawEndList = false;
+
+        try
+        {
+            using var fileStream = new FileStream(playlist, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, IODefaults.FileStreamBufferSize, FileOptions.SequentialScan);
+            using var reader = new StreamReader(fileStream);
+
+            string? line;
+            while ((line = reader.ReadLine()) is not null)
+            {
+                if (line.StartsWith("#EXT-X-ENDLIST", StringComparison.OrdinalIgnoreCase))
+                {
+                    sawEndList = true;
+                    continue;
+                }
+
+                if (line.Length == 0 || line[0] == '#' || !line.EndsWith(segmentExtension, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var name = Path.GetFileNameWithoutExtension(line.AsSpan());
+                if (!name.StartsWith(playlistFilename, StringComparison.OrdinalIgnoreCase)
+                    || !int.TryParse(name[playlistFilename.Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var index))
+                {
+                    continue;
+                }
+
+                lastWrittenIndex = Math.Max(lastWrittenIndex, index);
+            }
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+
+        return sawEndList && lastWrittenIndex >= 0 && segmentId > lastWrittenIndex;
     }
 
     private int? GetCurrentTranscodingIndex(string playlist, string segmentExtension)
