@@ -448,8 +448,10 @@ namespace MediaBrowser.Providers.Manager
                 if (image is not null)
                 {
                     var currentImage = item.GetImageInfo(type, 0);
+                    image = KeepNewerCurrentImage(item, images, image, currentImage, refreshOptions) ?? image;
+
                     // if image file is stored with media, don't replace that later
-                    if (item.ContainingFolderPath is not null && item.ContainingFolderPath.Contains(Path.GetDirectoryName(image.FileInfo.FullName), StringComparison.OrdinalIgnoreCase))
+                    if (IsStoredWithMedia(item, image))
                     {
                         foundImageTypes.Add(type);
                     }
@@ -488,7 +490,7 @@ namespace MediaBrowser.Providers.Manager
 
                 hasBackdrop = true;
 
-                if (item.ContainingFolderPath is not null && item.ContainingFolderPath.Contains(Path.GetDirectoryName(image.FileInfo.FullName), StringComparison.OrdinalIgnoreCase))
+                if (IsStoredWithMedia(item, image))
                 {
                     backdropStoredWithMedia = true;
                     break;
@@ -514,6 +516,32 @@ namespace MediaBrowser.Providers.Manager
             }
 
             return changed;
+        }
+
+        private static bool IsStoredWithMedia(BaseItem item, LocalImageInfo image)
+            => item.ContainingFolderPath is not null
+                && item.ContainingFolderPath.Contains(Path.GetDirectoryName(image.FileInfo.FullName), StringComparison.OrdinalIgnoreCase);
+
+        // Without "save artwork into media folders", an uploaded or chosen image lives outside the media folder;
+        // keep it over media-folder art that is not newer than it.
+        private LocalImageInfo KeepNewerCurrentImage(BaseItem item, IReadOnlyList<LocalImageInfo> images, LocalImageInfo first, ItemImageInfo currentImage, ImageRefreshOptions refreshOptions)
+        {
+            if (currentImage is null
+                || !currentImage.IsLocalFile
+                || !IsStoredWithMedia(item, first)
+                || (refreshOptions?.IsReplacingImage(currentImage.Type) ?? false))
+            {
+                return null;
+            }
+
+            var current = images.FirstOrDefault(i => i.Type == currentImage.Type
+                && string.Equals(i.FileInfo.FullName, currentImage.Path, StringComparison.OrdinalIgnoreCase));
+            if (current is null || IsStoredWithMedia(item, current) || item.IsSaveLocalMetadataEnabled())
+            {
+                return null;
+            }
+
+            return _fileSystem.GetLastWriteTimeUtc(current.FileInfo) >= _fileSystem.GetLastWriteTimeUtc(first.FileInfo) ? current : null;
         }
 
         private static LocalImageInfo GetFirstLocalImageInfoByType(IReadOnlyList<LocalImageInfo> images, ImageType type)

@@ -11,6 +11,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Configuration;
@@ -173,6 +174,60 @@ namespace Jellyfin.Providers.Tests.Manager
             else
             {
                 Assert.False(changed);
+            }
+        }
+
+        [Theory]
+        [InlineData(true, false, false, false)]
+        [InlineData(false, false, false, true)]
+        [InlineData(true, true, false, true)]
+        [InlineData(true, false, true, true)]
+        public void MergeImages_UploadedImageAndMediaFolderImage_KeepsUploadUnlessOlderReplacingOrSavingLocally(bool uploadIsNewer, bool replaceAllImages, bool saveLocalMetadata, bool expectMediaFolderImage)
+        {
+            var root = Path.Combine(Path.GetTempPath(), "jellyfin-merge-" + Guid.NewGuid().ToString("N"));
+            var mediaFolder = Directory.CreateDirectory(Path.Combine(root, "media", "Movie (2000)")).FullName;
+            var metadataFolder = Directory.CreateDirectory(Path.Combine(root, "metadata")).FullName;
+            try
+            {
+                var posterPath = Path.Combine(mediaFolder, "poster.jpg");
+                var uploadPath = Path.Combine(metadataFolder, "poster.jpg");
+                File.WriteAllBytes(posterPath, [0]);
+                File.WriteAllBytes(uploadPath, [0]);
+
+                var posterTime = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+                var poster = new FileSystemMetadata { FullName = posterPath, LastWriteTimeUtc = posterTime };
+                var upload = new FileSystemMetadata { FullName = uploadPath, LastWriteTimeUtc = posterTime.AddDays(uploadIsNewer ? 1 : -1) };
+
+                var fileSystem = new Mock<IFileSystem>();
+                fileSystem.Setup(fs => fs.GetLastWriteTimeUtc(It.IsAny<FileSystemMetadata>()))
+                    .Returns<FileSystemMetadata>(f => f.LastWriteTimeUtc);
+                BaseItem.FileSystem = fileSystem.Object;
+
+                var itemMock = new Mock<Movie> { CallBase = true };
+                itemMock.Setup(m => m.IsSaveLocalMetadataEnabled()).Returns(saveLocalMetadata);
+                var item = itemMock.Object;
+                item.Path = Path.Combine(mediaFolder, "movie.mkv");
+                item.SetImagePath(ImageType.Primary, upload);
+
+                var images = new[]
+                {
+                    new LocalImageInfo { Type = ImageType.Primary, FileInfo = poster },
+                    new LocalImageInfo { Type = ImageType.Primary, FileInfo = upload }
+                };
+                var refreshOptions = new ImageRefreshOptions(Mock.Of<IDirectoryService>())
+                {
+                    ImageRefreshMode = replaceAllImages ? MetadataRefreshMode.FullRefresh : MetadataRefreshMode.Default,
+                    ReplaceAllImages = replaceAllImages
+                };
+
+                var changed = GetItemImageProvider(null, fileSystem).MergeImages(item, images, refreshOptions);
+
+                Assert.Equal(expectMediaFolderImage, changed);
+                Assert.Equal(expectMediaFolderImage ? posterPath : uploadPath, item.GetImagePath(ImageType.Primary, 0));
+            }
+            finally
+            {
+                Directory.Delete(root, true);
             }
         }
 
