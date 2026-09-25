@@ -9,7 +9,7 @@ using Xunit;
 
 namespace Jellyfin.Controller.Tests.Entities;
 
-[Collection("BaseItemStatics")]
+[Collection("LibraryManagerTests")]
 public class AggregateFolderTests
 {
     [Fact]
