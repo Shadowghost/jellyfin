@@ -1,16 +1,22 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Emby.Server.Implementations.Playlists;
+using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations;
 using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Database.Implementations.Locking;
 using Jellyfin.Database.Providers.Sqlite;
+using Jellyfin.Extensions;
 using Jellyfin.Server.Migrations.Routines;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Playlists;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -118,6 +124,146 @@ public sealed class RepairPlaylistsAndCollectionsTests : IDisposable
         Assert.Equal(folderId, playlist.TopParentId);
     }
 
+    [Fact]
+    public async Task PerformAsync_MissingPlaylist_RestoresOwnerAndShares()
+    {
+        var ownerId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var sharedId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var dir = Path.Combine(_dataPath, "playlists", "Private");
+        Directory.CreateDirectory(dir);
+
+        var trackId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var trackPath = Path.Combine(_dataPath, "track.mkv");
+        using var context = CreateDbContext();
+        context.BaseItems.Add(new BaseItemEntity { Id = trackId, Type = "MediaBrowser.Controller.Entities.Video", Path = trackPath });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(
+            Path.Combine(dir, "playlist.xml"),
+            $"""
+            <?xml version="1.0" encoding="utf-8" standalone="yes"?>
+            <Item>
+              <OwnerUserId>{ownerId:N}</OwnerUserId>
+              <PlaylistItems>
+                <PlaylistItem>
+                  <Path>{trackPath}</Path>
+                </PlaylistItem>
+              </PlaylistItems>
+              <Shares>
+                <Share>
+                  <UserId>{sharedId}</UserId>
+                  <CanEdit>true</CanEdit>
+                </Share>
+              </Shares>
+              <PlaylistMediaType>Video</PlaylistMediaType>
+            </Item>
+            """,
+            TestContext.Current.CancellationToken);
+
+        var restored = await RestoreAsync();
+
+        var playlist = Assert.Single(restored);
+        Assert.Equal(ownerId, playlist.OwnerUserId);
+        Assert.False(playlist.OpenAccess);
+        var share = Assert.Single(playlist.Shares);
+        Assert.Equal(sharedId, share.UserId);
+        Assert.True(share.CanEdit);
+        Assert.Equal(MediaType.Video, playlist.MediaType);
+
+        Assert.Equal(trackId, Assert.Single(playlist.LinkedChildren).ItemId);
+    }
+
+    [Fact]
+    public async Task PerformAsync_MissingPlaylist_EntriesAreOnTheCreatedItem()
+    {
+        var dir = Path.Combine(_dataPath, "playlists", "Mix");
+        Directory.CreateDirectory(dir);
+
+        var trackId = Guid.Parse("44444444-4444-4444-4444-444444444444");
+        var trackPath = Path.Combine(_dataPath, "song.flac");
+        using (var context = CreateDbContext())
+        {
+            context.BaseItems.Add(new BaseItemEntity { Id = trackId, Type = "MediaBrowser.Controller.Entities.Audio.Audio", Path = trackPath });
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        await File.WriteAllTextAsync(
+            Path.Combine(dir, "playlist.xml"),
+            $"""
+            <?xml version="1.0" encoding="utf-8" standalone="yes"?>
+            <Item>
+              <PlaylistItems>
+                <PlaylistItem>
+                  <Path>{trackPath}</Path>
+                </PlaylistItem>
+                <PlaylistItem>
+                  <Path>{trackPath}</Path>
+                </PlaylistItem>
+              </PlaylistItems>
+            </Item>
+            """,
+            TestContext.Current.CancellationToken);
+
+        LinkedChild[]? entriesAtCreate = null;
+        bool? loadedAtCreate = null;
+        var restored = await RestoreAsync(item =>
+        {
+            entriesAtCreate = ((Playlist)item).LinkedChildren;
+            loadedAtCreate = ((Playlist)item).LinkedChildrenLoaded;
+        });
+
+        Assert.Single(restored);
+        Assert.True(loadedAtCreate);
+        Assert.NotNull(entriesAtCreate);
+        Assert.Equal(new Guid?[] { trackId, trackId }, entriesAtCreate.Select(e => e.ItemId));
+        Assert.All(entriesAtCreate, e => Assert.Equal(MediaBrowser.Controller.Entities.LinkedChildType.Manual, e.Type));
+
+        // Persisting the entries is left to CreateItem, the migration writes no rows of its own.
+        using var verify = CreateDbContext();
+        Assert.Empty(verify.LinkedChildren);
+    }
+
+    [Fact]
+    public async Task PerformAsync_MissingPlaylist_TakesNameFromLocalTitle()
+    {
+        var dir = Path.Combine(_dataPath, "playlists", "Rock_Metal_ 90s1");
+        Directory.CreateDirectory(dir);
+        await File.WriteAllTextAsync(
+            Path.Combine(dir, "playlist.xml"),
+            """
+            <?xml version="1.0" encoding="utf-8" standalone="yes"?>
+            <Item>
+              <LocalTitle>Rock/Metal: 90s</LocalTitle>
+            </Item>
+            """,
+            TestContext.Current.CancellationToken);
+
+        var restored = await RestoreAsync();
+
+        Assert.Equal("Rock/Metal: 90s", Assert.Single(restored).Name);
+    }
+
+    [Fact]
+    public async Task PerformAsync_MissingPlaylistWithoutLocalTitle_TakesFolderName()
+    {
+        Directory.CreateDirectory(Path.Combine(_dataPath, "playlists", "Untitled"));
+
+        var restored = await RestoreAsync();
+
+        Assert.Equal("Untitled", Assert.Single(restored).Name);
+    }
+
+    [Fact]
+    public async Task PerformAsync_MissingPlaylistWithoutMetadata_IsOpenAccess()
+    {
+        Directory.CreateDirectory(Path.Combine(_dataPath, "playlists", "Orphan"));
+
+        var restored = await RestoreAsync();
+
+        var playlist = Assert.Single(restored);
+        Assert.True(playlist.OwnerUserId.IsEmpty());
+        Assert.True(playlist.OpenAccess);
+    }
+
     public void Dispose()
     {
         _connection.Dispose();
@@ -172,7 +318,29 @@ public sealed class RepairPlaylistsAndCollectionsTests : IDisposable
         context.SaveChanges();
     }
 
-    private async Task PerformAsync()
+    private async Task<List<Playlist>> RestoreAsync(Action<BaseItem>? onCreate = null)
+    {
+        var playlistsFolder = new PlaylistsFolder { Id = Guid.NewGuid() };
+        var restored = new List<Playlist>();
+
+        var libraryManager = new Mock<ILibraryManager>();
+        libraryManager.Setup(m => m.GetNewItemId(It.IsAny<string>(), It.IsAny<Type>())).Returns(Guid.NewGuid);
+        libraryManager.Setup(m => m.GetItemById(It.IsAny<Guid>())).Returns(playlistsFolder);
+        libraryManager.Setup(m => m.CreateItem(It.IsAny<BaseItem>(), It.IsAny<BaseItem>()))
+            .Callback<BaseItem, BaseItem>((item, _) =>
+            {
+                restored.Add((Playlist)item);
+                onCreate?.Invoke(item);
+                using var context = CreateDbContext();
+                context.BaseItems.Add(new BaseItemEntity { Id = item.Id, Type = PlaylistType, Path = item.Path, IsFolder = true });
+                context.SaveChanges();
+            });
+
+        await PerformAsync(libraryManager);
+        return restored;
+    }
+
+    private async Task PerformAsync(Mock<ILibraryManager>? libraryManager = null)
     {
         var appHost = new Mock<IServerApplicationHost>();
         appHost.Setup(h => h.ExpandVirtualPath(It.IsAny<string>())).Returns<string>(p => p);
@@ -180,7 +348,7 @@ public sealed class RepairPlaylistsAndCollectionsTests : IDisposable
         var appPaths = new Mock<IServerApplicationPaths>();
         appPaths.SetupGet(p => p.DataPath).Returns(_dataPath);
 
-        var libraryManager = new Mock<ILibraryManager>();
+        libraryManager ??= new Mock<ILibraryManager>();
 
         var factory = new Mock<IDbContextFactory<JellyfinDbContext>>();
         factory.Setup(f => f.CreateDbContext()).Returns(CreateDbContext);
