@@ -895,6 +895,7 @@ namespace Emby.Server.Implementations.Session
 
             // The play count and played date are projections of the recorded history, so they are left
             // to the projection that runs when the session stops. Nothing about this play is known yet.
+
             if (item.SupportsPlayedStatus && !item.SupportsPositionTicksResume)
             {
                 // An item that cannot be resumed counts as played the moment it starts. No record of
@@ -1075,7 +1076,12 @@ namespace Emby.Server.Implementations.Session
 
             if (positionTicks.HasValue)
             {
-                _userDataManager.UpdatePlayState(item, data, positionTicks.Value);
+                var playedToCompletion = _userDataManager.UpdatePlayState(item, data, positionTicks.Value);
+                if (playedToCompletion || data.PlaybackPositionTicks > 0)
+                {
+                    data.LastPlayedDate = DateTime.UtcNow;
+                }
+
                 changed = true;
             }
 
@@ -1304,6 +1310,10 @@ namespace Emby.Server.Implementations.Session
             if (positionTicks.HasValue)
             {
                 playedToCompletion = _userDataManager.UpdatePlayState(item, data, positionTicks.Value);
+                if (playedToCompletion || data.PlaybackPositionTicks > 0)
+                {
+                    data.LastPlayedDate = DateTime.UtcNow;
+                }
             }
             else
             {
@@ -1311,6 +1321,7 @@ namespace Emby.Server.Implementations.Session
                 data.PlayCount++;
                 data.Played = item.SupportsPlayedStatus;
                 data.PlaybackPositionTicks = 0;
+                data.LastPlayedDate = DateTime.UtcNow;
                 playedToCompletion = true;
             }
 
