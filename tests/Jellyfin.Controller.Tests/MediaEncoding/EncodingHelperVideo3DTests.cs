@@ -111,7 +111,26 @@ public class EncodingHelperVideo3DTests
         Assert.Contains(@"pad=max(1920\,iw):max(806\,ih):(ow-iw)/2:(oh-ih)/2:black@0,crop=1920:806", args, StringComparison.Ordinal);
     }
 
-    private static EncodingJobInfo CreateState(Video3DFormat? format, bool graphicalSubtitles)
+    [Theory]
+    // A codec SAR describes the packed frame, whatever the frame's shape: views of 2.76:1, or of 1:1 on top of each other.
+    [InlineData(Video3DFormat.HalfSideBySide, 1920, 696, null, "crop=trunc(iw/4)*2:ih:0:0,setsar=sar*2:max=1000000,scale=iw*2:ih")]
+    [InlineData(Video3DFormat.HalfTopAndBottom, 1080, 1080, null, "crop=iw:trunc(ih/4)*2:0:0,setsar=sar/2:max=1000000,scale=iw:ih*2")]
+    // A Matroska StereoMode SAR describes one view, whatever its shape: square or portrait views.
+    [InlineData(Video3DFormat.HalfSideBySide, 1080, 1080, "left_right", "crop=trunc(iw/4)*2:ih:0:0,scale=iw*2:ih,sidedata")]
+    [InlineData(Video3DFormat.HalfSideBySide, 1080, 1920, "left_right", "crop=trunc(iw/4)*2:ih:0:0,scale=iw*2:ih,sidedata")]
+    [InlineData(Video3DFormat.HalfTopAndBottom, 1920, 2160, "top_bottom", "crop=iw:trunc(ih/4)*2:0:0,scale=iw:ih*2,sidedata")]
+    public void GetVideoProcessingFilterParam_HalfFormat_SarFollowsTheDeclaration(Video3DFormat format, int width, int height, string? stereoMode, string expected)
+    {
+        var state = CreateState(format, false, width, height, stereoMode);
+
+        var args = CreateHelper(false).GetVideoProcessingFilterParam(state, CreateOptions(HardwareAccelerationType.none, false), "libx264");
+
+        Assert.Contains(expected, args, StringComparison.Ordinal);
+        Assert.Equal(stereoMode is null, args.Contains("setsar=", StringComparison.Ordinal));
+        Assert.DoesNotContain("if(", args, StringComparison.Ordinal);
+    }
+
+    private static EncodingJobInfo CreateState(Video3DFormat? format, bool graphicalSubtitles, int width = 3840, int height = 806, string? stereoMode = null)
     {
         // Issue #18047: two 1920x806 views packed into one 3840x806 frame with square pixels.
         var video = new MediaStream
@@ -121,8 +140,9 @@ public class EncodingHelperVideo3DTests
             Codec = "h264",
             Profile = "High",
             Level = 41,
-            Width = 3840,
-            Height = 806,
+            Width = width,
+            Height = height,
+            StereoMode = stereoMode,
             BitDepth = 8,
             PixelFormat = "yuv420p",
             RealFrameRate = 24,

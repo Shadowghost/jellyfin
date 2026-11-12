@@ -7,15 +7,25 @@ namespace Jellyfin.MediaEncoding.Tests
     public class EncodingHelperTests
     {
         [Theory]
-        [InlineData(null, "")]
-        [InlineData(Video3DFormat.MVC, "")]
-        [InlineData(Video3DFormat.FullSideBySide, "crop=trunc(iw/4)*2:ih:0:0,sidedata=mode=delete:type=STEREO3D")]
-        [InlineData(Video3DFormat.HalfSideBySide, "crop=trunc(iw/4)*2:ih:0:0,scale=iw*2:ih,setsar=sar*2,sidedata=mode=delete:type=STEREO3D")]
-        [InlineData(Video3DFormat.FullTopAndBottom, "crop=iw:trunc(ih/4)*2:0:0,sidedata=mode=delete:type=STEREO3D")]
-        [InlineData(Video3DFormat.HalfTopAndBottom, "crop=iw:trunc(ih/4)*2:0:0,scale=iw:ih*2,setsar=sar/2,sidedata=mode=delete:type=STEREO3D")]
-        public void GetVideo3DFilter_Valid_Success(Video3DFormat? threedFormat, string expected)
+        [InlineData(null, null, "")]
+        [InlineData(Video3DFormat.MVC, null, "")]
+        [InlineData(Video3DFormat.FullSideBySide, null, "crop=trunc(iw/4)*2:ih:0:0,sidedata=mode=delete:type=STEREO3D")]
+        [InlineData(Video3DFormat.FullSideBySide, "left_right", "crop=trunc(iw/4)*2:ih:0:0,sidedata=mode=delete:type=STEREO3D")]
+        // The SAR of the codec describes the packed frame: the stretched view takes the frame's shape.
+        [InlineData(Video3DFormat.HalfSideBySide, null, "crop=trunc(iw/4)*2:ih:0:0,setsar=sar*2:max=1000000,scale=iw*2:ih,sidedata=mode=delete:type=STEREO3D")]
+        [InlineData(Video3DFormat.HalfSideBySide, "top_bottom", "crop=trunc(iw/4)*2:ih:0:0,setsar=sar*2:max=1000000,scale=iw*2:ih,sidedata=mode=delete:type=STEREO3D")]
+        // The SAR of a Matroska StereoMode describes one view: the stretch keeps its shape.
+        [InlineData(Video3DFormat.HalfSideBySide, "left_right", "crop=trunc(iw/4)*2:ih:0:0,scale=iw*2:ih,sidedata=mode=delete:type=STEREO3D")]
+        [InlineData(Video3DFormat.HalfSideBySide, "right_left", "crop=trunc(iw/4)*2:ih:0:0,scale=iw*2:ih,sidedata=mode=delete:type=STEREO3D")]
+        [InlineData(Video3DFormat.HalfSideBySide, "col_interleaved_lr", "crop=trunc(iw/4)*2:ih:0:0,scale=iw*2:ih,sidedata=mode=delete:type=STEREO3D")]
+        [InlineData(Video3DFormat.FullTopAndBottom, "top_bottom", "crop=iw:trunc(ih/4)*2:0:0,sidedata=mode=delete:type=STEREO3D")]
+        [InlineData(Video3DFormat.HalfTopAndBottom, null, "crop=iw:trunc(ih/4)*2:0:0,setsar=sar/2:max=1000000,scale=iw:ih*2,sidedata=mode=delete:type=STEREO3D")]
+        [InlineData(Video3DFormat.HalfTopAndBottom, "left_right", "crop=iw:trunc(ih/4)*2:0:0,setsar=sar/2:max=1000000,scale=iw:ih*2,sidedata=mode=delete:type=STEREO3D")]
+        [InlineData(Video3DFormat.HalfTopAndBottom, "top_bottom", "crop=iw:trunc(ih/4)*2:0:0,scale=iw:ih*2,sidedata=mode=delete:type=STEREO3D")]
+        [InlineData(Video3DFormat.HalfTopAndBottom, "row_interleaved_rl", "crop=iw:trunc(ih/4)*2:0:0,scale=iw:ih*2,sidedata=mode=delete:type=STEREO3D")]
+        public void GetVideo3DFilter_Valid_Success(Video3DFormat? threedFormat, string? stereoMode, string expected)
         {
-            Assert.Equal(expected, EncodingHelper.GetVideo3DFilter(threedFormat));
+            Assert.Equal(expected, EncodingHelper.GetVideo3DFilter(threedFormat, new MediaStream { Type = MediaStreamType.Video, StereoMode = stereoMode }));
         }
 
         [Theory]
