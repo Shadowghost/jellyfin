@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -261,6 +262,42 @@ namespace Jellyfin.MediaEncoding.Tests.Probing
             Assert.Null(video.Height);
             Assert.Equal(expectedAspectRatio, video.AspectRatio);
             Assert.False(video.IsAnamorphic);
+        }
+
+        [Theory]
+        [InlineData("left_right", "left_right")]
+        [InlineData("top_bottom", "top_bottom")]
+        [InlineData("row_interleaved_lr", "row_interleaved_lr")]
+        [InlineData(null, null)]
+        public void GetMediaInfo_StereoModeTag_KeptOnTheVideoStream(string? stereoMode, string? expected)
+        {
+            MediaInfo res = _probeResultNormalizer.GetMediaInfo(CreateVideoProbe(stereoMode, 1920, 1080, "2:1"), VideoType.VideoFile, false, "Test Data/Probing/video_3d.mkv", MediaProtocol.File);
+
+            Assert.Equal(expected, res.MediaStreams[0].StereoMode);
+        }
+
+        [Theory]
+        // FFmpeg folds Matroska's DisplayWidth and DisplayHeight, the size of one view, into the SAR.
+        // A declared view with the coded frame's own shape is half: both views fit into one ordinary frame.
+        [InlineData("left_right", 1920, 1080, "2:1", Video3DFormat.HalfSideBySide)] // DisplayWidth 1920 or none
+        [InlineData("left_right", 1080, 1080, "2:1", Video3DFormat.HalfSideBySide)] // square views
+        [InlineData("left_right", 3840, 1080, "2:1", Video3DFormat.HalfSideBySide)] // DisplayWidth 3840, as declared
+        [InlineData("top_bottom", 1920, 1080, "1:2", Video3DFormat.HalfTopAndBottom)] // DisplayHeight 1080 or none
+        // Any other declared view is full, and the full path keeps its SAR as it is.
+        [InlineData("left_right", 3840, 1080, "1:1", Video3DFormat.FullSideBySide)] // DisplayWidth 1920
+        [InlineData("left_right", 1920, 1080, "1:1", Video3DFormat.FullSideBySide)] // DisplayWidth 960
+        [InlineData("left_right", 720, 576, "128:45", Video3DFormat.FullSideBySide)] // DisplayWidth 1024
+        [InlineData("top_bottom", 1920, 2160, "1:1", Video3DFormat.FullTopAndBottom)] // DisplayHeight 1080
+        [InlineData("left_right", 1920, 1080, null, Video3DFormat.FullSideBySide)]
+        [InlineData("top_bottom", 1920, 1080, "0:1", Video3DFormat.FullTopAndBottom)]
+        [InlineData("mono", 1920, 1080, "1:1", null)]
+        [InlineData("right_left", 1920, 1080, "2:1", null)]
+        [InlineData("bottom_top", 1920, 1080, "1:2", null)]
+        public void GetMediaInfo_StereoMode_HalfOrFullFromTheDeclaredViewSize(string stereoMode, int width, int height, string? sar, Video3DFormat? expected)
+        {
+            MediaInfo res = _probeResultNormalizer.GetMediaInfo(CreateVideoProbe(stereoMode, width, height, sar), VideoType.VideoFile, false, "Test Data/Probing/video_3d.mkv", MediaProtocol.File);
+
+            Assert.Equal(expected, res.Video3DFormat);
         }
 
         [Fact]
@@ -552,6 +589,27 @@ namespace Jellyfin.MediaEncoding.Tests.Probing
             Assert.Contains("Trance", res.Genres);
             Assert.Contains("Dance", res.Genres);
             Assert.Contains("Jazz", res.Genres);
+        }
+
+        private static InternalMediaInfoResult CreateVideoProbe(string? stereoMode, int width, int height, string? sampleAspectRatio)
+        {
+            return new InternalMediaInfoResult
+            {
+                Streams =
+                [
+                    new MediaStreamInfo
+                    {
+                        Index = 0,
+                        CodecType = CodecType.Video,
+                        CodecName = "h264",
+                        Width = width,
+                        Height = height,
+                        SampleAspectRatio = sampleAspectRatio,
+                        Tags = stereoMode is null ? null : new Dictionary<string, string?> { ["stereo_mode"] = stereoMode }
+                    }
+                ],
+                Format = new MediaFormatInfo { FormatName = "matroska,webm" }
+            };
         }
     }
 }
