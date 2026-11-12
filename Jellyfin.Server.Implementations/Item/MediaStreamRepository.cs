@@ -164,6 +164,7 @@ public class MediaStreamRepository : IMediaStreamRepository
         dto.IsHearingImpaired = entity.IsHearingImpaired.GetValueOrDefault();
         dto.Rotation = entity.Rotation;
         dto.Hdr10PlusPresentFlag = entity.Hdr10PlusPresentFlag;
+        dto.StereoMode = entity.StereoMode;
 
         if (dto.Type is MediaStreamType.Audio or MediaStreamType.Subtitle)
         {
@@ -244,6 +245,7 @@ public class MediaStreamRepository : IMediaStreamRepository
             IsHearingImpaired = dto.IsHearingImpaired,
             Rotation = dto.Rotation,
             Hdr10PlusPresentFlag = dto.Hdr10PlusPresentFlag,
+            StereoMode = dto.StereoMode,
         };
         return entity;
     }
