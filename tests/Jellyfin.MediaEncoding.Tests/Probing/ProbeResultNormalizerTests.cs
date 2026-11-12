@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -261,6 +262,18 @@ namespace Jellyfin.MediaEncoding.Tests.Probing
             Assert.Null(video.Height);
             Assert.Equal(expectedAspectRatio, video.AspectRatio);
             Assert.False(video.IsAnamorphic);
+        }
+
+        [Theory]
+        [InlineData("left_right", "left_right")]
+        [InlineData("top_bottom", "top_bottom")]
+        [InlineData("row_interleaved_lr", "row_interleaved_lr")]
+        [InlineData(null, null)]
+        public void GetMediaInfo_StereoModeTag_KeptOnTheVideoStream(string? stereoMode, string? expected)
+        {
+            MediaInfo res = _probeResultNormalizer.GetMediaInfo(CreateVideoProbe(stereoMode, 1920, 1080, "2:1"), VideoType.VideoFile, false, "Test Data/Probing/video_3d.mkv", MediaProtocol.File);
+
+            Assert.Equal(expected, res.MediaStreams[0].StereoMode);
         }
 
         [Fact]
@@ -552,6 +565,27 @@ namespace Jellyfin.MediaEncoding.Tests.Probing
             Assert.Contains("Trance", res.Genres);
             Assert.Contains("Dance", res.Genres);
             Assert.Contains("Jazz", res.Genres);
+        }
+
+        private static InternalMediaInfoResult CreateVideoProbe(string? stereoMode, int width, int height, string? sampleAspectRatio)
+        {
+            return new InternalMediaInfoResult
+            {
+                Streams =
+                [
+                    new MediaStreamInfo
+                    {
+                        Index = 0,
+                        CodecType = CodecType.Video,
+                        CodecName = "h264",
+                        Width = width,
+                        Height = height,
+                        SampleAspectRatio = sampleAspectRatio,
+                        Tags = stereoMode is null ? null : new Dictionary<string, string?> { ["stereo_mode"] = stereoMode }
+                    }
+                ],
+                Format = new MediaFormatInfo { FormatName = "matroska,webm" }
+            };
         }
     }
 }
