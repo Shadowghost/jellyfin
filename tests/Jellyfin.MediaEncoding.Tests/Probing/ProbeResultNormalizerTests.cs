@@ -276,6 +276,30 @@ namespace Jellyfin.MediaEncoding.Tests.Probing
             Assert.Equal(expected, res.MediaStreams[0].StereoMode);
         }
 
+        [Theory]
+        // FFmpeg folds Matroska's DisplayWidth and DisplayHeight, the size of one view, into the SAR.
+        // A declared view with the coded frame's own shape is half: both views fit into one ordinary frame.
+        [InlineData("left_right", 1920, 1080, "2:1", Video3DFormat.HalfSideBySide)] // DisplayWidth 1920 or none
+        [InlineData("left_right", 1080, 1080, "2:1", Video3DFormat.HalfSideBySide)] // square views
+        [InlineData("left_right", 3840, 1080, "2:1", Video3DFormat.HalfSideBySide)] // DisplayWidth 3840, as declared
+        [InlineData("top_bottom", 1920, 1080, "1:2", Video3DFormat.HalfTopAndBottom)] // DisplayHeight 1080 or none
+        // Any other declared view is full, and the full path keeps its SAR as it is.
+        [InlineData("left_right", 3840, 1080, "1:1", Video3DFormat.FullSideBySide)] // DisplayWidth 1920
+        [InlineData("left_right", 1920, 1080, "1:1", Video3DFormat.FullSideBySide)] // DisplayWidth 960
+        [InlineData("left_right", 720, 576, "128:45", Video3DFormat.FullSideBySide)] // DisplayWidth 1024
+        [InlineData("top_bottom", 1920, 2160, "1:1", Video3DFormat.FullTopAndBottom)] // DisplayHeight 1080
+        [InlineData("left_right", 1920, 1080, null, Video3DFormat.FullSideBySide)]
+        [InlineData("top_bottom", 1920, 1080, "0:1", Video3DFormat.FullTopAndBottom)]
+        [InlineData("mono", 1920, 1080, "1:1", null)]
+        [InlineData("right_left", 1920, 1080, "2:1", null)]
+        [InlineData("bottom_top", 1920, 1080, "1:2", null)]
+        public void GetMediaInfo_StereoMode_HalfOrFullFromTheDeclaredViewSize(string stereoMode, int width, int height, string? sar, Video3DFormat? expected)
+        {
+            MediaInfo res = _probeResultNormalizer.GetMediaInfo(CreateVideoProbe(stereoMode, width, height, sar), VideoType.VideoFile, false, "Test Data/Probing/video_3d.mkv", MediaProtocol.File);
+
+            Assert.Equal(expected, res.Video3DFormat);
+        }
+
         [Fact]
         public void GetMediaInfo_WebM_Success()
         {
