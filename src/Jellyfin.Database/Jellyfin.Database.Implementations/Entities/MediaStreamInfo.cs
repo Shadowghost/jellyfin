@@ -103,4 +103,6 @@ public class MediaStreamInfo
     public string? KeyFrames { get; set; }
 
     public bool? Hdr10PlusPresentFlag { get; set; }
+
+    public string? StereoMode { get; set; }
 }
