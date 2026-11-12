@@ -20,6 +20,8 @@ public class EncodingHelperVideo3DTests
 {
     private const string SwCropFullSideBySide = "crop=trunc(iw/4)*2:ih:0:0";
 
+    private const string DeleteStereo3DSideData = "sidedata=mode=delete:type=STEREO3D";
+
     [Theory]
     [InlineData(null, 3840, 806)]
     [InlineData(Video3DFormat.FullSideBySide, 1920, 806)]
@@ -68,6 +70,7 @@ public class EncodingHelperVideo3DTests
         Assert.Contains(expected, args, StringComparison.Ordinal);
         Assert.DoesNotContain("crop=trunc", args, StringComparison.Ordinal);
         Assert.Equal(expected.StartsWith("setsar=", StringComparison.Ordinal), args.Contains("setsar=", StringComparison.Ordinal));
+        Assert.Equal(2, args.Split(DeleteStereo3DSideData).Length);
         if (graphicalSubtitles)
         {
             Assert.Contains($@"pad=max({canvasWidth}\,iw):max({canvasHeight}\,ih):(ow-iw)/2:(oh-ih)/2:black@0,crop={canvasWidth}:{canvasHeight}", args, StringComparison.Ordinal);
@@ -132,6 +135,7 @@ public class EncodingHelperVideo3DTests
         }
 
         Assert.Contains(@"pad=max(1920\,iw):max(806\,ih):(ow-iw)/2:(oh-ih)/2:black@0,crop=1920:806", args, StringComparison.Ordinal);
+        Assert.Equal(2, args.Split(DeleteStereo3DSideData).Length);
     }
 
     [Theory]
