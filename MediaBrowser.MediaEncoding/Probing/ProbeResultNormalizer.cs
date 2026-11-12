@@ -838,6 +838,13 @@ namespace MediaBrowser.MediaEncoding.Probing
 
                 stream.AspectRatio = GetAspectRatio(streamInfo);
 
+                // Matroska's StereoMode. FFmpeg folds the display size of one view into the SAR for the side by side,
+                // top and bottom, row and column modes (RFC 9559 section 18.10), so the SAR of such a stream describes each view.
+                if (streamInfo.Tags is not null)
+                {
+                    stream.StereoMode = GetDictionaryValue(streamInfo.Tags, "stereo_mode");
+                }
+
                 if (streamInfo.BitsPerSample > 0)
                 {
                     stream.BitDepth = streamInfo.BitsPerSample;
