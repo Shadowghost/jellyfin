@@ -20,6 +20,8 @@ public class EncodingHelperVideo3DTests
 {
     private const string SwCropFullSideBySide = "crop=trunc(iw/4)*2:ih:0:0";
 
+    private const string DeleteStereo3DSideData = "sidedata=mode=delete:type=STEREO3D";
+
     [Theory]
     [InlineData(null, 3840, 806)]
     [InlineData(Video3DFormat.FullSideBySide, 1920, 806)]
@@ -38,13 +40,13 @@ public class EncodingHelperVideo3DTests
     }
 
     [Theory]
-    [InlineData(true, Video3DFormat.FullSideBySide, false, "setsar=sar*1920/3840,libplacebo=upscaler=none:downscaler=none:w=1920:h=806:crop_w=1920:crop_h=806:crop_x=0:crop_y=0:format=nv12,format=vulkan", 0, 0)]
+    [InlineData(true, Video3DFormat.FullSideBySide, false, "setsar=sar*1920/3840:max=1000000,libplacebo=upscaler=none:downscaler=none:w=1920:h=806:crop_w=1920:crop_h=806:crop_x=0:crop_y=0:format=nv12,format=vulkan", 0, 0)]
     [InlineData(true, Video3DFormat.HalfSideBySide, false, "libplacebo=upscaler=none:downscaler=none:w=3840:h=806:crop_w=1920:crop_h=806:crop_x=0:crop_y=0:format=nv12,format=vulkan", 0, 0)]
-    [InlineData(true, Video3DFormat.FullTopAndBottom, false, "setsar=sar*806/402,libplacebo=upscaler=none:downscaler=none:w=3840:h=402:crop_w=3840:crop_h=402:crop_x=0:crop_y=0:format=nv12,format=vulkan", 0, 0)]
+    [InlineData(true, Video3DFormat.FullTopAndBottom, false, "setsar=sar*806/402:max=1000000,libplacebo=upscaler=none:downscaler=none:w=3840:h=402:crop_w=3840:crop_h=402:crop_x=0:crop_y=0:format=nv12,format=vulkan", 0, 0)]
     [InlineData(true, Video3DFormat.HalfTopAndBottom, false, "libplacebo=upscaler=none:downscaler=none:w=3840:h=806:crop_w=3840:crop_h=402:crop_x=0:crop_y=0:format=nv12,format=vulkan", 0, 0)]
-    [InlineData(true, Video3DFormat.FullSideBySide, true, "setsar=sar*1920/3840,libplacebo=upscaler=none:downscaler=none:w=1920:h=806:crop_w=1920:crop_h=806:crop_x=0:crop_y=0:format=bgra:range=pc,format=vulkan", 1920, 806)]
+    [InlineData(true, Video3DFormat.FullSideBySide, true, "setsar=sar*1920/3840:max=1000000,libplacebo=upscaler=none:downscaler=none:w=1920:h=806:crop_w=1920:crop_h=806:crop_x=0:crop_y=0:format=bgra:range=pc,format=vulkan", 1920, 806)]
     [InlineData(true, Video3DFormat.HalfSideBySide, true, "libplacebo=upscaler=none:downscaler=none:w=3840:h=806:crop_w=1920:crop_h=806:crop_x=0:crop_y=0:format=bgra:range=pc,format=vulkan", 3840, 806)]
-    [InlineData(true, Video3DFormat.FullTopAndBottom, true, "setsar=sar*806/402,libplacebo=upscaler=none:downscaler=none:w=3840:h=402:crop_w=3840:crop_h=402:crop_x=0:crop_y=0:format=bgra:range=pc,format=vulkan", 3840, 402)]
+    [InlineData(true, Video3DFormat.FullTopAndBottom, true, "setsar=sar*806/402:max=1000000,libplacebo=upscaler=none:downscaler=none:w=3840:h=402:crop_w=3840:crop_h=402:crop_x=0:crop_y=0:format=bgra:range=pc,format=vulkan", 3840, 402)]
     [InlineData(true, Video3DFormat.HalfTopAndBottom, true, "libplacebo=upscaler=none:downscaler=none:w=3840:h=806:crop_w=3840:crop_h=402:crop_x=0:crop_y=0:format=bgra:range=pc,format=vulkan", 3840, 806)]
     [InlineData(false, Video3DFormat.FullSideBySide, true, "vpp_qsv=w=1920:h=806:cw=1920:ch=806:cx=0:cy=0", 1920, 806)]
     [InlineData(false, Video3DFormat.HalfSideBySide, true, "vpp_qsv=w=3840:h=806:cw=1920:ch=806:cx=0:cy=0", 3840, 806)]
@@ -67,10 +69,34 @@ public class EncodingHelperVideo3DTests
 
         Assert.Contains(expected, args, StringComparison.Ordinal);
         Assert.DoesNotContain("crop=trunc", args, StringComparison.Ordinal);
+        Assert.Equal(expected.StartsWith("setsar=", StringComparison.Ordinal), args.Contains("setsar=", StringComparison.Ordinal));
+        Assert.Equal(2, args.Split(DeleteStereo3DSideData).Length);
         if (graphicalSubtitles)
         {
             Assert.Contains($@"pad=max({canvasWidth}\,iw):max({canvasHeight}\,ih):(ow-iw)/2:(oh-ih)/2:black@0,crop={canvasWidth}:{canvasHeight}", args, StringComparison.Ordinal);
         }
+    }
+
+    [Theory]
+    // A Matroska StereoMode SAR describes one view, so the stretched view gets the share of the frame it covers.
+    [InlineData(true, Video3DFormat.HalfSideBySide, "left_right", "setsar=sar*1920/3840:max=1000000,libplacebo=upscaler=none:downscaler=none:w=3840:h=806:crop_w=1920:crop_h=806")]
+    [InlineData(true, Video3DFormat.HalfTopAndBottom, "top_bottom", "setsar=sar*806/402:max=1000000,libplacebo=upscaler=none:downscaler=none:w=3840:h=806:crop_w=3840:crop_h=402")]
+    [InlineData(false, Video3DFormat.HalfSideBySide, "left_right", "setsar=sar*1920/3840:max=1000000,vpp_qsv=w=3840:h=806:cw=1920:ch=806:cx=0:cy=0")]
+    [InlineData(false, Video3DFormat.HalfTopAndBottom, "top_bottom", "setsar=sar*806/402:max=1000000,vpp_qsv=w=3840:h=806:cw=3840:ch=402:cx=0:cy=0")]
+    // vpp_qsv keeps the SAR of the view it crops.
+    [InlineData(false, Video3DFormat.FullSideBySide, "left_right", "vpp_qsv=w=1920:h=806:cw=1920:ch=806:cx=0:cy=0")]
+    public void GetVideoProcessingFilterParam_HardwareCrop_SarFollowsTheDeclaration(bool isAmdVaapi, Video3DFormat format, string stereoMode, string expected)
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux() && Environment.OSVersion.Version >= new Version(5, 15), "These hardware pipelines are checked on Linux 5.15 or newer");
+
+        var state = CreateState(format, false, stereoMode: stereoMode);
+        var options = CreateOptions(isAmdVaapi ? HardwareAccelerationType.vaapi : HardwareAccelerationType.qsv, false);
+
+        var args = CreateHelper(isAmdVaapi).GetVideoProcessingFilterParam(state, options, isAmdVaapi ? "h264_vaapi" : "h264_qsv");
+
+        Assert.Contains(expected, args, StringComparison.Ordinal);
+        Assert.Equal(expected.StartsWith("setsar=", StringComparison.Ordinal), args.Contains("setsar=", StringComparison.Ordinal));
+        Assert.DoesNotContain("if(", args, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -82,7 +108,7 @@ public class EncodingHelperVideo3DTests
     [InlineData(HardwareAccelerationType.vaapi, false, false, "h264_vaapi", null, false)]
     [InlineData(HardwareAccelerationType.qsv, false, true, "h264_qsv", null, true)]
     [InlineData(HardwareAccelerationType.qsv, false, false, "h264_qsv", "vpp_qsv=w=1920:h=806:cw=1920:ch=806:cx=0:cy=0", true)]
-    [InlineData(HardwareAccelerationType.vaapi, true, false, "h264_vaapi", "setsar=sar*1920/3840,libplacebo=upscaler=none:downscaler=none:w=1920:h=806:crop_w=1920:crop_h=806:crop_x=0:crop_y=0:format=bgra:range=pc", true)]
+    [InlineData(HardwareAccelerationType.vaapi, true, false, "h264_vaapi", "setsar=sar*1920/3840:max=1000000,libplacebo=upscaler=none:downscaler=none:w=1920:h=806:crop_w=1920:crop_h=806:crop_x=0:crop_y=0:format=bgra:range=pc", true)]
     public void GetVideoProcessingFilterParam_FullSideBySide_FlattensOnceToOneView(
         HardwareAccelerationType hardwareAcceleration,
         bool isAmd,
@@ -109,9 +135,29 @@ public class EncodingHelperVideo3DTests
         }
 
         Assert.Contains(@"pad=max(1920\,iw):max(806\,ih):(ow-iw)/2:(oh-ih)/2:black@0,crop=1920:806", args, StringComparison.Ordinal);
+        Assert.Equal(2, args.Split(DeleteStereo3DSideData).Length);
     }
 
-    private static EncodingJobInfo CreateState(Video3DFormat? format, bool graphicalSubtitles)
+    [Theory]
+    // A codec SAR describes the packed frame, whatever the frame's shape: views of 2.76:1, or of 1:1 on top of each other.
+    [InlineData(Video3DFormat.HalfSideBySide, 1920, 696, null, "crop=trunc(iw/4)*2:ih:0:0,setsar=sar*2:max=1000000,scale=iw*2:ih")]
+    [InlineData(Video3DFormat.HalfTopAndBottom, 1080, 1080, null, "crop=iw:trunc(ih/4)*2:0:0,setsar=sar/2:max=1000000,scale=iw:ih*2")]
+    // A Matroska StereoMode SAR describes one view, whatever its shape: square or portrait views.
+    [InlineData(Video3DFormat.HalfSideBySide, 1080, 1080, "left_right", "crop=trunc(iw/4)*2:ih:0:0,scale=iw*2:ih,sidedata")]
+    [InlineData(Video3DFormat.HalfSideBySide, 1080, 1920, "left_right", "crop=trunc(iw/4)*2:ih:0:0,scale=iw*2:ih,sidedata")]
+    [InlineData(Video3DFormat.HalfTopAndBottom, 1920, 2160, "top_bottom", "crop=iw:trunc(ih/4)*2:0:0,scale=iw:ih*2,sidedata")]
+    public void GetVideoProcessingFilterParam_HalfFormat_SarFollowsTheDeclaration(Video3DFormat format, int width, int height, string? stereoMode, string expected)
+    {
+        var state = CreateState(format, false, width, height, stereoMode);
+
+        var args = CreateHelper(false).GetVideoProcessingFilterParam(state, CreateOptions(HardwareAccelerationType.none, false), "libx264");
+
+        Assert.Contains(expected, args, StringComparison.Ordinal);
+        Assert.Equal(stereoMode is null, args.Contains("setsar=", StringComparison.Ordinal));
+        Assert.DoesNotContain("if(", args, StringComparison.Ordinal);
+    }
+
+    private static EncodingJobInfo CreateState(Video3DFormat? format, bool graphicalSubtitles, int width = 3840, int height = 806, string? stereoMode = null)
     {
         // Issue #18047: two 1920x806 views packed into one 3840x806 frame with square pixels.
         var video = new MediaStream
@@ -121,8 +167,9 @@ public class EncodingHelperVideo3DTests
             Codec = "h264",
             Profile = "High",
             Level = 41,
-            Width = 3840,
-            Height = 806,
+            Width = width,
+            Height = height,
+            StereoMode = stereoMode,
             BitDepth = 8,
             PixelFormat = "yuv420p",
             RealFrameRate = 24,

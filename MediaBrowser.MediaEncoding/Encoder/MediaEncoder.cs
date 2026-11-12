@@ -703,7 +703,7 @@ namespace MediaBrowser.MediaEncoding.Encoder
             }
 
             // Flatten a frame packed 3D frame down to a single eye, otherwise the thumbnail shows both of them.
-            var flatten3DFilter = EncodingHelper.GetVideo3DFilter(threedFormat);
+            var flatten3DFilter = EncodingHelper.GetVideo3DFilter(threedFormat, videoStream);
             if (!string.IsNullOrEmpty(flatten3DFilter))
             {
                 filters.Add(flatten3DFilter);

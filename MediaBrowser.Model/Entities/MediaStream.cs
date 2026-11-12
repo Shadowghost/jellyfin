@@ -701,6 +701,12 @@ namespace MediaBrowser.Model.Entities
         /// <value><c>true</c> if this instance is anamorphic; otherwise, <c>false</c>.</value>
         public bool? IsAnamorphic { get; set; }
 
+        /// <summary>
+        /// Gets or sets the stereo mode the container declares for this stream, as FFmpeg names Matroska's StereoMode.
+        /// </summary>
+        /// <value>The stereo mode, for example left_right or top_bottom.</value>
+        public string StereoMode { get; set; }
+
         internal string GetResolutionText()
         {
             if (!Width.HasValue || !Height.HasValue)

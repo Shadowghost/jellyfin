@@ -352,7 +352,7 @@ namespace MediaBrowser.Controller.MediaEncoding
 
         private bool IsSwVideo3DFlatteningRequired(EncodingJobInfo state, EncodingOptions options)
         {
-            return !string.IsNullOrEmpty(GetVideo3DFilter(state.MediaSource?.Video3DFormat))
+            return !string.IsNullOrEmpty(GetVideo3DFilter(state.MediaSource?.Video3DFormat, state.VideoStream))
                 && !IsHwVideo3DFlatteningAvailable(options);
         }
 
@@ -3570,7 +3570,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             int? requestedMaxWidth,
             int? requestedMaxHeight)
         {
-            var flattenFilter = GetVideo3DFilter(threedFormat);
+            var flattenFilter = GetVideo3DFilter(threedFormat, state?.VideoStream);
             var scaleFilter = GetSwScaleFilter(state, options, videoEncoder, videoWidth, videoHeight, requestedWidth, requestedHeight, requestedMaxWidth, requestedMaxHeight);
             return string.Join(',', new[] { flattenFilter, scaleFilter }.Where(f => !string.IsNullOrEmpty(f)));
         }
@@ -3695,21 +3695,47 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// Gets the video 3d filter for a source.
         /// </summary>
         /// <param name="threedFormat">The 3D format of the source.</param>
+        /// <param name="videoStream">The video stream of the source.</param>
         /// <returns>The video 3d filter.</returns>
-        public static string GetVideo3DFilter(Video3DFormat? threedFormat)
+        public static string GetVideo3DFilter(Video3DFormat? threedFormat, MediaStream videoStream)
         {
             // Keep the left/top view and drop the other one. The half formats squeeze both eyes into a
             // single frame, so the remaining eye has to be stretched back to the full frame size.
-            // Restore the source SAR after scaling and remove the obsolete stereo signalling.
-            // Cropped dimensions are rounded down to a multiple of two for the encoders.
+            // The SAR of the codec describes the packed frame, so the eye takes the frame's shape: double it
+            // along the squeezed axis before the stretch, an unset SAR counting as square. The SAR of a
+            // Matroska StereoMode already describes one view, and the stretch keeps its shape.
+            // Remove the obsolete stereo signalling. Cropped dimensions are rounded down to a multiple of two for the encoders.
+            var isSarPerView = IsVideo3DSarPerView(threedFormat, videoStream);
             return threedFormat switch
             {
                 Video3DFormat.FullSideBySide => "crop=trunc(iw/4)*2:ih:0:0,sidedata=mode=delete:type=STEREO3D",
-                Video3DFormat.HalfSideBySide => "crop=trunc(iw/4)*2:ih:0:0,scale=iw*2:ih,setsar=sar*2,sidedata=mode=delete:type=STEREO3D",
+                Video3DFormat.HalfSideBySide when isSarPerView => "crop=trunc(iw/4)*2:ih:0:0,scale=iw*2:ih,sidedata=mode=delete:type=STEREO3D",
+                Video3DFormat.HalfSideBySide => "crop=trunc(iw/4)*2:ih:0:0,setsar=sar*2:max=1000000,scale=iw*2:ih,sidedata=mode=delete:type=STEREO3D",
                 Video3DFormat.FullTopAndBottom => "crop=iw:trunc(ih/4)*2:0:0,sidedata=mode=delete:type=STEREO3D",
-                Video3DFormat.HalfTopAndBottom => "crop=iw:trunc(ih/4)*2:0:0,scale=iw:ih*2,setsar=sar/2,sidedata=mode=delete:type=STEREO3D",
+                Video3DFormat.HalfTopAndBottom when isSarPerView => "crop=iw:trunc(ih/4)*2:0:0,scale=iw:ih*2,sidedata=mode=delete:type=STEREO3D",
+                Video3DFormat.HalfTopAndBottom => "crop=iw:trunc(ih/4)*2:0:0,setsar=sar/2:max=1000000,scale=iw:ih*2,sidedata=mode=delete:type=STEREO3D",
                 // The base view of an MVC stream already is a plain 2D frame, the decoder drops the other view.
                 _ => string.Empty
+            };
+        }
+
+        /// <summary>
+        /// Gets whether the SAR of a 3D source describes one of its views rather than the packed frame.
+        /// </summary>
+        /// <param name="threedFormat">The 3D format of the source.</param>
+        /// <param name="videoStream">The video stream of the source.</param>
+        /// <returns><c>true</c> if the SAR describes one view.</returns>
+        private static bool IsVideo3DSarPerView(Video3DFormat? threedFormat, MediaStream videoStream)
+        {
+            // FFmpeg folds Matroska's DisplayWidth and DisplayHeight, the display size of one view (RFC 9559 section 18.10),
+            // into the SAR: across the width for these StereoMode values, across the height for the others below.
+            return threedFormat switch
+            {
+                Video3DFormat.FullSideBySide or Video3DFormat.HalfSideBySide
+                    => videoStream?.StereoMode is "left_right" or "right_left" or "col_interleaved_lr" or "col_interleaved_rl",
+                Video3DFormat.FullTopAndBottom or Video3DFormat.HalfTopAndBottom
+                    => videoStream?.StereoMode is "top_bottom" or "bottom_top" or "row_interleaved_lr" or "row_interleaved_rl",
+                _ => false
             };
         }
 
@@ -3742,7 +3768,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         {
             if (videoWidth is not int width
                 || videoHeight is not int height
-                || string.IsNullOrEmpty(GetVideo3DFilter(threedFormat)))
+                || string.IsNullOrEmpty(GetVideo3DFilter(threedFormat, null)))
             {
                 return null;
             }
@@ -3766,15 +3792,27 @@ namespace MediaBrowser.Controller.MediaEncoding
                 : null;
         }
 
-        private static string GetVideo3DLibplaceboSarFilter(Video3DFormat? threedFormat, int? videoWidth, int? videoHeight)
+        private static string GetVideo3DHwSarFilter(Video3DFormat? threedFormat, MediaStream videoStream, int? videoWidth, int? videoHeight, bool isLibplacebo)
         {
-            // libplacebo derives the output SAR from the uncropped frame. Pre-scale the input SAR by the share of
-            // the frame the view covers, ahead of libplacebo so an unset SAR still comes out as 1:1.
-            var (flatWidth, flatHeight) = GetVideo3DFlattenedSize(threedFormat, videoWidth, videoHeight);
+            // Set ahead of the hardware crop, so an unset SAR still comes out as 1:1. libplacebo derives the output
+            // SAR from the uncropped frame, so a full format scales it by the share of the frame the view covers,
+            // while vpp_qsv keeps it as it is. Both stretch a half format's view back to the frame and keep its SAR,
+            // which is right for the SAR of the codec; a SAR that describes one view is scaled by that share.
+            // max=1000000 keeps the ratio exact for odd view sizes.
+            if (GetVideo3DCropSize(threedFormat, videoWidth, videoHeight) is not (int cropWidth, int cropHeight))
+            {
+                return null;
+            }
+
+            var scaleWidth = string.Format(CultureInfo.InvariantCulture, "setsar=sar*{0}/{1}:max=1000000", cropWidth, videoWidth);
+            var scaleHeight = string.Format(CultureInfo.InvariantCulture, "setsar=sar*{0}/{1}:max=1000000", videoHeight, cropHeight);
+            var isSarPerView = IsVideo3DSarPerView(threedFormat, videoStream);
             return threedFormat switch
             {
-                Video3DFormat.FullSideBySide => string.Format(CultureInfo.InvariantCulture, "setsar=sar*{0}/{1}", flatWidth, videoWidth),
-                Video3DFormat.FullTopAndBottom => string.Format(CultureInfo.InvariantCulture, "setsar=sar*{0}/{1}", videoHeight, flatHeight),
+                Video3DFormat.FullSideBySide when isLibplacebo => scaleWidth,
+                Video3DFormat.FullTopAndBottom when isLibplacebo => scaleHeight,
+                Video3DFormat.HalfSideBySide when isSarPerView => scaleWidth,
+                Video3DFormat.HalfTopAndBottom when isSarPerView => scaleHeight,
                 _ => null
             };
         }
@@ -4069,7 +4107,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             }
 
             // sw 3d to 2d
-            mainFilters.Add(GetVideo3DFilter(threeDFormat));
+            mainFilters.Add(GetVideo3DFilter(threeDFormat, state.VideoStream));
 
             var outFormat = isSwDecoder ? "yuv420p" : "nv12";
             var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
@@ -4233,7 +4271,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
 
                 // sw 3d to 2d
-                mainFilters.Add(GetVideo3DFilter(threeDFormat));
+                mainFilters.Add(GetVideo3DFilter(threeDFormat, state.VideoStream));
 
                 var outFormat = doCuTonemap ? "p010le" : "yuv420p";
                 var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
@@ -4447,7 +4485,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
 
                 // sw 3d to 2d
-                mainFilters.Add(GetVideo3DFilter(threeDFormat));
+                mainFilters.Add(GetVideo3DFilter(threeDFormat, state.VideoStream));
 
                 var outFormat = doOclTonemap ? "yuv420p10le" : "yuv420p";
                 var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
@@ -4700,7 +4738,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
 
                 // sw 3d to 2d
-                mainFilters.Add(GetVideo3DFilter(threeDFormat));
+                mainFilters.Add(GetVideo3DFilter(threeDFormat, state.VideoStream));
 
                 var outFormat = doOclTonemap ? "yuv420p10le" : (hasGraphicalSubs ? "yuv420p" : "nv12");
                 var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
@@ -4815,6 +4853,13 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
 
                 // hw transpose & scale & tonemap(w/o procamp)
+                if (!string.IsNullOrEmpty(crop3DArgs))
+                {
+                    // The view vpp_qsv keeps is a plain 2D frame, drop the stereo signalling as the software chain does.
+                    mainFilters.Add("sidedata=mode=delete:type=STEREO3D");
+                    mainFilters.Add(GetVideo3DHwSarFilter(threeDFormat, state.VideoStream, inW, inH, false));
+                }
+
                 mainFilters.Add(hwScaleFilter);
 
                 // hw tonemap(w/ procamp)
@@ -4997,7 +5042,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
 
                 // sw 3d to 2d
-                mainFilters.Add(GetVideo3DFilter(threeDFormat));
+                mainFilters.Add(GetVideo3DFilter(threeDFormat, state.VideoStream));
 
                 var outFormat = doOclTonemap ? "yuv420p10le" : (hasGraphicalSubs ? "yuv420p" : "nv12");
                 var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
@@ -5068,6 +5113,13 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
 
                 // hw transpose(qsv vpp) & scale
+                if (!string.IsNullOrEmpty(crop3DArgs))
+                {
+                    // The view vpp_qsv keeps is a plain 2D frame, drop the stereo signalling as the software chain does.
+                    mainFilters.Add("sidedata=mode=delete:type=STEREO3D");
+                    mainFilters.Add(GetVideo3DHwSarFilter(threeDFormat, state.VideoStream, inW, inH, false));
+                }
+
                 mainFilters.Add(hwScaleFilter);
             }
 
@@ -5333,7 +5385,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
 
                 // sw 3d to 2d
-                mainFilters.Add(GetVideo3DFilter(threeDFormat));
+                mainFilters.Add(GetVideo3DFilter(threeDFormat, state.VideoStream));
 
                 var outFormat = doOclTonemap ? "yuv420p10le" : "nv12";
                 var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
@@ -5573,7 +5625,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
 
                 // sw 3d to 2d
-                mainFilters.Add(GetVideo3DFilter(threeDFormat));
+                mainFilters.Add(GetVideo3DFilter(threeDFormat, state.VideoStream));
 
                 if (doVkTonemap || hasSubs)
                 {
@@ -5666,7 +5718,9 @@ namespace MediaBrowser.Controller.MediaEncoding
                 var libplaceboFilter = GetLibplaceboFilter(options, libplaceboFormat, doVkTonemap, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH, isMjpegEncoder, crop3DArgs);
                 if (doVk3DFlatten)
                 {
-                    mainFilters.Add(GetVideo3DLibplaceboSarFilter(threeDFormat, inW, inH));
+                    // The view libplacebo keeps is a plain 2D frame, drop the stereo signalling as the software chain does.
+                    mainFilters.Add("sidedata=mode=delete:type=STEREO3D");
+                    mainFilters.Add(GetVideo3DHwSarFilter(threeDFormat, state.VideoStream, inW, inH, true));
                 }
 
                 mainFilters.Add(libplaceboFilter);
@@ -5831,7 +5885,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
 
                 // sw 3d to 2d
-                mainFilters.Add(GetVideo3DFilter(threeDFormat));
+                mainFilters.Add(GetVideo3DFilter(threeDFormat, state.VideoStream));
 
                 outFormat = doOclTonemap ? "yuv420p10le" : "nv12";
                 var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
@@ -6271,7 +6325,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 }
 
                 // sw 3d to 2d
-                mainFilters.Add(GetVideo3DFilter(threeDFormat));
+                mainFilters.Add(GetVideo3DFilter(threeDFormat, state.VideoStream));
 
                 var outFormat = doOclTonemap ? "yuv420p10le" : (hasGraphicalSubs ? "yuv420p" : "nv12");
                 var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, reqW, reqH, reqMaxW, reqMaxH);
